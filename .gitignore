@@ -1,0 +1,12 @@
+# Godot 4+ specific ignores
+.godot/
+.nomedia
+
+# Visual Studio
+.vs/
+
+# PowerShell artifact
+$null
+
+# Steam Audio SDK (fetched via scripts/install_steam_audio.py from Valve releases)
+src/lib/steamaudio/

@@ -1,0 +1,24 @@
+# Dependabot configuration for dependency updates
+# https://docs.github.com/en/code-security/dependabot
+
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
+      - "github-actions"
+
+  - package-ecosystem: "gitsubmodules"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    commit-message:
+      prefix: "deps"
+    labels:
+      - "dependencies"
+      - "submodules"

@@ -1,0 +1,29 @@
+# Nexus Resonance C++ code style
+# Align with Godot/CPP conventions where applicable
+
+BasedOnStyle: LLVM
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+
+# Braces
+BreakBeforeBraces: Attach
+BraceWrapping:
+  AfterFunction: false
+  AfterClass: false
+
+# Alignment
+AlignAfterOpenBracket: Align
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+ColumnLimit: 0
+
+# Spacing
+SpaceAfterCStyleCast: false
+SpaceBeforeParens: ControlStatements
+SpacesInAngles: Never
+SpacesInContainerLiterals: true
+
+# Pointers and references
+DerivePointerAlignment: false
+PointerAlignment: Left

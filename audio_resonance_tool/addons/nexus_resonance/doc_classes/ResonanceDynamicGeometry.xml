@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="ResonanceDynamicGeometry" inherits="ResonanceGeometry" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		Dynamic acoustic geometry for doors, moving platforms, and other animated objects.
+	</brief_description>
+	<description>
+		ResonanceDynamicGeometry is a subclass of [ResonanceGeometry] for moving objects. It is excluded from the baked static scene export. The mesh is exported separately via Tools → Nexus Resonance → Export Dynamic Meshes or via the inspector "Export Mesh" button when a ResonanceDynamicGeometry is selected.
+		Assign a [ResonanceGeometryAsset] to [member mesh_asset] when using export (auto-assigned by Export Dynamic Mesh). Enable path_validation_enabled in [ResonancePlayerConfig] when using dynamic geometry that can block baked paths.
+	</description>
+	<tutorials>
+	</tutorials>
+</class>

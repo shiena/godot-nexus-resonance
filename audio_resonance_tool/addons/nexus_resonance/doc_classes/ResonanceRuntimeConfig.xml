@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="ResonanceRuntimeConfig" inherits="Resource" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		Runtime configuration resource for Nexus Resonance. Structure aligned with Steam Audio Settings.
+	</brief_description>
+	<description>
+		Nexus Resonance runtime configuration resource. Create or link in ResonanceRuntime node (Add Child Node > ResonanceRuntime). Structure and group order follow Steam Audio Settings: HRTF Settings, Ray Tracer Settings, Occlusion Settings, Real-time Reflections, Baked Reverb, Baked Pathing, Simulation Update, Reflection Effect, Hybrid Reverb, Reverb Output, Physics. Emits reflection_type_changed and pathing_enabled_changed when those settings change.
+	</description>
+	<tutorials>
+	</tutorials>
+	<signals>
+		<signal name="reflection_type_changed">
+			<param index="0" name="new_type" type="int" />
+			<description>
+				Emitted when reflection_type changes.
+			</description>
+		</signal>
+		<signal name="pathing_enabled_changed">
+			<param index="0" name="enabled" type="bool" />
+			<description>
+				Emitted when pathing_enabled changes.
+			</description>
+		</signal>
+	</signals>
+	<methods>
+		<method name="get_effective_realtime_rays" qualifiers="static">
+			<return type="int" />
+			<param index="0" name="realtime_rays" type="int" />
+			<param index="1" name="os_name" type="String" />
+			<description>
+				Returns effective realtime_rays for the given OS. Android has no Embree, so always 0.
+			</description>
+		</method>
+		<method name="get_config">
+			<return type="Dictionary" />
+			<description>
+				Returns config dictionary for init_audio_engine. Includes sample_rate from AudioServer.
+			</description>
+		</method>
+		<method name="create_default" qualifiers="static">
+			<return type="ResonanceRuntimeConfig" />
+			<description>
+				Creates a default runtime config for editor/fallback when no ResonanceRuntime in scene.
+			</description>
+		</method>
+	</methods>
+	<members>
+		<member name="audio_frame_size" type="int" default="512">
+			Steam Audio block size (256/512/1024). 256 = lower latency, more CPU. Match Godot's mix callback for best performance.
+		</member>
+		<member name="ambisonic_order" type="int" default="1">
+			Ambisonic order for reverb encoding: 1st Order, 2nd Order, or 3rd Order. Higher = more spatial detail, more CPU.
+		</member>
+		<member name="max_reverb_duration" type="float" default="2.0">
+			Max reverb tail duration in seconds.
+		</member>
+		<member name="realtime_rays" type="int" default="0">
+			Realtime raytracing rays: 0 (baked only), 64–8192. Requires Embree on host.
+		</member>
+		<member name="realtime_bounces" type="int" default="4">
+			Realtime reflection bounces (1–64).
+		</member>
+		<member name="use_radeon_rays" type="bool" default="false">
+			Use Radeon Rays instead of Embree for GPU-accelerated raytracing.
+		</member>
+		<member name="realtime_irradiance_min_distance" type="float" default="0.1">
+			Min distance for irradiance sampling (0.05–10.0 m). Only when Realtime Rays > 0.
+		</member>
+		<member name="realtime_simulation_duration" type="float" default="2.0">
+			Reverb tail length for realtime simulation (0.1–10.0 s).
+		</member>
+		<member name="realtime_num_diffuse_samples" type="int" default="32">
+			Diffuse samples per reflection point (8–64).
+		</member>
+		<member name="reflection_type" type="int" default="0">
+			Reverb algorithm: Convolution (0), Parametric (1), Hybrid (2).
+		</member>
+		<member name="hybrid_reverb_transition_time" type="float" default="1.0">
+			Hybrid reverb: length (seconds) of IR used for convolution before parametric tail. Only when reflection_type is Hybrid.
+		</member>
+		<member name="hybrid_reverb_overlap_percent" type="int" default="25">
+			Hybrid reverb: overlap percent (0–100) for crossfade between convolution and parametric parts.
+		</member>
+		<member name="reverb_binaural" type="bool" default="true">
+			Apply binaural rendering to reverb.
+		</member>
+		<member name="use_virtual_surround" type="bool" default="false">
+			Use virtual surround instead of HRTF.
+		</member>
+		<member name="hrtf_sofa_asset" type="ResonanceSOFAAsset" default="null">
+			Custom SOFA HRTF. Import .sofa as .tres-file. Null = default embedded HRTF.
+		</member>
+		<member name="hrtf_interpolation_bilinear" type="bool" default="false">
+			Use bilinear HRTF interpolation.
+		</member>
+		<member name="reverb_influence_radius" type="float" default="10000.0">
+			Baked reverb influence radius in meters.
+		</member>
+		<member name="reverb_max_distance" type="float" default="0.0">
+			Max reverb distance (0 = unlimited).
+		</member>
+		<member name="reverb_transmission_amount" type="float" default="1.0">
+			How much transmission damps reverb (0–1). 0 = no damping, 1 = full damping (reverb scaled by material transmission).
+		</member>
+		<member name="pathing_enabled" type="bool" default="false">
+			Enable pathing (multi-path propagation).
+		</member>
+		<member name="transmission_type" type="int" default="0">
+			Transmission: FreqIndependent (0), FreqDependent (1).
+		</member>
+		<member name="occlusion_type" type="int" default="1">
+			Occlusion: Raycast (0), Volumetric (1).
+		</member>
+		<member name="geometry_update_throttle" type="int" default="4">
+			Throttle geometry updates: apply every Nth update (1–16). Reduces CPU with animated objects.
+		</member>
+		<member name="simulation_tick_throttle" type="int" default="1">
+			Throttle simulation tick: run every Nth frame (1–8).
+		</member>
+		<member name="simulation_update_interval" type="float" default="0.1">
+			Direct sound runs every tick; Reflections + Pathing only when this many seconds elapsed. 0 = every tick (smoother pathing, more CPU). 0.1 = 100ms default.
+		</member>
+		<member name="simulation_cpu_cores_percent" type="float" default="0.05">
+			Fraction of CPU cores for realtime raytracing (0–1). 0.05 = 5% of cores. Higher = smoother, more CPU.
+		</member>
+		<member name="perspective_correction_enabled" type="bool" default="false">
+			Enable perspective correction for reverb.
+		</member>
+		<member name="perspective_correction_factor" type="float" default="1.0">
+			Perspective correction factor (0.5–2.0).
+		</member>
+	</members>
+</class>

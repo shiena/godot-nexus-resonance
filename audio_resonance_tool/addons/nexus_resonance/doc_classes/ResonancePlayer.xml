@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="ResonancePlayer" inherits="AudioStreamPlayer3D" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>
+		A Steam Audio source that supports physics-based occlusion, transmission, and reverb.
+	</brief_description>
+	<description>
+		ResonancePlayer extends AudioStreamPlayer3D for sources that interact with Steam Audio geometry. Assign a ResonancePlayerConfig to enable occlusion, distance attenuation, air absorption, and directivity. When player_config is null, behaves as a normal AudioStreamPlayer3D (no Resonance processing).
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="play_stream">
+			<return type="void" />
+			<param index="0" name="from_position" type="float" default="0.0" />
+			<description>
+				Starts playback with Resonance processing. Only applies when player_config is set.
+			</description>
+		</method>
+	</methods>
+	<members>
+		<member name="player_config" type="ResonancePlayerConfig" setter="set_player_config" getter="get_player_config">
+			ResonancePlayerConfig resource. When set, enables Steam Audio processing (occlusion, reverb, pathing, etc.). When null, acts as plain AudioStreamPlayer3D.
+		</member>
+		<member name="pathing_probe_volume" type="NodePath" setter="set_pathing_probe_volume" getter="get_pathing_probe_volume">
+			Pathing: Optional ResonanceProbeVolume to use for path finding. Empty = use first loaded volume with pathing. Only used when player_config is set.
+			Note: Deleting a probe volume that is still referenced here can trigger a Godot engine error. Clear this property manually before deleting the volume if needed.
+		</member>
+	</members>
+</class>

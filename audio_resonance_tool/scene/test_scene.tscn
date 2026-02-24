@@ -1,0 +1,242 @@
+[gd_scene format=4 uid="uid://dqh66xnckdnko"]
+
+[ext_resource type="Script" uid="uid://ce4ndx5pja3qn" path="res://addons/nexus_resonance/scripts/resonance_runtime.gd" id="2_302jv"]
+[ext_resource type="AudioStream" uid="uid://cv710gbpr48wa" path="res://scene/Anime Chimera Cut 60.wav" id="2_b0kse"]
+[ext_resource type="Script" uid="uid://b8lni7d8opc51" path="res://scene/camera_3d.gd" id="2_w1wvs"]
+[ext_resource type="Resource" uid="uid://da0mnonvgg05e" path="res://scene/runtime_config.tres" id="3_4lqgh"]
+[ext_resource type="ResonanceMaterial" uid="uid://rb8c736kvibo" path="res://addons/nexus_resonance/materials/brick.tres" id="4_g7awx"]
+[ext_resource type="ResonanceGeometryAsset" uid="uid://dgenac6qkkd6w" path="res://audio_data/test_scene_static.tres" id="4_nuccc"]
+[ext_resource type="ResonanceMaterial" uid="uid://xcosf2557cs5" path="res://addons/nexus_resonance/materials/acoustic_ceiling_tile.tres" id="5_urr70"]
+[ext_resource type="ResonanceProbeData" uid="uid://1cu0tb7si50o" path="res://audio_data/test_scene_resonanceprobevolume_baked_probes.tres" id="6_4lqgh"]
+[ext_resource type="Resource" uid="uid://q5bhttvsliel" path="res://audio_data/bake_config.tres" id="7_nuccc"]
+[ext_resource type="Script" uid="uid://5yonvraqmtar" path="res://addons/nexus_resonance/scripts/resonance_player_config.gd" id="11_playerconfig"]
+
+[sub_resource type="Resource" id="Resource_playerconfig"]
+script = ExtResource("11_playerconfig")
+min_distance = 0.5
+max_distance = 200.0
+air_absorption_enabled = true
+air_absorption_input = 1
+air_absorption_mid = 0.96
+air_absorption_high = 0.87
+directivity_weight = 0.5
+perspective_correction_override = -1
+
+[sub_resource type="SphereMesh" id="SphereMesh_b0kse"]
+radius = 0.1
+height = 0.2
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_w1wvs"]
+albedo_color = Color(0.3553134, 0.3553136, 0.35531357, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_6bffp"]
+material = SubResource("StandardMaterial3D_w1wvs")
+size = Vector3(12, 4, 0.3)
+subdivide_width = 2
+subdivide_height = 2
+subdivide_depth = 2
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_w1wvs"]
+size = Vector3(12, 4, 0.3)
+
+[sub_resource type="ResonanceGeometryAsset" id="ResonanceGeometryAsset_4lqgh"]
+mesh_data = PackedByteArray("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VwAAAF0AAABXAAAAXwAAAF0AAABgAAAAAADAwAAAAECamRk+AADAQAAAAECamRm+AAAAwAAAAECamRk+AAAAQAAAAECamRm+AAAAQAAAAECamRk+AAAAwAAAAECamRm+AADAQAAAAECamRk+AADAwAAAAECamRm+AADAwKuqKj+amRk+AADAQKuqKj+amRm+AAAAwKuqKj+amRk+AAAAQKuqKj+amRm+AAAAQKuqKj+amRk+AAAAwKuqKj+amRm+AADAQKuqKj+amRk+AADAwKuqKj+amRm+AADAwKqqKr+amRk+AADAQKqqKr+amRm+AAAAwKqqKr+amRk+AAAAQKqqKr+amRm+AAAAQKqqKr+amRk+AAAAwKqqKr+amRm+AADAQKqqKr+amRk+AADAwKqqKr+amRm+AADAwAAAAMCamRk+AADAQAAAAMCamRm+AAAAwAAAAMCamRk+AAAAQAAAAMCamRm+AAAAQAAAAMCamRk+AAAAwAAAAMCamRm+AADAQAAAAMCamRk+AADAwAAAAMCamRm+AADAQAAAAECamRk+AADAwAAAAECamRm+AADAQAAAAEDNzEw9AADAwAAAAEDNzEy9AADAQAAAAEDOzEy9AADAwAAAAEDOzEw9AADAQAAAAECamRm+AADAwAAAAECamRk+AADAQKuqKj+amRk+AADAwKuqKj+amRm+AADAQKuqKj/NzEw9AADAwKuqKj/NzEy9AADAQKuqKj/OzEy9AADAwKuqKj/OzEw9AADAQKuqKj+amRm+AADAwKuqKj+amRk+AADAQKqqKr+amRk+AADAwKqqKr+amRm+AADAQKqqKr/NzEw9AADAwKqqKr/NzEy9AADAQKqqKr/OzEy9AADAwKqqKr/OzEw9AADAQKqqKr+amRm+AADAwKqqKr+amRk+AADAQAAAAMCamRk+AADAwAAAAMCamRm+AADAQAAAAMDNzEw9AADAwAAAAMDNzEy9AADAQAAAAMDOzEy9AADAwAAAAMDOzEw9AADAQAAAAMCamRm+AADAwAAAAMCamRk+AADAQAAAAECamRk+AADAwAAAAMCamRk+AAAAQAAAAECamRk+AAAAwAAAAMCamRk+AAAAwAAAAECamRk+AAAAQAAAAMCamRk+AADAwAAAAECamRk+AADAQAAAAMCamRk+AADAQAAAAEDNzEw9AADAwAAAAMDNzEw9AAAAQAAAAEDNzEw9AAAAwAAAAMDNzEw9AAAAwAAAAEDNzEw9AAAAQAAAAMDNzEw9AADAwAAAAEDNzEw9AADAQAAAAMDNzEw9AADAQAAAAEDOzEy9AADAwAAAAMDOzEy9AAAAQAAAAEDOzEy9AAAAwAAAAMDOzEy9AAAAwAAAAEDOzEy9AAAAQAAAAMDOzEy9AADAwAAAAEDOzEy9AADAQAAAAMDOzEy9AADAQAAAAECamRm+AADAwAAAAMCamRm+AAAAQAAAAECamRm+AAAAwAAAAMCamRm+AAAAwAAAAECamRm+AAAAQAAAAMCamRm+AADAwAAAAECamRm+AADAQAAAAMCamRm+")
+triangle_count = 108
+
+[sub_resource type="BoxMesh" id="BoxMesh_b0kse"]
+size = Vector3(12, 0.5, 13)
+
+[sub_resource type="ConvexPolygonShape3D" id="ConvexPolygonShape3D_w1wvs"]
+points = PackedVector3Array(6, 0.25, 6.499999, 6, -0.25, 6.499999, 6, 0.25, -6.5, -6, 0.25, 6.499999, -6, -0.25, 6.499999, 6, -0.25, -6.5, -6, 0.25, -6.5, -6, -0.25, -6.5)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_b0kse"]
+albedo_color = Color(0.26028818, 0.26028818, 0.26028818, 1)
+
+[sub_resource type="Animation" id="Animation_w1wvs"]
+length = 0.001
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("MeshInstance3D5:position")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector3(11.549694, 2, 2.8523965)]
+}
+
+[sub_resource type="Animation" id="Animation_b0kse"]
+resource_name = "new_animation"
+length = 3.0
+loop_mode = 2
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("MeshInstance3D5:position")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.5, 2.5166667, 3),
+"transitions": PackedFloat32Array(1, 1, 1, 1),
+"update": 0,
+"values": [Vector3(11.549694, 2, 2.8523965), Vector3(11.549694, 2, 2.8523965), Vector3(0.5753975, 2, 2.8523965), Vector3(0.5753975, 2, 2.8523965)]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_6bffp"]
+_data = {
+&"RESET": SubResource("Animation_w1wvs"),
+&"new_animation": SubResource("Animation_b0kse")
+}
+
+[node name="Node3D" type="Node3D" unique_id=2006693542]
+
+[node name="ResonanceRuntime" type="Node" parent="." unique_id=446304578]
+process_priority = 100
+script = ExtResource("2_302jv")
+runtime = ExtResource("3_4lqgh")
+debug_overlay_visible = true
+metadata/_custom_type_script = "uid://ce4ndx5pja3qn"
+
+[node name="ResonanceStaticScene" type="ResonanceStaticScene" parent="." unique_id=1771765239]
+static_scene_asset = ExtResource("4_nuccc")
+scene_name_when_exported = "test_scene"
+export_hash = -1617479158899012035
+
+[node name="ResonancePlayer" type="ResonancePlayer" parent="." unique_id=411745495]
+player_config = SubResource("Resource_playerconfig")
+pathing_probe_volume = NodePath("../ResonanceProbeVolume")
+transform = Transform3D(-0.9987356, 0.0046102707, -0.050059814, 0.004987419, 0.9999601, -0.007411658, 0.05002365, -0.007651956, -0.9987187, 3.0378454, 1.9791313, 0.05532694)
+stream = ExtResource("2_b0kse")
+attenuation_model = 3
+autoplay = true
+area_mask = 3
+
+[node name="ResonanceProbeVolume" type="ResonanceProbeVolume" parent="." unique_id=1660703027]
+probe_data = ExtResource("6_4lqgh")
+bake_config = ExtResource("7_nuccc")
+region_size = Vector3(34.734375, 12.212881, 28.75447)
+viz_probe_scale = 0.5
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.7788134, 2.0231557)
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=161590142]
+transform = Transform3D(-0.8660254, -0.43301278, 0.25, 0, 0.49999997, 0.86602545, -0.50000006, 0.75, -0.43301266, 0, 0, 0)
+shadow_enabled = true
+
+[node name="Camera3D" type="Camera3D" parent="." unique_id=800753730]
+transform = Transform3D(0.96547276, 0.059043687, -0.25372514, 0, 0.97397596, 0.2266513, 0.26050454, -0.21882562, 0.94034714, 0.8405547, 2.2274582, 6.4248238)
+fov = 46.6
+script = ExtResource("2_w1wvs")
+
+[node name="ResonanceListener" type="ResonanceListener" parent="Camera3D" unique_id=2033290512]
+
+[node name="MeshInstance3D8" type="MeshInstance3D" parent="." unique_id=504884327]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.9926705, 2, 0.0904088)
+mesh = SubResource("SphereMesh_b0kse")
+skeleton = NodePath("")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="." unique_id=1076899496]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.576, 2, 8.834118)
+mesh = SubResource("BoxMesh_6bffp")
+
+[node name="ResonanceGeometry" type="ResonanceStaticGeometry" parent="MeshInstance3D" unique_id=820633484]
+material = ExtResource("4_g7awx")
+
+[node name="StaticBody3D" type="StaticBody3D" parent="MeshInstance3D" unique_id=981952194]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="MeshInstance3D/StaticBody3D" unique_id=121967561]
+shape = SubResource("BoxShape3D_w1wvs")
+
+[node name="MeshInstance3D4" type="MeshInstance3D" parent="." unique_id=698315102]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.576, 2, -3.3583055)
+mesh = SubResource("BoxMesh_6bffp")
+
+[node name="ResonanceGeometry" type="ResonanceStaticGeometry" parent="MeshInstance3D4" unique_id=1768155638]
+material = ExtResource("4_g7awx")
+
+[node name="StaticBody3D" type="StaticBody3D" parent="MeshInstance3D4" unique_id=562401561]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="MeshInstance3D4/StaticBody3D" unique_id=314852796]
+shape = SubResource("BoxShape3D_w1wvs")
+
+[node name="MeshInstance3D5" type="MeshInstance3D" parent="." unique_id=211965195]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 11.549694, 2, 2.8523965)
+mesh = SubResource("BoxMesh_6bffp")
+
+[node name="ResonanceGeometry" type="ResonanceDynamicGeometry" parent="MeshInstance3D5" unique_id=771967105]
+material = ExtResource("4_g7awx")
+mesh_asset = SubResource("ResonanceGeometryAsset_4lqgh")
+
+[node name="StaticBody3D" type="StaticBody3D" parent="MeshInstance3D5" unique_id=193079640]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="MeshInstance3D5/StaticBody3D" unique_id=1008762753]
+shape = SubResource("BoxShape3D_w1wvs")
+
+[node name="MeshInstance3D9" type="MeshInstance3D" parent="." unique_id=737421562]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.9184299, 2, 2.8523965)
+visible = false
+mesh = SubResource("BoxMesh_6bffp")
+
+[node name="ResonanceGeometry" type="ResonanceStaticGeometry" parent="MeshInstance3D9" unique_id=880224947]
+
+[node name="StaticBody3D" type="StaticBody3D" parent="MeshInstance3D9" unique_id=821843065]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="MeshInstance3D9/StaticBody3D" unique_id=1484222181]
+shape = SubResource("BoxShape3D_w1wvs")
+
+[node name="MeshInstance3D2" type="MeshInstance3D" parent="." unique_id=390449723]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, -5.11824, 2, 2.7214775)
+mesh = SubResource("BoxMesh_6bffp")
+
+[node name="ResonanceGeometry" type="ResonanceStaticGeometry" parent="MeshInstance3D2" unique_id=2120760819]
+material = ExtResource("4_g7awx")
+
+[node name="StaticBody3D" type="StaticBody3D" parent="MeshInstance3D2" unique_id=239384660]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="MeshInstance3D2/StaticBody3D" unique_id=1292983312]
+shape = SubResource("BoxShape3D_w1wvs")
+
+[node name="MeshInstance3D3" type="MeshInstance3D" parent="." unique_id=682800905]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 6.445019, 2, -1.2465229)
+mesh = SubResource("BoxMesh_6bffp")
+
+[node name="ResonanceGeometry" type="ResonanceStaticGeometry" parent="MeshInstance3D3" unique_id=1892592582]
+material = ExtResource("4_g7awx")
+
+[node name="StaticBody3D" type="StaticBody3D" parent="MeshInstance3D3" unique_id=860979704]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="MeshInstance3D3/StaticBody3D" unique_id=1706447546]
+shape = SubResource("BoxShape3D_w1wvs")
+
+[node name="MeshInstance3D7" type="MeshInstance3D" parent="." unique_id=1188623097]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.6934986, 4.2408166, 2.6967087)
+mesh = SubResource("BoxMesh_b0kse")
+
+[node name="ResonanceGeometry2" type="ResonanceStaticGeometry" parent="MeshInstance3D7" unique_id=653155870]
+material = ExtResource("5_urr70")
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 0, 0, 0)
+
+[node name="StaticBody3D" type="StaticBody3D" parent="MeshInstance3D7" unique_id=2116624302]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="MeshInstance3D7/StaticBody3D" unique_id=1776795708]
+shape = SubResource("ConvexPolygonShape3D_w1wvs")
+
+[node name="MeshInstance3D6" type="MeshInstance3D" parent="." unique_id=668772347]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.6934986, 0.026170254, 2.6967087)
+material_override = SubResource("StandardMaterial3D_b0kse")
+mesh = SubResource("BoxMesh_b0kse")
+
+[node name="ResonanceGeometry2" type="ResonanceStaticGeometry" parent="MeshInstance3D6" unique_id=396284717]
+material = ExtResource("5_urr70")
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 0, 0, 0)
+
+[node name="StaticBody3D" type="StaticBody3D" parent="MeshInstance3D6/ResonanceGeometry2" unique_id=1800454553]
+transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, 0, 0, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="MeshInstance3D6/ResonanceGeometry2/StaticBody3D" unique_id=1598570432]
+shape = SubResource("ConvexPolygonShape3D_w1wvs")
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="." unique_id=1202531643]
+libraries/ = SubResource("AnimationLibrary_6bffp")
+autoplay = &"new_animation"

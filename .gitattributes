@@ -1,0 +1,5 @@
+# Normalize line endings
+* text=auto eol=lf
+
+# Exclude from git archive (Source ZIP) - sensitive / build data
+build/ export-ignore

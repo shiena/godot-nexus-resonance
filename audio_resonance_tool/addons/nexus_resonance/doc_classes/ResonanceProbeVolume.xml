@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="ResonanceProbeVolume" inherits="Node3D" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		Volume for baked reverb probes. Place in scenes and bake to sample room acoustics.
+	</brief_description>
+	<description>
+		ResonanceProbeVolume defines a 3D region where Steam Audio bakes reverb data. Probes are placed according to generation_type and spacing. Use Bake Probes in the viewport toolbar (when selected) to compute reflection data, then optionally Bake Pathing for multi-path propagation. Probe Data is stored in the probe_data resource.
+
+		Note: Deleting a probe volume that is still referenced by ResonancePlayer.pathing_probe_volume can trigger a Godot engine error: "node_path.cpp:272 - Condition "!p_np.is_absolute()" is true". References are auto-cleared on deletion; if the error persists, clear pathing_probe_volume manually before deleting (Project > Tools > Nexus Resonance > Unlink Probe Volume References).
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="bake_probes">
+			<return type="void" />
+			<description>
+				Bakes reflection probes for this volume. Uses bake_config or Project Settings. Run from editor toolbar when volume is selected.
+			</description>
+		</method>
+		<method name="bake_probes_with_floor_points">
+			<return type="void" />
+			<param index="0" name="points" type="PackedVector3Array" />
+			<description>
+				Bakes probes at pre-computed floor raycast points. Call from worker thread; generate points via generate_probes_on_floor_raycast() on main thread.
+			</description>
+		</method>
+		<method name="generate_probes_on_floor_raycast">
+			<return type="PackedVector3Array" />
+			<description>
+				For Uniform Floor: raycast down onto collision geometry. Returns probe positions. Requires CollisionShape3D on floor. Must be called from main thread.
+			</description>
+		</method>
+		<method name="reload_probe_batch">
+			<return type="void" />
+			<description>
+				Reloads probe data from the probe_data resource into the server. Call after pathing or static listener/source bake to apply updated data without restarting.
+			</description>
+		</method>
+	</methods>
+	<members>
+		<member name="bake_config" type="ResonanceBakeConfig" setter="set_bake_config" getter="get_bake_config">
+			Per-volume bake configuration. When null, a default config is used. Assign a ResonanceBakeConfig for reflection type, pathing, static source/listener, and quality settings.
+		</member>
+		<member name="probe_data" type="ResonanceProbeData" setter="set_probe_data" getter="get_probe_data">
+			Resource storing baked probe data. Auto-created if empty. Save the scene after baking. Required for reverb at runtime.
+		</member>
+		<member name="region_size" type="Vector3" setter="set_region_size" getter="get_region_size" default="Vector3(10, 4, 10)">
+			Size of the probe volume in meters (X, Y, Z). Probes are placed inside this box.
+		</member>
+		<member name="generation_type" type="int" setter="set_generation_type" getter="get_generation_type" enum="ProbeGenerationType" default="1">
+			Centroid = single probe at center. Uniform Floor = probes on horizontal plane. Volume = 3D grid filling the box.
+		</member>
+		<member name="spacing" type="float" setter="set_spacing" getter="get_spacing" default="2.0">
+			Distance (meters) between probes. Smaller = more probes, higher quality, longer bake time.
+		</member>
+		<member name="height_above_floor" type="float" setter="set_height_above_floor" getter="get_height_above_floor" default="1.5">
+			Height (meters) of the probe plane for Uniform Floor mode. Ear height is typically 1.2–1.5.
+		</member>
+		<member name="show_probes" type="bool" setter="set_viz_visible" getter="is_viz_visible" default="true">
+			Show probe spheres in the viewport when a ResonanceProbeVolume is selected. Purely visual; does not affect bake or runtime.
+		</member>
+		<member name="viz_probe_scale" type="float" setter="set_viz_probe_scale" getter="get_viz_probe_scale" default="1.0">
+			Scale of the probe sphere visualization in the editor. Does not affect bake or runtime.
+		</member>
+		<member name="bake_sources" type="Array" setter="set_bake_sources" getter="get_bake_sources">
+			Array of NodePaths to ResonancePlayer nodes to bake as Static Source. First valid entry is used. Configure Static Source in bake_config.
+		</member>
+		<member name="bake_listeners" type="Array" setter="set_bake_listeners" getter="get_bake_listeners">
+			Array of NodePaths to ResonanceListener nodes to bake as Static Listener. First valid entry is used. Configure Static Listener in bake_config.
+		</member>
+		<member name="bake_influence_radius" type="float" setter="set_bake_influence_radius" getter="get_bake_influence_radius" default="10000.0">
+			Influence radius (meters) for Static Source and Static Listener when the referenced node has no custom radius.
+		</member>
+	</members>
+</class>

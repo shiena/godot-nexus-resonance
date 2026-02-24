@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="ResonanceListener" inherits="Node3D" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		Audio listener for Nexus Resonance. Attach to a Camera3D to drive listener position and orientation.
+	</brief_description>
+	<description>
+		Reports listener transform to ResonanceServer each frame.
+		On Windows, pathing is protected by an SEH safety net: if the listener flies through walls (e.g. ghost games, noclip), crashes are caught and pathing skips that frame. No need to set [member listener_valid] for such games.
+		Set [member listener_valid] to false only when you explicitly want to disable pathing (e.g. debug camera in geometry) to save CPU.
+	</description>
+	<members>
+		<member name="listener_valid" type="bool" setter="set_listener_valid" getter="is_listener_valid" default="true">
+			When true, path validation runs. When false, pathing is skipped entirely (saves CPU). On Windows, pathing is also crash-protected when listener is unreachable—ghost games work without changing this.
+		</member>
+	</members>
+	<tutorials>
+	</tutorials>
+</class>

@@ -1,0 +1,41 @@
+write Wiki Pages:
+
+--- Overview ---
+Home (Description, Main Features, based on Steam Audio tech, Acknowledgements)
+Installation (Asset Lib or GitHub, activate Plugin, Troubleshooting: multiple GDExtensions)
+Getting Started (Project Setup, minimal scene: Runtime, ProbeVolume, Geometry, Player)
+
+--- Core Nodes ---
+ResonanceRuntime and RuntimeConfig (listener updates, quality, HRTF, occlusion, reflections, pathing)
+ResonancePlayer and PlayerConfig (occlusion, directivity, pathing_probe_volume, perspective)
+ResonanceListener (listener position, debug viz)
+ResonanceProbeVolume and BakeConfig (probe layout, bake_config, bake_sources, bake_listeners)
+ResonanceStaticGeometry and ResonanceDynamicGeometry (geometry_override, export)
+ResonanceStaticScene (container for exported static scene assets)
+ResonanceMaterial (absorption, scattering, transmission; presets)
+
+--- Bake Workflow ---
+Bake Workflow (order: Probes → Pathing → Static Source/Listener; toolbar buttons; BakeConfig params)
+Probe/Runtime Compatibility (baked_reflection_type vs runtime; pathing_enabled vs pathing baked)
+
+--- Audio Features ---
+ResonanceAudioEffect (reverb bus, auto-configured)
+ResonanceSOFAAsset and SOFA Import (custom HRTF from .sofa files)
+ResonanceAmbisonicPlayer (Ambisonics with HRTF decode)
+
+--- Configuration ---
+Project Settings (audio/nexus_resonance/logger/*)
+Audio Buffer and Latency (audio_frame_size, output latency)
+
+--- Editor ---
+Editor Tools (Toolbar: Export Static Scene, Export Dynamic Meshes, Bake All, Clear, Unlink Probe Refs; Gizmo)
+
+--- Debug ---
+Debug and Visualization (Debug overlay, occlusion/reflection/path rays, ResonanceLogger)
+
+--- Reference ---
+ResonanceMaterial Presets (concrete, wood, metal, glass, brick, drywall, plaster, carpet, fabric, rubber, plastic, ceramic, marble tile, acoustic ceiling tile, gravel/sand, water)
+Known Issues (Probe Volume deletion refs, dynamic mesh export; from docs/ISSUES.md)
+
+--- Community ---
+Contributing (build from source, setup, tests; from docs/CONTRIBUTING.md)

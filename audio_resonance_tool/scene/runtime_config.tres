@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResonanceRuntimeConfig" format=3 uid="uid://da0mnonvgg05e"]
+
+[ext_resource type="Script" uid="uid://l856scjpr7vq" path="res://addons/nexus_resonance/scripts/resonance_runtime_config.gd" id="1_de07v"]
+
+[resource]
+script = ExtResource("1_de07v")
+perspective_correction_enabled = true
+hrtf_interpolation_bilinear = true
+simulation_cpu_cores_percent = 0.2
+max_reverb_duration = 2.5
+realtime_rays = 256
+opencl_device_type = 1
+reverb_max_distance = 100.0
+pathing_enabled = true
+reverb_transmission_amount = 0.5
+debug_reflections = true
+debug_pathing = true
+context_validation = true
+metadata/_custom_type_script = "uid://l856scjpr7vq"

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="ResonanceAudioEffect" inherits="AudioEffect" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		Audio bus effect for reverb output. Auto-configured by ResonanceRuntime.
+	</brief_description>
+	<description>
+		ResonanceAudioEffect is an [AudioEffect] that processes the reverb bus. It is added automatically to the "ResonanceReverb" bus when [ResonanceRuntime] initializes. For Convolution reflection type, it reads from the Steam Audio reflection mixer. For Parametric/Hybrid, reverb is applied per-source in [ResonancePlayer]; no mixer output.
+		Adjust [member gain_db] for reverb bus volume. Typically no manual configuration needed.
+	</description>
+	<tutorials>
+	</tutorials>
+	<members>
+		<member name="gain_db" type="float" setter="set_gain_db" getter="get_gain_db" default="0.0">
+			Volume correction in dB for the reverb bus. 0 = unity.
+		</member>
+	</members>
+</class>

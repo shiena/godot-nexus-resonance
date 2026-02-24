@@ -1,0 +1,160 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            runner: ubuntu-22.04
+            platform: linux
+            artifact_name: nexus_resonance-linux
+          - os: windows
+            runner: ubuntu-22.04
+            platform: windows
+            artifact_name: nexus_resonance-windows
+          - os: macos
+            runner: macos-latest
+            platform: macos
+            artifact_name: nexus_resonance-macos
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Steam Audio SDK
+        run: python3 scripts/install_steam_audio.py
+
+      - name: Add GCC problem matcher
+        run: echo "::add-matcher::${{ github.workspace }}/.github/gcc-problem-matcher.json"
+
+      - name: Cache SCons build
+        uses: actions/cache@v4
+        with:
+          path: .scons-cache
+          key: scons-${{ runner.os }}-${{ matrix.platform }}-${{ hashFiles('src/lib/godot-cpp/SConstruct', 'SConstruct', 'src/register_types.cpp', 'src/resonance_server.cpp') }}
+          restore-keys: |
+            scons-${{ runner.os }}-${{ matrix.platform }}-
+
+      - name: (Windows) Install mingw64
+        if: matrix.platform == 'windows'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mingw-w64
+          sudo update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix || true
+          sudo update-alternatives --set x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix || true
+
+      - name: Install SCons (Linux/Windows)
+        if: matrix.platform != 'macos'
+        run: |
+          python3 -m pip install scons
+          scons --version
+
+      - name: Install SCons (macOS)
+        if: matrix.platform == 'macos'
+        run: |
+          python3 -m pip install --break-system-packages scons
+          scons --version
+
+      - name: Build GDExtension (Linux/Windows)
+        if: matrix.platform != 'macos'
+        env:
+          SCONS_CACHE: ${{ github.workspace }}/.scons-cache
+        run: scons platform=${{ matrix.platform }} target=editor arch=x86_64 build_tests=0 -j$(nproc)
+
+      - name: Build GDExtension (macOS)
+        if: matrix.platform == 'macos'
+        env:
+          SCONS_CACHE: ${{ github.workspace }}/.scons-cache
+        run: scons platform=macos target=editor arch=universal build_tests=0 -j$(sysctl -n hw.ncpu)
+
+      - name: Prepare release artifact
+        shell: bash
+        run: |
+          mkdir -p release_${{ matrix.artifact_name }}/nexus_resonance
+          cp -r audio_resonance_tool/addons/nexus_resonance/* release_${{ matrix.artifact_name }}/nexus_resonance/
+          cp LICENSE release_${{ matrix.artifact_name }}/nexus_resonance/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: release_${{ matrix.artifact_name }}
+
+  create-release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref }}
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create release archive
+        run: |
+          mkdir -p release_packages
+          for dir in artifacts/*/; do
+            name=$(basename "$dir")
+            (cd "$dir" && zip -r "../../release_packages/${name}.zip" .)
+          done
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Create source code archive
+        run: |
+          git archive --format=zip --output=release_packages/nexus_resonance-source-v${{ steps.version.outputs.version }}.zip HEAD
+
+      - name: Prepare release body
+        id: changelog
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          CHANGELOG_SECTION=$(VERSION="$VERSION" python3 .github/scripts/extract_changelog.py)
+          {
+            echo "$CHANGELOG_SECTION"
+            echo ""
+            echo "## Installation"
+            echo ""
+            echo "Download the addon archive for your platform and extract it into your Godot project's \`addons/\` folder."
+            echo "- **nexus_resonance-windows.zip** – Windows x64"
+            echo "- **nexus_resonance-linux.zip** – Linux x64"
+            echo "- **nexus_resonance-macos.zip** – macOS (Universal)"
+            echo ""
+            echo "Developers can download **nexus_resonance-source-v${VERSION}.zip** for the full source code."
+            echo ""
+            echo "See [README](https://github.com/${{ github.repository }}) for requirements and usage."
+          } > release_body.md
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: false
+          body_path: release_body.md
+          files: release_packages/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

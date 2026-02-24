@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://bq7nrlog0001"]
+
+[ext_resource type="Script" path="res://addons/nexus_resonance/scripts/resonance_logger.gd" id="1_logger"]
+
+[node name="ResonanceLogger" type="Node"]
+script = ExtResource("1_logger")

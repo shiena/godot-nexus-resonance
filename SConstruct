@@ -1,0 +1,108 @@
+#!/usr/bin/env python
+import os
+import sys
+
+env = SConscript("src/lib/godot-cpp/SConstruct")
+
+# Project setup
+project_name = "nexus_resonance"
+
+# --- BUILD DIRECTORY SETUP ---
+# Create a specific build directory based on platform and target (debug/release).
+# This keeps the source directory clean of .obj/.o files.
+build_dir = "build/{}/{}/".format(env["platform"], env["target"])
+
+# Tell SCons to map the 'src' directory to 'build_dir'.
+# duplicate=0 prevents physically copying the .cpp files to the build dir.
+env.VariantDir(build_dir, "src", duplicate=0)
+
+# --- INCLUDES ---
+# Add the path to the Steam Audio headers (phonon.h)
+env.Append(CPPPATH=["src", "src/lib/godot-cpp/include", "src/lib/godot-cpp/gen/include", "src/lib/steamaudio/include"])
+
+# --- LIB PATH ---
+env.Append(LIBPATH=["src/lib/godot-cpp/bin"])
+
+# Steam Audio lib path (can be overridden via STEAM_AUDIO_LIB_PATH)
+steam_audio_lib = os.environ.get("STEAM_AUDIO_LIB_PATH", "src/lib/steamaudio/lib")
+
+# Output configuration and Steam Audio linking per platform
+if env["platform"] == "windows":
+    env.Replace(SHLIBSUFFIX=".dll")
+    arch_subdir = "windows-x64" if env["arch"] == "x86_64" else "windows-x86"
+    env.Append(LIBPATH=[os.path.join(steam_audio_lib, arch_subdir)])
+    env.Append(LIBS=["phonon"])
+
+elif env["platform"] == "linux":
+    env.Replace(SHLIBSUFFIX=".so")
+    arch_subdir = "linux-x64" if env["arch"] == "x86_64" else "linux-x86"
+    env.Append(LIBPATH=[os.path.join(steam_audio_lib, arch_subdir)])
+    env.Append(LIBS=["phonon"])
+    # Optional: reduce symbol export on Linux (create linux_symbols.map if needed)
+    symbols_map = "linux_symbols.map"
+    if os.path.isfile(symbols_map):
+        env.Append(LINKFLAGS=["-Wl,--version-script=%s" % env.File(symbols_map).abspath])
+
+elif env["platform"] == "macos":
+    env.Replace(SHLIBSUFFIX=".dylib")
+    env.Append(LIBPATH=[os.path.join(steam_audio_lib, "osx")])
+    env.Append(LIBS=["phonon"])
+    env.Append(LINKFLAGS=["-Wl,-rpath,@loader_path"])
+
+elif env["platform"] == "android":
+    env.Replace(SHLIBSUFFIX=".so")
+    arch_to_steam = {"arm64": "android-armv8", "x86_64": "android-x64", "arm32": "android-armv7", "x86_32": "android-x86"}
+    steam_arch = arch_to_steam.get(env["arch"], "android-armv8")
+    env.Append(LIBPATH=[os.path.join(steam_audio_lib, steam_arch)])
+    env.Append(LIBS=["phonon"])
+
+# TARGET PATH (Targeting your specific project folder)
+target_path = "audio_resonance_tool/addons/nexus_resonance/bin/"
+target_name = "nexus_resonance"
+
+# Android: output to arch-specific subdir for GDExtension (Godot ABI folder names)
+if env["platform"] == "android":
+    arch_to_abi = {"arm64": "arm64-v8a", "arm32": "armeabi-v7a", "x86_64": "x86_64", "x86_32": "x86"}
+    abi_dir = arch_to_abi.get(env["arch"], "arm64-v8a")
+    target_path = os.path.join(target_path, "android", abi_dir, "")
+
+# --- SOURCES ---
+# We now look for sources inside the 'build_dir' instead of 'src'.
+# SCons knows to look up the actual files in 'src' because of VariantDir.
+sources = Glob(build_dir + "*.cpp")
+
+# GDExtension documentation (Godot 4.3+): compile XML doc_classes into the extension
+# so Inspector tooltips work for ResonancePlayer, ResonanceProbeVolume, etc.
+if env.get("target", "template_debug") in ["editor", "template_debug"]:
+	try:
+		os.makedirs("src/gen", exist_ok=True)
+		doc_xml = Glob("audio_resonance_tool/addons/nexus_resonance/doc_classes/*.xml")
+		doc_data = env.GodotCPPDocData("src/gen/doc_data.gen.cpp", source=doc_xml)
+		sources.append(doc_data)
+	except (AttributeError, TypeError):
+		pass  # GodotCPPDocData not available (older godot-cpp)
+
+library = env.SharedLibrary(
+    target=target_path + target_name,
+    source=sources,
+)
+
+# --- C++ UNIT TESTS (no Godot/Steam Audio) ---
+build_tests = ARGUMENTS.get("build_tests", "1") == "1"
+test_exe = None
+if build_tests:
+    env_test = env.Clone()
+    env_test.Replace(LIBS=[], LIBPATH=[])
+    env_test.Append(CPPPATH=["src", "src/lib/catch2"])
+    test_sources = ["src/test/test_main.cpp", "src/test/test_ring_buffer.cpp", "src/test/test_volume_ramp.cpp"]
+    test_dir = "build/tests"
+    test_exe = env_test.Program(os.path.join(test_dir, "nexus_resonance_tests"), test_sources)
+    env.Alias("test", test_exe)
+
+# Include compile_commands.json in default target when compiledb=1 (for C++ IntelliSense)
+default_targets = [library]
+if test_exe:
+    default_targets.append(test_exe)
+if env.get("compiledb", False):
+    default_targets.append("compiledb")
+Default(default_targets)

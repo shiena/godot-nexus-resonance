@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="ResonanceServer" inherits="Object" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		Singleton managing Steam Audio context, scene, and simulation. Driven by ResonanceRuntime.
+	</brief_description>
+	<description>
+		ResonanceServer is the low-level Steam Audio engine. Typically accessed via [ResonanceRuntime] and [ResonancePlayer]. Use get_singleton() for advanced scripting. Controls listener position, geometry, probe batches, and simulation tick. Debug flags (debug_occlusion, debug_reflections, debug_pathing) enable ray visualization; output_direct and output_reverb gate direct/reverb output for debugging.
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="get_sample_rate" qualifiers="const">
+			<return type="int" />
+			<description>
+				Returns the current sample rate from AudioServer.
+			</description>
+		</method>
+		<method name="get_version">
+			<return type="String" />
+			<description>
+				Returns Nexus Resonance version string.
+			</description>
+		</method>
+		<method name="is_initialized" qualifiers="const">
+			<return type="bool" />
+			<description>
+				Returns true if the Steam Audio engine is initialized.
+			</description>
+		</method>
+		<method name="is_simulating" qualifiers="const">
+			<return type="bool" />
+			<description>
+				Returns true if simulation (pathing/reflections) is running.
+			</description>
+		</method>
+		<method name="notify_geometry_changed">
+			<return type="void" />
+			<param index="0" name="triangle_delta" type="int" />
+			<description>
+				Notifies the server of geometry change (triangle count delta). Called when dynamic geometry is added/removed.
+			</description>
+		</method>
+		<method name="tick">
+			<return type="void" />
+			<param index="0" name="delta" type="float" />
+			<description>
+				Advances simulation (pathing, reflections). Called each frame by ResonanceRuntime.
+			</description>
+		</method>
+		<method name="set_listener_valid">
+			<return type="void" />
+			<param index="0" name="valid" type="bool" />
+			<description>
+				Set whether the listener is valid for pathing. When false, RunPathing is skipped (saves CPU). On Windows, iplSimulatorRunPathing is wrapped in SEH—crashes from unreachable listener (ghost through walls, noclip) are caught; pathing skips that frame and continues.
+			</description>
+		</method>
+		<method name="update_listener">
+			<return type="void" />
+			<param index="0" name="pos" type="Vector3" />
+			<param index="1" name="dir" type="Vector3" />
+			<param index="2" name="up" type="Vector3" />
+			<description>
+				Updates listener position and orientation. Called by ResonanceListener or ResonanceRuntime fallback.
+			</description>
+		</method>
+	</methods>
+	<members>
+		<member name="debug_occlusion" type="bool" setter="set_debug_occlusion" getter="is_debug_occlusion_enabled" default="true">
+			Enable occlusion ray visualization (source rays).
+		</member>
+		<member name="debug_reflections" type="bool" setter="set_debug_reflections" getter="is_debug_reflections_enabled" default="true">
+			Enable reflection ray visualization. Requires Realtime Rays > 0 in ResonanceRuntimeConfig.
+		</member>
+		<member name="debug_pathing" type="bool" setter="set_debug_pathing" getter="is_debug_pathing_enabled" default="false">
+			Enable pathing segment visualization (green = unoccluded, red = occluded).
+		</member>
+		<member name="output_direct" type="bool" setter="set_output_direct_enabled" getter="is_output_direct_enabled" default="false">
+			Enable direct sound output. For debugging; normally true via config.
+		</member>
+		<member name="output_reverb" type="bool" setter="set_output_reverb_enabled" getter="is_output_reverb_enabled" default="true">
+			Enable reverb output. For debugging; normally true via config.
+		</member>
+	</members>
+</class>

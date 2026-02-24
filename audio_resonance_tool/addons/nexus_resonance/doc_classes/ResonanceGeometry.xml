@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="ResonanceGeometry" inherits="Node3D" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		Marks mesh surfaces for Steam Audio simulation. Add as child of MeshInstance3D, or of any Node3D when using geometry_override.
+	</brief_description>
+	<description>
+		ResonanceGeometry exposes mesh triangles to Steam Audio for occlusion, transmission, and reverb. Normally must be a direct child of a MeshInstance3D. When [member geometry_override] is set, a MeshInstance3D parent is not required—a child of any Node3D suffices (transform is taken from the parent). Assign a ResonanceMaterial to control absorption, scattering, and transmission per surface. All ResonanceGeometry in the scene is used when baking probes.
+	</description>
+	<tutorials>
+	</tutorials>
+	<members>
+		<member name="material" type="ResonanceMaterial" setter="set_material" getter="get_material">
+			Acoustic material for this surface. Controls absorption (low/mid/high), scattering, and transmission. Use presets from addons/nexus_resonance/materials/ (e.g. concrete, glass, wood).
+		</member>
+		<member name="mesh_asset" type="ResonanceGeometryAsset" setter="set_mesh_asset" getter="get_mesh_asset">
+			Pre-exported mesh data for dynamic geometry. When set and dynamic=true, loads via iplStaticMeshLoad for better stability and faster runtime. Assigned automatically when using Export Dynamic Mesh.
+		</member>
+		<member name="geometry_override" type="Mesh" setter="set_geometry_override" getter="get_geometry_override">
+			Optional simplified mesh for Steam Audio. When set, used instead of the parent MeshInstance3D's mesh for export and runtime. Use e.g. BoxMesh for complex geometry to reduce polygon count. When geometry_override is set, a MeshInstance3D parent is not required—the node can be a child of any Node3D.
+		</member>
+		<member name="show_geometry_override_in_viewport" type="bool" setter="set_show_geometry_override_in_viewport" getter="is_show_geometry_override_in_viewport" default="false">
+			When true and geometry_override is set, shows the override mesh as a semi-transparent green overlay in the editor viewport. Disable to reduce clutter.
+		</member>
+		<member name="dynamic" type="bool" setter="set_dynamic" getter="is_dynamic" default="false">
+			When true, geometry is updated for moving/rotating objects. Enable path_validation_enabled on ResonancePlayer when using dynamic geometry that can block baked paths.
+		</member>
+	</members>
+	<methods>
+		<method name="export_dynamic_mesh_to_asset">
+			<return type="Error" />
+			<param index="0" name="p_path" type="String" />
+			<description>Export mesh (parent MeshInstance3D or geometry_override if set) to a ResonanceGeometryAsset file. Works in Editor without running the scene. Saves to p_path (.tres) and assigns mesh_asset. Requires a Node3D parent; MeshInstance3D is only needed when geometry_override is unset.
+			</description>
+		</method>
+	</methods>
+</class>

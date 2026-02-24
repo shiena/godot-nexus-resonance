@@ -1,0 +1,4 @@
+{
+  global: nexus_resonance_library_init;
+  local: *;
+};

@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="ResonanceBakeConfig" format=3 uid="uid://q5bhttvsliel"]
+
+[ext_resource type="Script" uid="uid://cp7261ew6822g" path="res://addons/nexus_resonance/scripts/resonance_bake_config.gd" id="1_ed7t1"]
+
+[resource]
+script = ExtResource("1_ed7t1")
+reflection_type = 0
+pathing_enabled = true
+bake_pathing_vis_range = 100.0
+bake_pathing_path_range = 10.0
+bake_pathing_num_samples = 8
+bake_pathing_threshold = 0.35000000000000003
+bake_num_threads = 30
+metadata/_custom_type_script = "uid://cp7261ew6822g"

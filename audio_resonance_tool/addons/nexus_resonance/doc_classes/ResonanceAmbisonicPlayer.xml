@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="ResonanceAmbisonicPlayer" inherits="AudioStreamPlayer" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		Higher-order Ambisonics player with HRTF decode. Uses ResonanceAmbisonicInternalStream.
+	</brief_description>
+	<description>
+		ResonanceAmbisonicPlayer plays Ambisonic audio streams through Steam Audio's binaural decoder. Assign a [ResonanceAmbisonicInternalStream] to the [member stream] property. Supports first-order (4 channels), second-order (9 channels), and third-order (16 channels) Ambisonics.
+		When [member rotation_enabled] is true, the listener orientation is applied to decode (world-relative). Disable for fixed/world-space decode.
+	</description>
+	<tutorials>
+	</tutorials>
+	<members>
+		<member name="rotation_enabled" type="bool" setter="set_rotation_enabled" getter="is_rotation_enabled" default="true">
+			Apply listener orientation to Ambisonics decode. When false, decode is fixed in world space.
+		</member>
+	</members>
+</class>

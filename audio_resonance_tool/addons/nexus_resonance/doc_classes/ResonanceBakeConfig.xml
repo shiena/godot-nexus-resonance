@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="ResonanceBakeConfig" inherits="Resource" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		Per-volume bake configuration for Steam Audio probes.
+	</brief_description>
+	<description>
+		Per-volume bake configuration. Assign from ResonanceProbeVolume as bake_config for reusable presets. Save as .tres for sharing across scenes. Falls back to create_default() when null. Controls reflection type, pathing, static source/listener, and quality (rays, bounces, threads). Pathing visibility params (bake_pathing_vis_range, bake_pathing_radius, bake_pathing_threshold) are used both when baking and at runtime for pathing simulation.
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="get_bake_params">
+			<return type="Dictionary" />
+			<description>
+				Returns bake params dictionary for C++ set_bake_params.
+			</description>
+		</method>
+		<method name="create_default" qualifiers="static">
+			<return type="ResonanceBakeConfig" />
+			<description>
+				Creates default bake config for volumes without one assigned.
+			</description>
+		</method>
+	</methods>
+	<members>
+		<member name="reflection_type" type="int" default="2">
+			Reverb algorithm: Convolution (0), Parametric (1), Hybrid (2).
+		</member>
+		<member name="pathing_enabled" type="bool" default="false">
+			Whether to bake pathing (multi-path propagation).
+		</member>
+		<member name="bake_pathing_vis_range" type="float" default="500.0">
+			Pathing visibility range in meters (10–2000). Used at bake and runtime.
+		</member>
+		<member name="bake_pathing_path_range" type="float" default="100.0">
+			Pathing path range in meters (10–500).
+		</member>
+		<member name="bake_pathing_num_samples" type="int" default="16">
+			Pathing samples (4–128).
+		</member>
+		<member name="bake_pathing_radius" type="float" default="0.5">
+			Pathing probe radius (0.1–2.0). Used at bake and runtime.
+		</member>
+		<member name="bake_pathing_threshold" type="float" default="0.1">
+			Pathing propagation threshold (0.01–1.0). Used at bake and runtime.
+		</member>
+		<member name="static_source_enabled" type="bool" default="false">
+			Bake static source from bake_sources node.
+		</member>
+		<member name="static_listener_enabled" type="bool" default="false">
+			Bake static listener from bake_listeners node.
+		</member>
+		<member name="bake_num_rays" type="int" default="4096">
+			Reflection rays per probe (256–16384).
+		</member>
+		<member name="bake_num_bounces" type="int" default="4">
+			Reflection bounces (1–32).
+		</member>
+		<member name="bake_num_threads" type="int" default="2">
+			Bake threads (1–64).
+		</member>
+	</members>
+</class>

@@ -1,0 +1,8 @@
+[submodule "src/lib/godot-cpp"]
+	path = src/lib/godot-cpp
+	url = https://github.com/godotengine/godot-cpp
+	branch = 4.5
+[submodule "src/lib/catch2"]
+	path = src/lib/catch2
+	url = https://github.com/catchorg/Catch2
+	branch = devel

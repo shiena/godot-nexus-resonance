@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="ResonanceRuntime" inherits="Node" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		Scene configuration node for Nexus Resonance. Initializes and drives the audio engine.
+	</brief_description>
+	<description>
+		Nexus Resonance scene configuration node. Add via Add Child Node > ResonanceRuntime. Assign a ResonanceRuntimeConfig resource (create new or link existing) for runtime settings. Handles ResonanceServer init, listener fallback when no ResonanceListener, reverb bus activator, pathing/reflection debug visualization, and notifying probe volumes when config changes.
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="get_config_dict">
+			<return type="Dictionary" />
+			<description>
+				Returns config dict for init_audio_engine. Merges runtime config resource with node's debug flags (debug_occlusion, debug_reflections, debug_pathing).
+			</description>
+		</method>
+	</methods>
+	<members>
+		<member name="runtime" type="ResonanceRuntimeConfig">
+			Runtime configuration resource. Create or link an existing .tres. Auto-created default if empty.
+		</member>
+		<member name="debug_overlay_visible" type="bool" default="false">
+			Show debug overlay (audio frame size, etc.).
+		</member>
+		<member name="debug_occlusion" type="bool" default="false">
+			Enable occlusion debug visualization.
+		</member>
+		<member name="debug_reflections" type="bool" default="false">
+			[UNDER CONSTRUCTION] Visualize reflection rays from listener. Requires Realtime Rays > 0.
+		</member>
+		<member name="debug_pathing" type="bool" default="false">
+			Visualize pathing segments (green = unoccluded, red = occluded).
+		</member>
+		<member name="reflection_ray_max_bounce" type="int" default="-1">
+			Max bounce index to show in reflection ray visualization (-1 = no limit).
+		</member>
+		<member name="reflection_viz_ray_stride" type="int" default="1">
+			Draw every Nth ray (1 = all, 10 = 10%). Reduces visual clutter.
+		</member>
+		<member name="reflection_viz_bounce_stride" type="int" default="1">
+			For multi-bounce: draw every Nth ray per bounce level (1 = all, 10 = 10% per bounce).
+		</member>
+	</members>
+</class>

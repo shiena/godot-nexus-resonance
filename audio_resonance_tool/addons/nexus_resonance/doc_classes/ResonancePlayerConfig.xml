@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="ResonancePlayerConfig" inherits="Resource" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		Per-source configuration for ResonancePlayer. Link for reusable presets.
+	</brief_description>
+	<description>
+		Per-source configuration for ResonancePlayer. Assign from ResonancePlayer as player_config for reusable presets. Save as .tres for sharing across scenes. Falls back to member vars when null. Structure aligned with Steam Audio Source for compatibility. pathing_probe_volume stays on the player node (scene-specific).
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="create_default" qualifiers="static">
+			<return type="ResonancePlayerConfig" />
+			<description>
+				Creates default player config for sources without one assigned.
+			</description>
+		</method>
+	</methods>
+	<members>
+		<member name="min_distance" type="float" default="1.0">
+			Distance (meters) at which sound is at full volume.
+		</member>
+		<member name="max_distance" type="float" default="500.0">
+			Max distance (meters) for attenuation.
+		</member>
+		<member name="attenuation_mode" type="int" default="0">
+			Inverse (0), Linear (1), or Curve (2).
+		</member>
+		<member name="attenuation_curve" type="Curve" default="null">
+			Custom attenuation curve. Used when attenuation_mode is Curve.
+		</member>
+		<member name="source_radius" type="float" default="1.0">
+			Radius of the sound source in meters.
+		</member>
+		<member name="air_absorption_enabled" type="bool" default="true">
+			Enable distance-based air absorption.
+		</member>
+		<member name="air_absorption_input" type="int" default="0">
+			Air absorption source: Simulation (0) = physics-based, User Defined (1) = use low/mid/high sliders.
+		</member>
+		<member name="air_absorption_low" type="float" default="1.0">
+			Low-band (≤800 Hz) EQ. 0 = fully attenuated, 1 = no change. Only when air_absorption_input is User Defined.
+		</member>
+		<member name="air_absorption_mid" type="float" default="1.0">
+			Mid-band (800 Hz–8 kHz) EQ.
+		</member>
+		<member name="air_absorption_high" type="float" default="1.0">
+			High-band (≥8 kHz) EQ.
+		</member>
+		<member name="direct_binaural_override" type="int" default="-1">
+			Per-source binaural override. -1 = use global (RuntimeConfig.reverb_binaural), 0 = panning, 1 = force HRTF.
+		</member>
+		<member name="directivity_enabled" type="bool" default="false">
+			Enable directional sound source.
+		</member>
+		<member name="directivity_weight" type="float" default="0.0">
+			Shape: 0 = Omnidirectional, 1 = Dipole.
+		</member>
+		<member name="directivity_power" type="float" default="1.0">
+			Sharpness of the directivity pattern (0-4).
+		</member>
+		<member name="spatial_blend" type="float" default="1.0">
+			Blend between unspatialized (0) and fully 3D spatialized (1).
+		</member>
+		<member name="use_ambisonics_encode" type="bool" default="false">
+			Encode point source to Ambisonics before binaural.
+		</member>
+		<member name="occlusion_samples" type="int" default="64">
+			Number of rays per source for volumetric occlusion (1-64).
+		</member>
+		<member name="max_transmission_surfaces" type="int" default="32">
+			Max surfaces for sound transmission through walls (1-256).
+		</member>
+		<member name="path_validation_enabled" type="bool" default="true">
+			Validate baked pathing data each frame.
+		</member>
+		<member name="find_alternate_paths" type="bool" default="true">
+			Search for alternate paths when baked path is occluded.
+		</member>
+		<member name="direct_mix_level" type="float" default="1.0">
+			Volume of the direct sound path (0-10).
+		</member>
+		<member name="reflections_mix_level" type="float" default="1.0">
+			Volume of reflections and reverb (0-10).
+		</member>
+		<member name="pathing_mix_level" type="float" default="1.0">
+			Volume of pathing (0-10).
+		</member>
+		<member name="pathing_occ_scale" type="float" default="1.0">
+			Pathing gain multiplier (0-10).
+		</member>
+		<member name="reflections_eq_low" type="float" default="1.0">
+			Per-source EQ multiplier for low band.
+		</member>
+		<member name="reflections_eq_mid" type="float" default="1.0">
+			Per-source EQ multiplier for mid band.
+		</member>
+		<member name="reflections_eq_high" type="float" default="1.0">
+			Per-source EQ multiplier for high band.
+		</member>
+		<member name="reflections_delay" type="int" default="-1">
+			Samples before parametric part starts. -1 = use simulation value.
+		</member>
+		<member name="perspective_correction_override" type="int" default="-1">
+			Per-source perspective correction. -1 = use global, 0 = disabled, 1 = enabled.
+		</member>
+		<member name="perspective_factor" type="float" default="1.0">
+			Factor for on-screen position mapping (0.5–2.0). Used when override is Enabled.
+		</member>
+	</members>
+</class>

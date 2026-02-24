@@ -1,0 +1,77 @@
+# Nexus Resonance
+
+Steam Audio integration for Godot 4: physics-based occlusion, reverb, and pathing.
+
+## Quick Start
+
+1. **Enable the plugin** in Project → Project Settings → Plugins → Resonance.
+
+2. **Add a ResonanceProbeVolume** to your scene. Place it where reverb should be sampled (e.g. room center).
+
+3. **Add ResonanceGeometry** as child of each MeshInstance3D that should affect audio (walls, floor, ceiling).
+
+4. **Assign ResonanceMaterial** to each geometry (use presets from `addons/nexus_resonance/materials/`).
+
+5. **Bake Probes**: Select the ResonanceProbeVolume → use "Bake Probes" in the 3D viewport toolbar.
+
+6. **Replace AudioStreamPlayer3D with ResonancePlayer** for sources that need occlusion/reverb.
+
+7. **ResonanceRuntime** node handles listener updates and init. Assign a **ResonanceRuntimeConfig** resource for quality settings. Structure is aligned with Steam Audio Settings for compatibility.
+
+## Bake Workflow
+
+1. **Bake Probes (Reflections)** – Required first. Samples reverb at probe positions. Requires ResonanceGeometry on MeshInstance3Ds. Saves to the Probe Data resource on the volume.
+2. **Bake Pathing** – Optional. Enables multi-path sound around obstacles. Run after Bake Probes.
+3. **Bake Static Source / Static Listener** – Optional. For static sound sources or listener positions. Add NodePaths to the volume's `bake_sources` and `bake_listeners` arrays (Bake Targets).
+
+Use the toolbar buttons (Bake Probes, Bake Pathing, Bake More) when a ResonanceProbeVolume is selected. Bake progress appears in the toolbar.
+
+## Audio Buffer & Latency
+
+- **ResonanceRuntimeConfig → Ray Tracer Settings → Audio Frame Size**: Steam Audio processing block size (256, 512, 1024). 512 matches Godot’s typical mix callback. 256 = lower latency, more CPU; 1024 = higher latency, less CPU.
+- **Project Settings → Audio → Driver → Output Latency**: Godot’s output buffer latency in ms. Lower values reduce latency but increase CPU load. Default in this project: 15 ms.
+
+## Bake Parameters
+
+Configure in Project Settings → Audio → Nexus Resonance:
+
+- `bake_num_rays`, `bake_num_bounces` – reflection quality
+- `bake_num_threads` – CPU threads for baking
+- `bake_pathing_*` – pathing bake parameters (vis_range, path_range, num_samples, radius, threshold)
+
+## Probe / Runtime Compatibility
+
+Baked probe data must match the runtime configuration. Incompatible combinations are rejected to avoid corrupted audio output:
+
+| baked_reflection_type | runtime reflection_type | Compatible? |
+|-----------------------|--------------------------|-------------|
+| 0 (Convolution)       | 0 or 2                   | Yes         |
+| 1 (Parametric)        | 1 or 2                   | Yes         |
+| 2 (Hybrid)            | 0, 1, or 2               | Yes         |
+| -1 (Legacy, both)     | 0, 1, or 2               | Yes         |
+
+**Pathing:** When `pathing_enabled` is true in ResonanceRuntimeConfig, probe data must have pathing baked (`pathing_params_hash > 0`). Enable Pathing in the volume's bake_config and run Bake Pathing before or with Bake Probes.
+
+## Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| **"Bake Probes first"** | Pathing and static source/listener bakes require baked probe data. Run Bake Probes before Bake Pathing or Bake Static Source/Listener. |
+| **"GDExtension not loaded"** | The native library (nexus_resonance.dll/.so/.dylib) is missing or incompatible. Ensure the GDExtension binaries in `addons/nexus_resonance/bin/` match your Godot version and platform. |
+| **"Steam Audio Context/Scene missing"** | ResonanceGeometry nodes must be in the scene and refreshed. Add ResonanceGeometry as child of MeshInstance3Ds, assign ResonanceMaterial, then try Bake Probes again. |
+| **Probes not visible** | Select the ResonanceProbeVolume and enable the "Viz" toggle in the toolbar. Ensure the GDExtension is loaded. |
+| **Bake fails / no output** | Check the Godot Output/Console for Steam Audio errors. Ensure scene geometry has ResonanceGeometry with valid materials. |
+| **Probe batch rejected / no reverb** | Baked reflection type must match runtime (see Probe/Runtime Compatibility). Or pathing is enabled but probes have no pathing baked; disable pathing or re-bake with Pathing enabled. |
+| **Debug Reflection Rays** | Enable **Realtime Rays** (64+) in ResonanceRuntimeConfig and **Debug Reflections** in the config. Add a ResonanceListener (e.g. under Camera3D). Geometry from ResonanceGeometry or re-exported static scenes is used for ray viz. |
+
+## Requirements
+
+- Godot 4.6 (or compatible 4.x)
+- Steam Audio (Phonon) – bundled with the GDExtension
+
+## License & Dependencies
+
+- **Nexus Resonance** (this project): MIT License – see `LICENSE` in the repository root.
+- **Steam Audio** (Valve): Apache License 2.0 – [ValveSoftware/steam-audio](https://github.com/ValveSoftware/steam-audio). Bundled with the GDExtension; used for physics-based audio.
+- **godot-cpp**: MIT License – used to build the GDExtension.
+- **GUT** (Godot Unit Test): MIT License – see `addons/gut/LICENSE.md`.

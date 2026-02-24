@@ -1,0 +1,136 @@
+name: Tests
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  changes:
+    name: Check changes
+    runs-on: ubuntu-latest
+    outputs:
+      src: ${{ steps.result.outputs.src }}
+      run_gut: ${{ steps.result.outputs.run_gut }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            src:
+              - 'src/**'
+              - 'audio_resonance_tool/addons/nexus_resonance/**'
+            gd:
+              - 'audio_resonance_tool/addons/nexus_resonance/**/*.gd'
+              - 'audio_resonance_tool/test/**/*.gd'
+
+      - id: result
+        run: |
+          echo "src=${{ steps.filter.outputs.src }}" >> $GITHUB_OUTPUT
+          if [ "${{ steps.filter.outputs.src }}" = "true" ] || [ "${{ steps.filter.outputs.gd }}" = "true" ]; then
+            echo "run_gut=true" >> $GITHUB_OUTPUT
+          else
+            echo "run_gut=false" >> $GITHUB_OUTPUT
+          fi
+
+  cpp-build-test:
+    name: C++ Build & Unit Tests (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.src == 'true'
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            runner: ubuntu-latest
+            test_exe: ./build/tests/nexus_resonance_tests
+          - os: windows
+            runner: windows-latest
+            test_exe: .\build\tests\nexus_resonance_tests.exe
+          - os: macos
+            runner: macos-latest
+            test_exe: ./build/tests/nexus_resonance_tests
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Steam Audio SDK
+        run: python3 scripts/install_steam_audio.py
+
+      - name: Add GCC problem matcher
+        run: echo "::add-matcher::${{ github.workspace }}/.github/gcc-problem-matcher.json"
+
+      - name: Cache SCons build
+        uses: actions/cache@v4
+        with:
+          path: .scons-cache
+          key: scons-tests-${{ runner.os }}-${{ hashFiles('src/lib/godot-cpp/SConstruct', 'SConstruct', 'src/register_types.cpp', 'src/resonance_server.cpp', 'src/test/test_main.cpp') }}
+          restore-keys: |
+            scons-tests-${{ runner.os }}-
+
+      - name: Install SCons
+        run: pip install scons
+
+      - name: Clang-format check (optional)
+        if: matrix.os == 'linux'
+        continue-on-error: true
+        run: |
+          sudo apt-get update && sudo apt-get install -y clang-format
+          find src -type f \( -name "*.cpp" -o -name "*.h" \) ! -path "*/lib/*" | xargs clang-format --dry-run -Werror 2>/dev/null || true
+
+      - name: Build C++ extension and tests
+        env:
+          SCONS_CACHE: ${{ github.workspace }}/.scons-cache
+        run: scons build_tests=1
+
+      - name: Run C++ unit tests
+        run: ${{ matrix.test_exe }}
+
+  gut:
+    name: GDScript Unit Tests (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.run_gut == 'true'
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            runner: ubuntu-latest
+          - os: windows
+            runner: windows-latest
+          - os: macos
+            runner: macos-latest
+
+    defaults:
+      run:
+        working-directory: audio_resonance_tool
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Godot 4.6
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: "4.6"
+          use-dotnet: false
+
+      - name: Import project
+        run: godot --headless --path . --import
+        env:
+          GODOT_DISABLE_LEAK_CHECKS: 1
+
+      - name: Run GUT tests
+        run: godot --headless -d --audio-driver Dummy -s addons/gut/gut_cmdln.gd -gdir=res://test/unit -gexit
+        env:
+          GODOT_DISABLE_LEAK_CHECKS: 1

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="ResonanceProbeData" inherits="Resource" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		Resource storing baked probe data for reverb and pathing.
+	</brief_description>
+	<description>
+		ResonanceProbeData holds the baked probe batch from Steam Audio. Assigned to [ResonanceProbeVolume]'s [member probe_data] property. Created automatically when baking probes; save the scene after baking to persist.
+		Contains reflection data (Convolution/Parametric/Hybrid), optional pathing data, and optional static source/listener data. The baked reflection type must match [ResonanceRuntimeConfig]'s reflection_type at runtime.
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="get_bake_layer_info">
+			<return type="Dictionary" />
+			<description>
+				Returns bake layer statistics for debug/editor. Dictionary with keys: "total_size" (int), "layers" (Array of layer info).
+			</description>
+		</method>
+	</methods>
+	<members>
+		<member name="data" type="PackedByteArray" setter="set_data" getter="get_data">
+			Serialized probe batch data. Set automatically during bake.
+		</member>
+		<member name="probe_positions" type="PackedVector3Array" setter="set_probe_positions" getter="get_probe_positions">
+			Probe positions for visualization. Stored at bake time.
+		</member>
+		<member name="bake_params_hash" type="int" setter="set_bake_params_hash" getter="get_bake_params_hash">
+			Hash of bake parameters. Used for compatibility checks.
+		</member>
+		<member name="pathing_params_hash" type="int" setter="set_pathing_params_hash" getter="get_pathing_params_hash">
+			Hash of pathing parameters. 0 if pathing not baked.
+		</member>
+		<member name="baked_reflection_type" type="int" setter="set_baked_reflection_type" getter="get_baked_reflection_type">
+			Baked reverb algorithm: Convolution (0), Parametric (1), Hybrid (2). -1 = legacy.
+		</member>
+	</members>
+</class>
