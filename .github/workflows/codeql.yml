@@ -23,6 +23,12 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Install Steam Audio SDK
+        run: python3 scripts/install_steam_audio.py
+
+      - name: Create bin directory
+        run: mkdir -p audio_resonance_tool/addons/nexus_resonance/bin
+
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
