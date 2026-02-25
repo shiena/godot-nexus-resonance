@@ -1,5 +1,8 @@
 # Nexus Resonance
 
+[![Discord](https://img.shields.io/discord/1446024019341086864?label=Discord&logo=discord&style=flat-square&color=5865F2)](https://discord.gg/VTSpAEHHhW)
+[![Ko-fi](https://img.shields.io/badge/Support%20me-Ko--fi-F16061?style=flat-square&logo=ko-fi&logoColor=white)](https://ko-fi.com/jundrie)
+
 Steam Audio integration for Godot 4: physics-based occlusion, reverb, and pathing.
 
 ## Quick Start
@@ -69,9 +72,12 @@ Baked probe data must match the runtime configuration. Incompatible combinations
 - Godot 4.6 (or compatible 4.x)
 - Steam Audio (Phonon) – bundled with the GDExtension
 
+## Support & Community
+
+Join the [Discord server](https://discord.gg/VTSpAEHHhW) to ask questions, suggest features, or show off your projects made with this addon.
+
 ## License & Dependencies
 
 - **Nexus Resonance** (this project): MIT License – see `LICENSE` in the repository root.
 - **Steam Audio** (Valve): Apache License 2.0 – [ValveSoftware/steam-audio](https://github.com/ValveSoftware/steam-audio). Bundled with the GDExtension; used for physics-based audio.
 - **godot-cpp**: MIT License – used to build the GDExtension.
-- **GUT** (Godot Unit Test): MIT License – see `addons/gut/LICENSE.md`.
