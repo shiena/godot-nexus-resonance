@@ -109,7 +109,7 @@ jobs:
       - name: Create addon zip
         run: |
           mkdir -p release_packages
-          cd nexus_resonance-addon && zip -r ../release_packages/nexus_resonance-windows-v${{ steps.version.outputs.version }}.zip . && cd ..
+          zip -r release_packages/nexus_resonance-windows-v${{ steps.version.outputs.version }}.zip addons
 
       - name: Prepare release body
         id: changelog
