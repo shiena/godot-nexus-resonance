@@ -83,7 +83,7 @@ void ResonanceAmbisonicInternalPlayback::_lazy_init_steam_audio(int ignored_rate
     context = srv->get_context_handle();
 
     int num_channels = (ambisonic_order + 1) * (ambisonic_order + 1);
-    temp_interleaved_input.resize(frame_size_ * num_channels);
+    temp_interleaved_input.resize(static_cast<size_t>(frame_size_) * static_cast<size_t>(num_channels));
 
     processor.initialize(context, current_sample_rate, frame_size_, ambisonic_order, params_current.rotation_enabled);
 
@@ -99,7 +99,7 @@ void ResonanceAmbisonicInternalPlayback::_process_steam_audio_block() {
     if (!sa_out_buffer.data || !sa_out_buffer.data[0] || !sa_out_buffer.data[1]) return;
 
     int num_channels = (ambisonic_order + 1) * (ambisonic_order + 1);
-    int block_samples = frame_size_ * num_channels;
+    size_t block_samples = static_cast<size_t>(frame_size_) * static_cast<size_t>(num_channels);
 
     // 1. Read interleaved data from ring buffer
     input_ring.read(temp_interleaved_input.data(), block_samples);
@@ -118,7 +118,7 @@ int32_t ResonanceAmbisonicInternalPlayback::_mix(AudioFrame* buffer, double rate
     _sync_params();
 
     int num_channels = (ambisonic_order + 1) * (ambisonic_order + 1);
-    int block_samples = frame_size_ * num_channels;
+    size_t block_samples = static_cast<size_t>(frame_size_) * static_cast<size_t>(num_channels);
 
     // 1. Mix first stream to get sample count
     PackedVector2Array buf_0 = channel_playbacks[0]->mix_audio(rate_scale, frames);

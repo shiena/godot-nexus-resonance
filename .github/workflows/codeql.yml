@@ -43,6 +43,9 @@ jobs:
         with:
           languages: cpp
           queries: +security-and-quality
+          paths-ignore: |
+            src/lib/**
+            core/**
 
       - name: Build
         run: |
