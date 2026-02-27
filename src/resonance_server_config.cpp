@@ -45,7 +45,7 @@ void ResonanceServerConfig::apply(const Dictionary& config,
     std::function<float(const char*, float)> get_bake_pathing_param) {
     sample_rate = config_int(config, "sample_rate", sample_rate);
     frame_size = config_int(config, "audio_frame_size", frame_size);
-    if (frame_size != 256 && frame_size != 512 && frame_size != 1024)
+    if (frame_size != 256 && frame_size != 512 && frame_size != 1024 && frame_size != 2048)
         frame_size = resonance::kGodotDefaultFrameSize;
     ambisonic_order = config_int(config, "ambisonic_order", ambisonic_order);
     max_reverb_duration = config_float(config, "max_reverb_duration", max_reverb_duration);

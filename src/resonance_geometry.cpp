@@ -1,5 +1,6 @@
 #include "resonance_geometry.h"
 #include "resonance_debug_log.h"
+#include "resonance_log.h"
 #include "resonance_server.h"
 #include "resonance_static_scene.h"
 #include "resonance_utils.h"
@@ -278,6 +279,7 @@ void ResonanceGeometry::_create_meshes() {
         sceneSettings.embreeDevice = server->get_embree_device_handle();
 
         if (iplSceneCreate(server->get_context_handle(), &sceneSettings, &sub_scene) != IPL_STATUS_SUCCESS) {
+            ResonanceLog::error("ResonanceGeometry: iplSceneCreate failed (asset path).");
             server->unlock_simulation();
             return;
         }
@@ -291,6 +293,7 @@ void ResonanceGeometry::_create_meshes() {
 
         IPLSerializedObject serialObj = nullptr;
         if (iplSerializedObjectCreate(server->get_context_handle(), &serialSettings, &serialObj) != IPL_STATUS_SUCCESS) {
+            ResonanceLog::error("ResonanceGeometry: iplSerializedObjectCreate failed.");
             iplSceneRelease(&sub_scene);
             sub_scene = nullptr;
             server->unlock_simulation();
@@ -302,6 +305,7 @@ void ResonanceGeometry::_create_meshes() {
         iplSerializedObjectRelease(&serialObj);
 
         if (loadErr != IPL_STATUS_SUCCESS || !local_mesh) {
+            ResonanceLog::error("ResonanceGeometry: iplStaticMeshLoad failed.");
             iplSceneRelease(&sub_scene);
             sub_scene = nullptr;
             server->unlock_simulation();
@@ -322,7 +326,14 @@ void ResonanceGeometry::_create_meshes() {
         instSettings.subScene = sub_scene;
         instSettings.transform = ResonanceUtils::to_ipl_matrix(node3d->get_global_transform());
 
-        if (iplInstancedMeshCreate(server->get_scene_handle(), &instSettings, &instanced_mesh) == IPL_STATUS_SUCCESS) {
+        if (iplInstancedMeshCreate(server->get_scene_handle(), &instSettings, &instanced_mesh) != IPL_STATUS_SUCCESS) {
+            ResonanceLog::error("ResonanceGeometry: iplInstancedMeshCreate failed (asset path).");
+            iplStaticMeshRemove(local_mesh, sub_scene);
+            iplStaticMeshRelease(&local_mesh);
+            iplSceneRelease(&sub_scene);
+            sub_scene = nullptr;
+            static_meshes.clear();
+        } else {
             iplInstancedMeshAdd(instanced_mesh, server->get_scene_handle());
             triangle_count = mesh_asset->get_triangle_count();
         }
@@ -369,16 +380,31 @@ void ResonanceGeometry::_create_meshes() {
                     instSettings.subScene = sub_scene;
                     instSettings.transform = ResonanceUtils::to_ipl_matrix(node3d->get_global_transform());
 
-                    if (iplInstancedMeshCreate(server->get_scene_handle(), &instSettings, &instanced_mesh) == IPL_STATUS_SUCCESS) {
+                    if (iplInstancedMeshCreate(server->get_scene_handle(), &instSettings, &instanced_mesh) != IPL_STATUS_SUCCESS) {
+                        ResonanceLog::error("ResonanceGeometry: iplInstancedMeshCreate failed (dynamic).");
+                        iplStaticMeshRemove(local_mesh, sub_scene);
+                        iplStaticMeshRelease(&local_mesh);
+                        iplSceneRelease(&sub_scene);
+                        sub_scene = nullptr;
+                        static_meshes.clear();
+                    } else {
                         iplInstancedMeshAdd(instanced_mesh, server->get_scene_handle());
                         triangle_count += (int)ipl_triangles.size();
                     }
+                } else {
+                    ResonanceLog::error("ResonanceGeometry: iplStaticMeshCreate failed (dynamic).");
+                    iplSceneRelease(&sub_scene);
+                    sub_scene = nullptr;
                 }
+            } else {
+                ResonanceLog::error("ResonanceGeometry: iplSceneCreate failed (dynamic).");
             }
         }
         else {
             IPLStaticMesh new_mesh = nullptr;
-            if (iplStaticMeshCreate(server->get_scene_handle(), &mesh_settings, &new_mesh) == IPL_STATUS_SUCCESS) {
+            if (iplStaticMeshCreate(server->get_scene_handle(), &mesh_settings, &new_mesh) != IPL_STATUS_SUCCESS) {
+                ResonanceLog::error("ResonanceGeometry: iplStaticMeshCreate failed (static).");
+            } else {
                 iplStaticMeshAdd(new_mesh, server->get_scene_handle());
                 static_meshes.push_back(new_mesh);
                 triangle_count += (int)ipl_triangles.size();

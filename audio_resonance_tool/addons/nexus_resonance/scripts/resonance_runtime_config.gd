@@ -9,6 +9,11 @@ class_name ResonanceRuntimeConfig
 signal reflection_type_changed(new_type: int)
 signal pathing_enabled_changed(enabled: bool)
 
+# --- Audio Settings ---
+@export_group("Audio Settings")
+## Sample rate override. Use Godot Mix Rate = follow project settings. Other rates override; mismatch may cause audio issues (no resampling).
+@export_enum("Use Godot Mix Rate:0", "22050 Hz:22050", "44100 Hz:44100", "48000 Hz:48000", "96000 Hz:96000", "192000 Hz:192000") var sample_rate_override: int = 0
+
 # --- HRTF Settings ---
 @export_group("HRTF Settings")
 ## Enable perspective correction for spatialized sound in third-person.
@@ -27,7 +32,7 @@ signal pathing_enabled_changed(enabled: bool)
 # --- Ray Tracer Settings ---
 @export_group("Ray Tracer Settings")
 ## Steam Audio processing block size. Match audio buffer: 256 = lower latency, more CPU. 512 = typical Godot mix. 1024 = higher latency, less CPU.
-@export_enum("256:256", "512:512", "1024:1024") var audio_frame_size: int = 512
+@export_enum("256:256", "512:512", "1024:1024", "2048:2048") var audio_frame_size: int = 512
 ## Ambisonic order for reverb encoding. Higher = more spatial detail, more CPU.
 @export_enum("1st Order:1", "2nd Order:2", "3rd Order:3") var ambisonic_order: int = 1
 ## Fraction of CPU cores for realtime raytracing (0–1). 0.05 = 5%, 0.5 = 50%.
@@ -158,11 +163,15 @@ static func get_effective_realtime_rays(realtime_rays: int, os_name: String) -> 
 		return 0
 	return realtime_rays
 
-## Returns config dictionary for init_audio_engine. Includes sample_rate from AudioServer.
+## Returns config dictionary for init_audio_engine. Includes sample_rate from AudioServer or sample_rate_override.
 func get_config() -> Dictionary:
 	var rays := get_effective_realtime_rays(realtime_rays, OS.get_name())
+	var mix_rate := int(AudioServer.get_mix_rate())
+	var rate := sample_rate_override if sample_rate_override > 0 else mix_rate
+	if sample_rate_override > 0 and sample_rate_override != mix_rate:
+		push_warning("Nexus Resonance: sample_rate_override (%d) differs from Godot mix rate (%d). No resampling; audio may be affected." % [sample_rate_override, mix_rate])
 	return {
-		"sample_rate": int(AudioServer.get_mix_rate()),
+		"sample_rate": rate,
 		"audio_frame_size": audio_frame_size,
 		"ambisonic_order": ambisonic_order,
 		"simulation_cpu_cores_percent": simulation_cpu_cores_percent,

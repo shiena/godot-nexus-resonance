@@ -23,9 +23,9 @@ Steam Audio integration for Godot 4: physics-based occlusion, reverb, and pathin
 
 ## Bake Workflow
 
-1. **Bake Probes (Reflections)** – Required first. Samples reverb at probe positions. Requires ResonanceGeometry on MeshInstance3Ds. Saves to the Probe Data resource on the volume.
-2. **Bake Pathing** – Optional. Enables multi-path sound around obstacles. Run after Bake Probes.
-3. **Bake Static Source / Static Listener** – Optional. For static sound sources or listener positions. Add NodePaths to the volume's `bake_sources` and `bake_listeners` arrays (Bake Targets).
+1. **Bake Probes (Reflections)** - Required first. Samples reverb at probe positions. Requires ResonanceGeometry on MeshInstance3Ds. Saves to the Probe Data resource on the volume.
+2. **Bake Pathing** - Optional. Enables multi-path sound around obstacles. Run after Bake Probes.
+3. **Bake Static Source / Static Listener** - Optional. For static sound sources or listener positions. Add NodePaths to the volume's `bake_sources` and `bake_listeners` arrays (Bake Targets).
 
 Use the toolbar buttons (Bake Probes, Bake Pathing, Bake More) when a ResonanceProbeVolume is selected. Bake progress appears in the toolbar.
 
@@ -38,9 +38,9 @@ Use the toolbar buttons (Bake Probes, Bake Pathing, Bake More) when a ResonanceP
 
 Configure in Project Settings → Audio → Nexus Resonance:
 
-- `bake_num_rays`, `bake_num_bounces` – reflection quality
-- `bake_num_threads` – CPU threads for baking
-- `bake_pathing_*` – pathing bake parameters (vis_range, path_range, num_samples, radius, threshold)
+- `bake_num_rays`, `bake_num_bounces` - reflection quality
+- `bake_num_threads` - CPU threads for baking
+- `bake_pathing_*` - pathing bake parameters (vis_range, path_range, num_samples, radius, threshold)
 
 ## Probe / Runtime Compatibility
 
@@ -70,7 +70,7 @@ Baked probe data must match the runtime configuration. Incompatible combinations
 ## Requirements
 
 - Godot 4.6 (or compatible 4.x)
-- Steam Audio (Phonon) – bundled with the GDExtension
+- Steam Audio (Phonon) - bundled with the GDExtension
 
 ## Support & Community
 
@@ -78,6 +78,6 @@ Join the [Discord server](https://discord.gg/VTSpAEHHhW) to ask questions, sugge
 
 ## License & Dependencies
 
-- **Nexus Resonance** (this project): MIT License – see `LICENSE` in the repository root.
-- **Steam Audio** (Valve): Apache License 2.0 – [ValveSoftware/steam-audio](https://github.com/ValveSoftware/steam-audio). Bundled with the GDExtension; used for physics-based audio.
-- **godot-cpp**: MIT License – used to build the GDExtension.
+- **Nexus Resonance** (this project): MIT License - see `LICENSE` in the repository root.
+- **Steam Audio** (Valve): Apache License 2.0 - [ValveSoftware/steam-audio](https://github.com/ValveSoftware/steam-audio). Bundled with the GDExtension; used for physics-based audio.
+- **godot-cpp**: MIT License - used to build the GDExtension.

@@ -1,5 +1,6 @@
 #include "resonance_processor_reflection.h"
 #include "resonance_constants.h"
+#include "resonance_log.h"
 #include "resonance_math.h"
 #include <godot_cpp/core/memory.hpp>
 #include <cstdio>
@@ -41,10 +42,18 @@ namespace godot {
         reflSettings.irSize = (reflection_type == 1) ? 1 : static_cast<int>(sample_rate * resonance::kDefaultReverbDurationSec);  // TAN uses same as Convolution
         reflSettings.numChannels = num_channels;
 
-        iplReflectionEffectCreate(context, &audioSettings, &reflSettings, &reflection_effect);
+        if (iplReflectionEffectCreate(context, &audioSettings, &reflSettings, &reflection_effect) != IPL_STATUS_SUCCESS) {
+            ResonanceLog::error("ResonanceReflectionProcessor: iplReflectionEffectCreate failed.");
+            return;
+        }
 
-        iplAudioBufferAllocate(context, 1, frame_size, &sa_mono_buffer);
-        iplAudioBufferAllocate(context, num_channels, frame_size, &sa_temp_out_buffer);
+        if (iplAudioBufferAllocate(context, 1, frame_size, &sa_mono_buffer) != IPL_STATUS_SUCCESS ||
+            iplAudioBufferAllocate(context, num_channels, frame_size, &sa_temp_out_buffer) != IPL_STATUS_SUCCESS) {
+            ResonanceLog::error("ResonanceReflectionProcessor: Buffer allocation failed.");
+            iplReflectionEffectRelease(&reflection_effect);
+            reflection_effect = nullptr;
+            return;
+        }
 
         is_initialized = true;
     }

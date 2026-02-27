@@ -37,14 +37,19 @@ bool ResonanceSteamAudioContext::init(ResonanceSteamAudioContextConfig& config) 
 
     IPLAudioSettings audioSettings{ config.sample_rate, config.frame_size };
     IPLHRTFSettings hrtfSettings{};
-    if (config.hrtf_sofa_asset.is_valid()) {
-        hrtfSettings.type = IPL_HRTFTYPE_SOFA;
-        hrtfSettings.sofaData = reinterpret_cast<const IPLuint8*>(config.hrtf_sofa_asset->get_data_ptr());
-        hrtfSettings.sofaDataSize = static_cast<int>(config.hrtf_sofa_asset->get_size());
-        hrtfSettings.volume = ResonanceSOFAAsset::db_to_gain(config.hrtf_sofa_asset->get_volume_db());
-        hrtfSettings.normType = (config.hrtf_sofa_asset->get_norm_type() == ResonanceSOFAAsset::NORM_RMS)
-            ? IPL_HRTFNORMTYPE_RMS : IPL_HRTFNORMTYPE_NONE;
-    } else {
+    if (config.hrtf_sofa_asset.is_valid() && config.hrtf_sofa_asset->is_valid()) {
+        const uint8_t* ptr = config.hrtf_sofa_asset->get_data_ptr();
+        int64_t sz = config.hrtf_sofa_asset->get_size();
+        if (ptr && sz > 0) {
+            hrtfSettings.type = IPL_HRTFTYPE_SOFA;
+            hrtfSettings.sofaData = reinterpret_cast<const IPLuint8*>(ptr);
+            hrtfSettings.sofaDataSize = static_cast<int>(sz);
+            hrtfSettings.volume = ResonanceSOFAAsset::db_to_gain(config.hrtf_sofa_asset->get_volume_db());
+            hrtfSettings.normType = (config.hrtf_sofa_asset->get_norm_type() == ResonanceSOFAAsset::NORM_RMS)
+                ? IPL_HRTFNORMTYPE_RMS : IPL_HRTFNORMTYPE_NONE;
+        }
+    }
+    if (hrtfSettings.type != IPL_HRTFTYPE_SOFA) {
         hrtfSettings.type = IPL_HRTFTYPE_DEFAULT;
         hrtfSettings.volume = 1.0f;
         hrtfSettings.normType = IPL_HRTFNORMTYPE_NONE;

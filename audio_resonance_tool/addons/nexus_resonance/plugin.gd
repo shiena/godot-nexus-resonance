@@ -211,7 +211,7 @@ func _on_tool_submenu_id_pressed(id: int) -> void:
 		3: _on_tool_clear_probe_batches(null)
 		4: _on_tool_unlink_probe_refs(null)
 
-func _on_tool_export_meshes(_ud = null):
+func _on_tool_export_meshes(_ud: Variant = null) -> void:
 	## Export static ResonanceGeometry (dynamic=false) to merged asset. Creates/updates ResonanceStaticScene.
 	## Skips export when geometry unchanged (hash). Clears asset reference before re-export to avoid cyclic resource error.
 	var root = get_editor_interface().get_edited_scene_root()
@@ -276,13 +276,13 @@ func _show_warning(message: String, _solution: String = "") -> void:
 func _show_gdextension_error() -> void:
 	ResonanceEditorDialogs.show_critical(get_editor_interface(), UIStrings.ERR_GDEXTENSION_NOT_LOADED, UIStrings.DIALOG_GDEXTENSION_NOT_LOADED_TITLE)
 
-func _on_tool_export_dynamic_mesh(_ud = null):
+func _on_tool_export_dynamic_mesh(_ud: Variant = null) -> void:
 	## Export all ResonanceDynamicGeometry nodes to mesh assets. Centralized like static export.
-	var root = get_editor_interface().get_edited_scene_root()
+	var root: Node = get_editor_interface().get_edited_scene_root()
 	if not root:
 		_show_warning("No scene open.", "Open a scene before exporting dynamic meshes.")
 		return
-	var dynamic_geoms: Array = []
+	var dynamic_geoms: Array[Node] = []
 	ResonanceSceneUtils.collect_resonance_dynamic_geometry(root, dynamic_geoms)
 	if dynamic_geoms.is_empty():
 		_show_warning("No ResonanceDynamicGeometry in scene.", "Add ResonanceDynamicGeometry nodes to export.")
@@ -301,7 +301,7 @@ func _on_tool_export_dynamic_mesh(_ud = null):
 		get_editor_interface().mark_scene_as_unsaved()
 		ResonanceEditorDialogs.show_success_toast(get_editor_interface(), UIStrings.INFO_DYNAMIC_MESHES_EXPORTED % exported)
 
-func _on_tool_unlink_probe_refs(_ud = null):
+func _on_tool_unlink_probe_refs(_ud: Variant = null) -> void:
 	## Workaround for Godot engine bug: Deleting a probe volume that is still referenced by
 	## ResonancePlayer.pathing_probe_volume can trigger:
 	##   ERROR: core/string/node_path.cpp:272 - Condition "!p_np.is_absolute()" is true. Returning: NodePath()
@@ -343,7 +343,7 @@ func _collect_probe_refs_to_clear(node: Node, scene_root: Node, targets: Array, 
 	for c in node.get_children():
 		_collect_probe_refs_to_clear(c, scene_root, targets, result)
 
-func _on_tool_bake_all_probe_volumes(_ud = null):
+func _on_tool_bake_all_probe_volumes(_ud: Variant = null) -> void:
 	var root = get_editor_interface().get_edited_scene_root()
 	if not root:
 		_show_warning("No scene open.", "Open a scene before baking.")
@@ -358,7 +358,7 @@ func _on_tool_bake_all_probe_volumes(_ud = null):
 		return
 	bake_runner.run_bake(volumes)
 
-func _on_tool_clear_probe_batches(_ud = null):
+func _on_tool_clear_probe_batches(_ud: Variant = null) -> void:
 	if Engine.has_singleton("ResonanceServer"):
 		var srv = Engine.get_singleton("ResonanceServer")
 		if srv and srv.has_method("clear_probe_batches"):

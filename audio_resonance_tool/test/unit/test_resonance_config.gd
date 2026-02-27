@@ -23,6 +23,19 @@ func test_get_config_sample_rate_valid():
 	assert_eq(typeof(config.get("sample_rate", 0)), TYPE_INT, "sample_rate should be int")
 	assert_gt(config.get("sample_rate", 0), 0, "sample_rate should be > 0")
 
+func test_sample_rate_override_when_zero_uses_mix_rate():
+	var rt = ResonanceRuntimeConfig.create_default()
+	rt.sample_rate_override = 0
+	var config = rt.get_config()
+	var mix_rate := int(AudioServer.get_mix_rate())
+	assert_eq(config.get("sample_rate", -1), mix_rate, "sample_rate_override=0 should use Godot mix rate")
+
+func test_sample_rate_override_when_nonzero_uses_override():
+	var rt = ResonanceRuntimeConfig.create_default()
+	rt.sample_rate_override = 44100
+	var config = rt.get_config()
+	assert_eq(config.get("sample_rate", -1), 44100, "sample_rate_override should be applied when > 0")
+
 # --- get_effective_realtime_rays (Android fallback) ---
 
 func test_effective_realtime_rays_android_forces_zero():

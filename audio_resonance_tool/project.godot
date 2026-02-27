@@ -15,14 +15,13 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 [application]
 
 config/name="nexus_resonance"
-run/main_scene="uid://dqh66xnckdnko"
+run/main_scene="uid://cwhpk4psn26lf"
 config/features=PackedStringArray("4.6", "Forward Plus")
 config/icon="res://icon.svg"
 
 [audio]
 
 buses/default_bus_layout="uid://dffti6h7rmbbp"
-driver/mix_rate=48000
 nexus_resonance/logger/categories_enabled={}
 nexus_resonance/logger/output_to_file=false
 nexus_resonance/logger/file_path="user://nexus_resonance_log.ndjson"
@@ -33,4 +32,4 @@ ResonanceLogger="*res://addons/nexus_resonance/scripts/resonance_logger.tscn"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/nexus_resonance/plugin.cfg", "res://addons/gut/plugin.cfg")
+enabled=PackedStringArray("res://addons/gut/plugin.cfg", "res://addons/nexus_importer/plugin.cfg", "res://addons/nexus_resonance/plugin.cfg")

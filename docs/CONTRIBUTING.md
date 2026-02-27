@@ -4,9 +4,9 @@ Thank you for your interest in contributing. This document provides guidelines f
 
 ## Project Structure
 
-- `audio_resonance_tool/` – Godot 4 project containing the Nexus Resonance addon
-- `audio_resonance_tool/addons/nexus_resonance/` – Nexus Resonance plugin (GDScript + GDExtension)
-- `src/` – C++ GDExtension source (ResonanceServer, Steam Audio integration)
+- `audio_resonance_tool/` - Godot 4 project containing the Nexus Resonance addon
+- `audio_resonance_tool/addons/nexus_resonance/` - Nexus Resonance plugin (GDScript + GDExtension)
+- `src/` - C++ GDExtension source (ResonanceServer, Steam Audio integration)
 
 ## Development Setup
 
@@ -36,9 +36,9 @@ Thank you for your interest in contributing. This document provides guidelines f
 
 Libraries are referenced from GitHub, not bundled:
 
-- **[godot-cpp](https://github.com/godotengine/godot-cpp)** – Godot C++ bindings (branch 4.5)
-- **[Catch2](https://github.com/catchorg/Catch2)** – C++ unit tests
-- **Steam Audio** – Fetched via `install_steam_audio.py` from [ValveSoftware/steam-audio](https://github.com/ValveSoftware/steam-audio) releases
+- **[godot-cpp](https://github.com/godotengine/godot-cpp)** - Godot C++ bindings (branch 4.5)
+- **[Catch2](https://github.com/catchorg/Catch2)** - C++ unit tests
+- **Steam Audio** - Fetched via `install_steam_audio.py` from [ValveSoftware/steam-audio](https://github.com/ValveSoftware/steam-audio) releases
 
 ## Running Tests
 

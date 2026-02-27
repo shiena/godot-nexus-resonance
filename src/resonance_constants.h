@@ -11,6 +11,8 @@ constexpr const char* kVersion = NEXUS_RESONANCE_VERSION;
 
 /// Must match Godot default audio frame size for Steam Audio
 constexpr int kGodotDefaultFrameSize = 512;
+/// Max supported frame size (for stack buffers; 2048 = lowest CPU, highest latency)
+constexpr int kMaxAudioFrameSize = 2048;
 
 /// Ring buffer capacity for audio playback (ResonancePlayer, ResonanceAmbisonicPlayer)
 constexpr int kRingBufferCapacity = 8192;

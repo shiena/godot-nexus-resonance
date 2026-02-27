@@ -306,7 +306,7 @@ void ResonanceInternalPlayback::_process_steam_audio_block() {
                         sa_final_mix_buffer.data[1][i] += mono;
                     }
                 } else {
-                    AudioFrame reverb_frames[resonance::kGodotDefaultFrameSize];
+                    AudioFrame reverb_frames[resonance::kMaxAudioFrameSize];
                     memset(reverb_frames, 0, sizeof(reverb_frames));
                     bool decode_ok = mixer_processor.decode_ambisonic_to_stereo(reverb_buf, params_current.listener_orientation, reverb_frames, frame_size_);
                     if (decode_ok) {

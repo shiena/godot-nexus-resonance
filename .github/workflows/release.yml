@@ -40,7 +40,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .scons-cache
-          key: scons-Linux-windows-v2-${{ hashFiles('src/lib/godot-cpp/SConstruct', 'SConstruct', 'src/register_types.cpp', 'src/resonance_server.cpp') }}
+          key: scons-Linux-windows-v3-${{ hashFiles('src/lib/godot-cpp/SConstruct', 'src/lib/godot-cpp/gdextension/extension_api.json', 'SConstruct', 'src/register_types.cpp', 'src/resonance_server.cpp') }}
           restore-keys: |
             scons-Linux-windows-
 
@@ -62,13 +62,13 @@ jobs:
       - name: Build GDExtension
         env:
           SCONS_CACHE: ${{ github.workspace }}/.scons-cache
-        run: scons platform=windows target=editor arch=x86_64 build_tests=0 -j$(nproc)
+        run: scons platform=windows target=template_debug arch=x86_64 build_tests=0 -j$(nproc)
 
       - name: Copy Steam Audio runtime DLLs to bin
         run: |
           STEAM_LIB="src/lib/steamaudio/lib/windows-x64"
           BIN_DIR="audio_resonance_tool/addons/nexus_resonance/bin"
-          for dll in phonon.dll GFLI_Util.dll TrueAudioNext.dll; do
+          for dll in phonon.dll GPUUtilities.dll TrueAudioNext.dll; do
             if [ -f "$STEAM_LIB/$dll" ]; then
               cp "$STEAM_LIB/$dll" "$BIN_DIR/"
             fi
@@ -147,7 +147,7 @@ jobs:
             echo ""
             echo "**nexus_resonance-windows-v${VERSION}.zip** – Addon with Windows binaries. Extract into your Godot project's \`addons/\` folder."
             echo ""
-            echo "macOS/Linux: Clone the repo and build locally with \`scons platform=<os> target=editor\`."
+            echo "macOS/Linux: Clone the repo and build locally with \`scons platform=<os> target=template_debug\`."
             echo ""
             echo "See [README](https://github.com/${{ github.repository }}) for requirements and usage."
           } > release_body.md

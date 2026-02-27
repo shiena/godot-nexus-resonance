@@ -17,7 +17,7 @@ ERROR: core/string/node_path.cpp:272 - Condition "!p_np.is_absolute()" is true. 
 
 **When:** Deleting a `ResonanceProbeVolume` that is still referenced by `ResonancePlayer.pathing_probe_volume`.
 
-**Cause:** Godot engine bug in NodePath handling – relative paths trigger `rel_path_to()` to fail when the editor updates references after a node is removed.
+**Cause:** Godot engine bug in NodePath handling - relative paths trigger `rel_path_to()` to fail when the editor updates references after a node is removed.
 
 **Workaround:**
 
@@ -27,14 +27,14 @@ ERROR: core/string/node_path.cpp:272 - Condition "!p_np.is_absolute()" is true. 
 
 **Code:**
 
-- `src/resonance_probe_volume.cpp` – `_clear_player_refs_to_this()`
-- `addons/nexus_resonance/plugin.gd` – `_on_tool_unlink_probe_refs`
+- `src/resonance_probe_volume.cpp` - `_clear_player_refs_to_this()`
+- `addons/nexus_resonance/plugin.gd` - `_on_tool_unlink_probe_refs`
 
 ### Dynamic Object Export: Animated mesh states
 
 **When:** Exporting dynamic objects whose mesh geometry changes at runtime.
 
-**Cause:** Export uses the mesh state as it exists in the Editor at export time. The mesh resource from MeshInstance3D is static – no „playing through“ animations is required for export. However, if the visual mesh changes significantly at runtime (e.g., swapped meshes, skeletal deformation), Steam Audio will still use the exported geometry.
+**Cause:** Export uses the mesh state as it exists in the Editor at export time. The mesh resource from MeshInstance3D is static - no „playing through“ animations is required for export. However, if the visual mesh changes significantly at runtime (e.g., swapped meshes, skeletal deformation), Steam Audio will still use the exported geometry.
 
 **Workaround:** For animated/interactive geometry, use one of:
 
@@ -42,7 +42,7 @@ ERROR: core/string/node_path.cpp:272 - Condition "!p_np.is_absolute()" is true. 
 - Use `geometry_override` with a simplified proxy mesh (e.g., BoxMesh) that approximates the acoustic footprint for all states.
 - Export multiple assets for different states if each state needs distinct acoustic representation (future extension).
 
-**Code:** `src/resonance_geometry.cpp` – `export_dynamic_mesh_to_asset`, `_create_meshes`
+**Code:** `src/resonance_geometry.cpp` - `export_dynamic_mesh_to_asset`, `_create_meshes`
 
 ---
 

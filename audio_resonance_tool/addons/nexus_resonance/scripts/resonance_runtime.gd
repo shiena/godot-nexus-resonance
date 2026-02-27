@@ -118,7 +118,7 @@ func _initialize_server():
 	if srv.wants_debug_reflection_viz():
 		get_tree().call_group_flags(SceneTree.GROUP_CALL_DEFERRED, "resonance_geometry", "refresh_geometry")
 	# Unity-style: load static scene(s) from ResonanceStaticScene nodes. Additive: one per scene.
-	var static_scenes: Array = []
+	var static_scenes: Array[Node] = []
 	ResonanceSceneUtils.collect_resonance_static_scenes(get_tree().get_root(), static_scenes)
 	if not static_scenes.is_empty():
 		if srv.has_method("clear_static_scenes") and srv.has_method("add_static_scene_from_asset"):

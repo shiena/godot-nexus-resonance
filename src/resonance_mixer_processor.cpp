@@ -1,4 +1,5 @@
 #include "resonance_mixer_processor.h"
+#include "resonance_log.h"
 #include "resonance_server.h"
 #include "resonance_math.h"
 #include <godot_cpp/variant/utility_functions.hpp>
@@ -19,8 +20,11 @@ namespace godot {
 
         IPLAudioSettings audioSettings{ p_sample_rate, p_frame_size };
         int num_channels = (ambisonic_order + 1) * (ambisonic_order + 1);
-        iplAudioBufferAllocate(context, num_channels, frame_size, &sa_ambisonic_buffer);
-        iplAudioBufferAllocate(context, 2, frame_size, &sa_stereo_buffer);
+        if (iplAudioBufferAllocate(context, num_channels, frame_size, &sa_ambisonic_buffer) != IPL_STATUS_SUCCESS ||
+            iplAudioBufferAllocate(context, 2, frame_size, &sa_stereo_buffer) != IPL_STATUS_SUCCESS) {
+            ResonanceLog::error("ResonanceMixerProcessor: Buffer allocation failed.");
+            return;
+        }
 
         ResonanceServer* srv = ResonanceServer::get_singleton();
         bool use_vs = srv && srv->use_virtual_surround_output();
@@ -33,7 +37,10 @@ namespace godot {
         decSettings.maxOrder = ambisonic_order;
         decSettings.hrtf = use_vs ? nullptr : (srv && srv->use_reverb_binaural() ? hrtf_handle : nullptr);
 
-        iplAmbisonicsDecodeEffectCreate(context, &audioSettings, &decSettings, &decode_effect);
+        if (iplAmbisonicsDecodeEffectCreate(context, &audioSettings, &decSettings, &decode_effect) != IPL_STATUS_SUCCESS) {
+            ResonanceLog::error("ResonanceMixerProcessor: iplAmbisonicsDecodeEffectCreate failed.");
+            return;
+        }
 
         // 2. Virtual Surround path: decode to 7.1, then VirtualSurround -> stereo
         if (use_vs && hrtf_handle) {
@@ -43,8 +50,10 @@ namespace godot {
             dec7Settings.maxOrder = ambisonic_order;
             dec7Settings.hrtf = nullptr;
 
-            iplAmbisonicsDecodeEffectCreate(context, &audioSettings, &dec7Settings, &decode_effect_7_1);
-            iplAudioBufferAllocate(context, 8, frame_size, &sa_7_1_buffer);
+            if (iplAmbisonicsDecodeEffectCreate(context, &audioSettings, &dec7Settings, &decode_effect_7_1) != IPL_STATUS_SUCCESS ||
+                iplAudioBufferAllocate(context, 8, frame_size, &sa_7_1_buffer) != IPL_STATUS_SUCCESS) {
+                ResonanceLog::error("ResonanceMixerProcessor: 7.1 decode/buffer allocation failed.");
+            }
 
             IPLVirtualSurroundEffectSettings vsSettings{};
             vsSettings.speakerLayout.type = IPL_SPEAKERLAYOUTTYPE_SURROUND_7_1;
@@ -52,6 +61,7 @@ namespace godot {
             vsSettings.hrtf = hrtf_handle;
 
             if (iplVirtualSurroundEffectCreate(context, &audioSettings, &vsSettings, &virtual_surround_effect) != IPL_STATUS_SUCCESS) {
+                ResonanceLog::error("ResonanceMixerProcessor: iplVirtualSurroundEffectCreate failed.");
                 if (decode_effect_7_1) { iplAmbisonicsDecodeEffectRelease(&decode_effect_7_1); decode_effect_7_1 = nullptr; }
                 iplAudioBufferFree(context, &sa_7_1_buffer);
             }

@@ -1,4 +1,5 @@
 #include "resonance_log.h"
+#include "resonance_debug_agent.h"
 #include <godot_cpp/variant/utility_functions.hpp>
 #include <cstdio>
 
@@ -21,14 +22,18 @@ namespace godot {
 
     void ResonanceLog::warn(const String& p_msg) {
         if (current_level >= LEVEL_WARN) {
-            UtilityFunctions::push_warning("[Nexus] WARN: " + p_msg);
+            String full_msg = "[Nexus] WARN: " + p_msg;
+            UtilityFunctions::push_warning(full_msg);
+            resonance_logger_log("warn", full_msg.utf8().get_data(), Dictionary());
             std::cout << "[Nexus] WARN: " << p_msg.utf8().get_data() << std::endl;
         }
     }
 
     void ResonanceLog::error(const String& p_msg) {
         if (current_level >= LEVEL_ERROR) {
-            UtilityFunctions::push_error("[Nexus] ERROR: " + p_msg);
+            String full_msg = "[Nexus] ERROR: " + p_msg;
+            UtilityFunctions::push_error(full_msg);
+            resonance_logger_log("error", full_msg.utf8().get_data(), Dictionary());
             std::cerr << "[Nexus] ERROR: " << p_msg.utf8().get_data() << std::endl;
         }
     }

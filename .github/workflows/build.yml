@@ -67,7 +67,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .scons-cache
-          key: scons-Linux-windows-v2-${{ hashFiles('src/lib/godot-cpp/SConstruct', 'SConstruct', 'src/register_types.cpp', 'src/resonance_server.cpp') }}
+          key: scons-Linux-windows-v3-${{ hashFiles('src/lib/godot-cpp/SConstruct', 'src/lib/godot-cpp/gdextension/extension_api.json', 'SConstruct', 'src/register_types.cpp', 'src/resonance_server.cpp') }}
           restore-keys: |
             scons-Linux-windows-
 
@@ -89,7 +89,7 @@ jobs:
       - name: Build GDExtension
         env:
           SCONS_CACHE: ${{ github.workspace }}/.scons-cache
-        run: scons platform=windows target=editor arch=x86_64 build_tests=0 -j$(nproc)
+        run: scons platform=windows target=template_debug arch=x86_64 build_tests=0 -j$(nproc)
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
