@@ -1,4 +1,4 @@
-#include "../lib/catch2/catch.hpp"
+#include "../lib/catch2/single_include/catch2/catch.hpp"
 #include "../resonance_ring_buffer.h"
 #include <cstring>
 
