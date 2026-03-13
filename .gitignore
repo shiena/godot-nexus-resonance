@@ -11,5 +11,14 @@ $null
 # Steam Audio SDK (fetched via scripts/install_steam_audio.py from Valve releases)
 src/lib/steamaudio/
 
+# SCons database
+.sconsign.dblite
+
+# Build artifacts
+build/
+*.o
+*.obj
+src/gen/
+
 # GDExtension binaries (built by CI, distributed via GitHub Releases)
 audio_resonance_tool/addons/nexus_resonance/bin/
