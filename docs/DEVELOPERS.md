@@ -9,18 +9,22 @@ nexus-resonance/
 ├── src/                    # C++ GDExtension (Steam Audio integration)
 │   ├── resonance_*.cpp/h   # Core classes (Server, Player, Geometry, Baker, etc.)
 │   ├── resonance_log.*     # C++ logging (ResonanceLog, forwards to ResonanceLogger)
+│   ├── test/               # C++ unit tests (Catch2)
 │   ├── lib/
-│   │   ├── godot-cpp/      # Godot C++ bindings
-│   │   └── steamaudio/     # Steam Audio Phonon SDK
+│   │   ├── godot-cpp/      # Godot C++ bindings (submodule)
+│   │   ├── catch2/         # Catch2 test framework (submodule, v2.x)
+│   │   ├── pffft/          # FFT library for iOS (submodule)
+│   │   ├── libmysofa/      # HRTF/SOFA reader for iOS (submodule)
+│   │   └── steamaudio/     # Steam Audio Phonon SDK (downloaded via install script)
 │   └── register_types.cpp  # Module init
 ├── audio_resonance_tool/   # Godot test project
 │   └── addons/nexus_resonance/
 │       ├── plugin.gd       # EditorPlugin
 │       ├── scripts/        # GDScript (ResonanceRuntime, Config, etc.)
 │       ├── editor/         # Bake runner, inspectors, gizmos
-│       ├── bin/            # Built .dll/.so (GDExtension)
+│       ├── bin/            # Built .dll/.so/.dylib/.a (GDExtension)
 │       └── doc_classes/    # API docs (XML)
-├── core/                   # Valve Steam Audio C++ core (tests, benchmarks)
+├── Makefile                # Cross-platform build targets
 └── SConstruct              # SCons build
 ```
 
@@ -36,17 +40,24 @@ nexus-resonance/
 ## Build
 
 ```bash
-# Install Steam Audio SDK first
+# Fetch submodules
+git submodule update --init --recursive
+
+# Install Steam Audio SDK
 python3 scripts/install_steam_audio.py
 
-# Build (from project root)
+# Build for current platform
 scons
 
-# Windows cross-compile from Linux
-scons platform=windows
+# Platform-specific builds via Makefile
+make build-windows    # Windows x64 (cross-compile with mingw)
+make build-linux      # Linux x64
+make build-macos      # macOS (universal)
+make build-android    # Android arm64 + x86_64
+make build-ios        # iOS arm64 (macOS only; builds pffft/libmysofa deps)
 ```
 
-Output: `audio_resonance_tool/addons/nexus_resonance/bin/nexus_resonance.dll` (or .so/.dylib).
+Output: `audio_resonance_tool/addons/nexus_resonance/bin/`
 
 ## Test
 
@@ -57,13 +68,25 @@ Unit tests (GUT) in `audio_resonance_tool/test/unit/`:
 - `test_probe_data_saver.gd` - Probe data saving
 - `test_resonance_bake_settings.gd` - Bake settings
 
-Run via Godot with GUT addon or CLI.
+C++ unit tests (Catch2) in `src/test/`:
+
+```bash
+scons build_tests=1
+./build/tests/nexus_resonance_tests
+```
 
 ## Release Workflow
 
 1. Update version in `src/resonance_constants.h` (NEXUS_RESONANCE_VERSION).
 2. Tag: `git tag v0.8.1`
-3. Push tag: triggers `.github/workflows/release.yml` (builds Windows with MSVC, creates GitHub Release).
+3. Push tag: triggers `.github/workflows/release.yml` which builds all platforms (Linux, Windows, macOS, Android, iOS) and creates a GitHub Release with a unified addon zip.
+
+## CI/CD
+
+- **build.yml** - Builds all platforms on push/PR to main (Linux/Windows/Android on ubuntu, macOS/iOS on macos-latest)
+- **release.yml** - Full build + GitHub Release on version tags (`v*`)
+- **tests.yml** - C++ unit tests + GDScript GUT tests on push/PR
+- **codeql.yml** - CodeQL security analysis (manual trigger)
 
 ## Coding Conventions
 

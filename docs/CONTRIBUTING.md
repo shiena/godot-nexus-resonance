@@ -11,33 +11,42 @@ Thank you for your interest in contributing. This document provides guidelines f
 ## Development Setup
 
 1. Clone the repository (with submodules):
-   ```powershell
+   ```bash
    git clone --recurse-submodules <repo-url>
    ```
    Or, if already cloned:
-   ```powershell
+   ```bash
    git submodule update --init --recursive
    ```
-   **First-time setup** (when migrating from bundled libs):  
-   Run `.\scripts\init_submodules.ps1` to add submodules, then `.\scripts\setup_libs.ps1`.
 2. Install Steam Audio SDK (downloads from [ValveSoftware/steam-audio](https://github.com/ValveSoftware/steam-audio) releases):
-   ```powershell
-   python scripts/install_steam_audio.py
-   ```
-   Or run the combined setup:
-   ```powershell
-   .\scripts\setup_libs.ps1
+   ```bash
+   python3 scripts/install_steam_audio.py
    ```
 3. Build the GDExtension: `scons`
 4. Open `audio_resonance_tool/` in Godot 4.6.
 5. Enable the Nexus Resonance plugin in Project Settings → Plugins.
 
+### Platform-Specific Builds
+
+```bash
+# Desktop
+make build-windows
+make build-linux
+make build-macos
+
+# Mobile
+make build-android
+make build-ios        # macOS only; builds pffft and libmysofa for iOS arm64
+```
+
 ### Library References (Git Submodules)
 
-Libraries are referenced from GitHub, not bundled:
+Libraries are referenced from GitHub as git submodules, not bundled:
 
 - **[godot-cpp](https://github.com/godotengine/godot-cpp)** - Godot C++ bindings (branch 4.5)
-- **[Catch2](https://github.com/catchorg/Catch2)** - C++ unit tests
+- **[Catch2](https://github.com/catchorg/Catch2)** - C++ unit tests (branch v2.x)
+- **[pffft](https://github.com/marton78/pffft)** - FFT library (iOS static linking)
+- **[libmysofa](https://github.com/hoene/libmysofa)** - HRTF/SOFA file reader (iOS static linking)
 - **Steam Audio** - Fetched via `install_steam_audio.py` from [ValveSoftware/steam-audio](https://github.com/ValveSoftware/steam-audio) releases
 
 ## Running Tests
@@ -48,24 +57,20 @@ Unit tests use the [GUT](https://github.com/bitwes/Gut) framework.
 
 **In the editor:** Project → Tools → GUT → Run All (with `res://test/unit` as directory).
 
-**Command line (PowerShell):**
-```powershell
+**Command line:**
+```bash
 cd audio_resonance_tool
-.\run_tests.ps1
+godot --headless -d --audio-driver Dummy -s addons/gut/gut_cmdln.gd -gdir=res://test/unit -gexit
 ```
-
-Set `$env:GODOT_PATH` to your Godot executable if it is not in PATH.
 
 ### C++ Unit Tests
 
 C++ tests use [Catch2](https://github.com/catchorg/Catch2). Build with tests enabled and run:
 
-```powershell
+```bash
 scons build_tests=1
-.\build\tests\nexus_resonance_tests.exe
+./build/tests/nexus_resonance_tests
 ```
-
-On Linux/macOS: `./build/tests/nexus_resonance_tests`
 
 ## Code Style
 
