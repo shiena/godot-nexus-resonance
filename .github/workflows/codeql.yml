@@ -20,18 +20,6 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
-      - name: Ensure submodules (fallback if checkout missed them)
-        run: |
-          if [ ! -f src/lib/godot-cpp/SConstruct ]; then
-            mkdir -p src/lib
-            git clone -b 4.5 --depth 1 https://github.com/godotengine/godot-cpp src/lib/godot-cpp
-          fi
-          if [ ! -f src/lib/catch2/catch.hpp ]; then
-            git clone -b v2.x --depth 1 https://github.com/catchorg/Catch2 /tmp/Catch2
-            mkdir -p src/lib/catch2
-            cp /tmp/Catch2/single_include/catch2/catch.hpp src/lib/catch2/
-          fi
-
       - name: Install Steam Audio SDK
         run: python3 scripts/install_steam_audio.py
 
