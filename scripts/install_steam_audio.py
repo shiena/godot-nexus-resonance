@@ -44,7 +44,7 @@ def main():
     lib_dir = os.path.join(STEAM_AUDIO_LIB, "lib")
     if os.path.isdir(lib_dir):
         # Check if we already have the expected structure
-        expected = ["windows-x64", "linux-x64", "osx"]
+        expected = ["windows-x64", "linux-x64", "osx", "android-armv8", "android-x64", "ios"]
         has_all = all(os.path.isdir(os.path.join(lib_dir, d)) for d in expected)
         if has_all:
             print(f"Steam Audio lib already present at {lib_dir}. Skipping download.")

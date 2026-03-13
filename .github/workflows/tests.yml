@@ -50,20 +50,14 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
-      - name: Ensure submodules (fallback if checkout missed them)
-        run: |
-          if [ ! -f src/lib/godot-cpp/SConstruct ]; then
-            mkdir -p src/lib
-            git clone -b 4.5 --depth 1 https://github.com/godotengine/godot-cpp src/lib/godot-cpp
-          fi
-          if [ ! -f src/lib/catch2/catch.hpp ]; then
-            git clone -b v2.x --depth 1 https://github.com/catchorg/Catch2 /tmp/Catch2
-            mkdir -p src/lib/catch2
-            cp /tmp/Catch2/single_include/catch2/catch.hpp src/lib/catch2/
-          fi
+      - name: Cache Steam Audio SDK
+        uses: actions/cache@v4
+        with:
+          path: src/lib/steamaudio
+          key: steamaudio-${{ hashFiles('scripts/install_steam_audio.py') }}
 
       - name: Install Steam Audio SDK
-        run: python3 scripts/install_steam_audio.py
+        run: bash .github/scripts/install_steam_audio_ci.sh
 
       - name: Add GCC problem matcher
         run: echo "::add-matcher::${{ github.workspace }}/.github/gcc-problem-matcher.json"
@@ -80,12 +74,15 @@ jobs:
         run: pip install scons
 
       - name: Create bin directory
-        run: mkdir -p audio_resonance_tool/addons/nexus_resonance/bin
+        run: mkdir -p audio_resonance_tool/addons/nexus_resonance/bin/linux
+
+      - name: Copy Steam Audio runtime libraries
+        run: cp src/lib/steamaudio/lib/linux-x64/libphonon.so audio_resonance_tool/addons/nexus_resonance/bin/linux/
 
       - name: Clang-format check
         run: |
           sudo apt-get update && sudo apt-get install -y clang-format
-          find src -type f \( -name "*.cpp" -o -name "*.h" \) ! -path "*/lib/*" | xargs clang-format -i
+          find src -type f \( -name "*.cpp" -o -name "*.h" \) ! -path "*/lib/*" ! -path "*/gen/*" | xargs clang-format -i
           echo "--- Diff (clang-format expected changes) ---"
           git diff
           git diff --exit-code || exit 1
@@ -116,6 +113,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.src == 'true'
     runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -123,21 +123,16 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
-      - name: Ensure submodules (fallback if checkout missed them)
-        shell: pwsh
-        run: |
-          if (-not (Test-Path src/lib/godot-cpp/SConstruct)) {
-            New-Item -ItemType Directory -Force -Path src/lib
-            git clone -b 4.5 --depth 1 https://github.com/godotengine/godot-cpp src/lib/godot-cpp
-          }
-          if (-not (Test-Path src/lib/catch2/catch.hpp)) {
-            git clone -b v2.x --depth 1 https://github.com/catchorg/Catch2 $env:TEMP\Catch2
-            New-Item -ItemType Directory -Force -Path src/lib/catch2
-            Copy-Item $env:TEMP\Catch2\single_include\catch2\catch.hpp src/lib/catch2/
-          }
+      - name: Cache Steam Audio SDK
+        uses: actions/cache@v4
+        with:
+          path: src/lib/steamaudio
+          key: steamaudio-${{ hashFiles('scripts/install_steam_audio.py') }}
 
       - name: Install Steam Audio SDK
-        run: python scripts/install_steam_audio.py
+        env:
+          PYTHON: python
+        run: bash .github/scripts/install_steam_audio_ci.sh
 
       - name: Cache SCons build
         uses: actions/cache@v5
@@ -151,15 +146,15 @@ jobs:
         run: pip install scons
 
       - name: Create bin directory
-        run: mkdir -Force audio_resonance_tool/addons/nexus_resonance/bin
+        run: mkdir -p audio_resonance_tool/addons/nexus_resonance/bin/windows
 
       - name: Build C++ extension and tests
         env:
           SCONS_CACHE: ${{ github.workspace }}/.scons-cache
-        run: scons platform=windows target=editor build_tests=1 -j4
+        run: scons platform=windows target=editor build_tests=1 -j${NUMBER_OF_PROCESSORS:-4}
 
       - name: Run C++ unit tests
-        run: .\build\tests\nexus_resonance_tests.exe
+        run: ./build/tests/nexus_resonance_tests.exe
 
   gut:
     name: GDScript Unit Tests
@@ -175,16 +170,21 @@ jobs:
         uses: actions/download-artifact@v5
         with:
           name: nexus_resonance-bin-linux
+          path: audio_resonance_tool/addons/nexus_resonance/bin
 
-      - name: Place binaries
+      - name: Install GUT test framework
         run: |
-          mkdir -p audio_resonance_tool/addons/nexus_resonance/bin
-          cp -r nexus_resonance-bin-linux/* audio_resonance_tool/addons/nexus_resonance/bin/
+          GUT_VERSION="9.3.0"
+          curl -fsSL -o /tmp/gut.zip "https://github.com/bitwes/Gut/archive/refs/tags/v${GUT_VERSION}.zip"
+          unzip -qo /tmp/gut.zip -d /tmp/gut
+          mkdir -p audio_resonance_tool/addons/gut
+          cp -r /tmp/gut/Gut-${GUT_VERSION}/addons/gut/* audio_resonance_tool/addons/gut/
+          rm -rf /tmp/gut /tmp/gut.zip
 
       - name: Setup Godot 4.6
         uses: chickensoft-games/setup-godot@v2
         with:
-          version: "4.6"
+          version: "4.6.0"
           use-dotnet: false
 
       - name: Import project
