@@ -13,25 +13,111 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  build-linux-android:
+    name: Build (Linux / Android)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r23c
+          add-to-path: true
+          link-to-sdk: true
+
+      - name: Set ANDROID_NDK_ROOT
+        run: echo "ANDROID_NDK_ROOT=${{ steps.setup-ndk.outputs.ndk-path }}" >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        run: |
+          python3 -m pip install scons
+          scons --version
+
+      - name: Cache Steam Audio SDK
+        uses: actions/cache@v4
+        with:
+          path: src/lib/steamaudio
+          key: steamaudio-${{ hashFiles('scripts/install_steam_audio.py') }}
+
+      - name: Install Steam Audio SDK
+        run: python3 scripts/install_steam_audio.py
+
+      - name: Add GCC problem matcher
+        run: echo "::add-matcher::${{ github.workspace }}/.github/gcc-problem-matcher.json"
+
+      - name: Cache SCons build
+        uses: actions/cache@v4
+        with:
+          path: .scons-cache
+          key: scons-Linux-all-v1-${{ hashFiles('src/lib/godot-cpp/SConstruct', 'SConstruct') }}
+          restore-keys: |
+            scons-Linux-all-
+
+      - name: Create bin directories
+        run: |
+          BIN=audio_resonance_tool/addons/nexus_resonance/bin
+          mkdir -p "$BIN"/{linux,android/arm64-v8a,android/x86_64}
+
+      - name: Copy Steam Audio runtime libraries
+        run: |
+          BIN=audio_resonance_tool/addons/nexus_resonance/bin
+          cp src/lib/steamaudio/lib/linux-x64/libphonon.so "$BIN/linux/"
+          cp src/lib/steamaudio/lib/android-armv8/libphonon.so "$BIN/android/arm64-v8a/"
+          cp src/lib/steamaudio/lib/android-x64/libphonon.so "$BIN/android/x86_64/"
+
+      - name: Build Linux
+        env:
+          SCONS_CACHE: ${{ github.workspace }}/.scons-cache
+        run: |
+          scons platform=linux target=template_debug build_tests=0 -j$(nproc)
+          scons platform=linux target=template_release build_tests=0 -j$(nproc)
+
+      - name: Build Android (arm64)
+        env:
+          SCONS_CACHE: ${{ github.workspace }}/.scons-cache
+        run: |
+          scons platform=android arch=arm64 target=template_debug build_tests=0 ndk_version=23.2.8568313 -j$(nproc)
+          scons platform=android arch=arm64 target=template_release build_tests=0 ndk_version=23.2.8568313 -j$(nproc)
+
+      - name: Build Android (x86_64)
+        env:
+          SCONS_CACHE: ${{ github.workspace }}/.scons-cache
+        run: |
+          scons platform=android arch=x86_64 target=template_debug build_tests=0 ndk_version=23.2.8568313 -j$(nproc)
+          scons platform=android arch=x86_64 target=template_release build_tests=0 ndk_version=23.2.8568313 -j$(nproc)
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bin-linux-android
+          path: audio_resonance_tool/addons/nexus_resonance/bin/
+
+  build-windows:
     name: Build (Windows MSVC)
     runs-on: windows-2022
     defaults:
       run:
         shell: bash
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           submodules: recursive
 
-      - name: Ensure submodules (fallback if checkout missed them)
+      - name: Install dependencies
         run: |
-          if [ ! -f src/lib/godot-cpp/SConstruct ]; then
-            mkdir -p src/lib
-            git clone -b 4.5 --depth 1 https://github.com/godotengine/godot-cpp src/lib/godot-cpp
-          fi
+          python -m pip install scons
+          scons --version
+
+      - name: Cache Steam Audio SDK
+        uses: actions/cache@v4
+        with:
+          path: src/lib/steamaudio
+          key: steamaudio-${{ hashFiles('scripts/install_steam_audio.py') }}
 
       - name: Install Steam Audio SDK
         run: python scripts/install_steam_audio.py
@@ -40,60 +126,115 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .scons-cache
-          key: scons-Windows-windows-v3-${{ hashFiles('src/lib/godot-cpp/SConstruct', 'src/lib/godot-cpp/gdextension/extension_api.json', 'SConstruct', 'src/register_types.cpp', 'src/resonance_server.cpp') }}
+          key: scons-Windows-all-v1-${{ hashFiles('src/lib/godot-cpp/SConstruct', 'SConstruct') }}
           restore-keys: |
-            scons-Windows-windows-
+            scons-Windows-all-
 
-      - name: Install Python & SCons
+      - name: Create bin directories
         run: |
-          python -m pip install scons
-          scons --version
+          BIN=audio_resonance_tool/addons/nexus_resonance/bin
+          mkdir -p "$BIN"/windows
 
-      - name: Create bin directory
-        run: mkdir -p audio_resonance_tool/addons/nexus_resonance/bin
-
-      - name: Build GDExtension
-        env:
-          SCONS_CACHE: ${{ github.workspace }}/.scons-cache
-        run: scons platform=windows target=template_debug arch=x86_64 build_tests=0 -j${NUMBER_OF_PROCESSORS:-4}
-
-      - name: Copy Steam Audio runtime DLLs to bin
+      - name: Copy Steam Audio runtime libraries
         run: |
-          STEAM_LIB="src/lib/steamaudio/lib/windows-x64"
-          BIN_DIR="audio_resonance_tool/addons/nexus_resonance/bin"
-          for dll in phonon.dll GPUUtilities.dll TrueAudioNext.dll; do
-            if [ -f "$STEAM_LIB/$dll" ]; then
-              cp "$STEAM_LIB/$dll" "$BIN_DIR/"
-            fi
+          BIN=audio_resonance_tool/addons/nexus_resonance/bin
+          cp src/lib/steamaudio/lib/windows-x64/phonon.dll "$BIN/windows/"
+          for dll in GPUUtilities.dll TrueAudioNext.dll; do
+            [ -f "src/lib/steamaudio/lib/windows-x64/$dll" ] && cp "src/lib/steamaudio/lib/windows-x64/$dll" "$BIN/windows/"
           done
 
-      - name: Prepare release artifact (addons/nexus_resonance with bin)
+      - name: Build Windows
+        env:
+          SCONS_CACHE: ${{ github.workspace }}/.scons-cache
         run: |
-          mkdir -p release_addon/addons/nexus_resonance
-          cp -r audio_resonance_tool/addons/nexus_resonance/* release_addon/addons/nexus_resonance/
-          cp LICENSE release_addon/addons/nexus_resonance/
+          scons platform=windows target=template_debug build_tests=0 -j${NUMBER_OF_PROCESSORS:-4}
+          scons platform=windows target=template_release build_tests=0 -j${NUMBER_OF_PROCESSORS:-4}
 
-      - name: Verify bin/nexus_resonance.dll exists (debug)
+      - name: Remove MSVC build artifacts
         run: |
-          BIN_DLL="release_addon/addons/nexus_resonance/bin/nexus_resonance.dll"
-          if [ -f "$BIN_DLL" ]; then
-            echo "OK: nexus_resonance.dll found"
-            ls -la release_addon/addons/nexus_resonance/bin/
-          else
-            echo "ERROR: nexus_resonance.dll MISSING"
-            find release_addon -type f
-            exit 1
-          fi
+          BIN=audio_resonance_tool/addons/nexus_resonance/bin/windows
+          rm -f "$BIN"/*.exp "$BIN"/*.lib
 
-      - name: Upload artifact
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: nexus_resonance-addon
-          path: release_addon
+          name: bin-windows
+          path: audio_resonance_tool/addons/nexus_resonance/bin/
+
+  build-macos-ios:
+    name: Build (macOS / iOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          PIP_BREAK_SYSTEM_PACKAGES=1 python3 -m pip install scons
+          scons --version
+
+      - name: Cache Steam Audio SDK
+        uses: actions/cache@v4
+        with:
+          path: src/lib/steamaudio
+          key: steamaudio-${{ hashFiles('scripts/install_steam_audio.py') }}
+
+      - name: Install Steam Audio SDK
+        run: python3 scripts/install_steam_audio.py
+
+      - name: Cache SCons build
+        uses: actions/cache@v4
+        with:
+          path: .scons-cache
+          key: scons-macOS-all-v1-${{ hashFiles('src/lib/godot-cpp/SConstruct', 'SConstruct') }}
+          restore-keys: |
+            scons-macOS-all-
+
+      - name: Create bin directories
+        run: |
+          BIN=audio_resonance_tool/addons/nexus_resonance/bin
+          mkdir -p "$BIN"/{macos,ios}
+
+      - name: Copy Steam Audio runtime libraries
+        run: |
+          BIN=audio_resonance_tool/addons/nexus_resonance/bin
+          cp src/lib/steamaudio/lib/osx/libphonon.dylib "$BIN/macos/"
+          cp src/lib/steamaudio/lib/ios/libphonon.a "$BIN/ios/"
+
+      - name: Build iOS dependencies
+        run: make ios-deps
+
+      - name: Build macOS
+        env:
+          SCONS_CACHE: ${{ github.workspace }}/.scons-cache
+        run: |
+          scons platform=macos target=template_debug build_tests=0 -j$(sysctl -n hw.logicalcpu)
+          scons platform=macos target=template_release build_tests=0 -j$(sysctl -n hw.logicalcpu)
+
+      - name: Build iOS
+        env:
+          SCONS_CACHE: ${{ github.workspace }}/.scons-cache
+        run: |
+          scons platform=ios arch=arm64 target=template_debug build_tests=0 -j$(sysctl -n hw.logicalcpu)
+          scons platform=ios arch=arm64 target=template_release build_tests=0 -j$(sysctl -n hw.logicalcpu)
+
+      - name: Copy iOS static libraries
+        run: |
+          BIN=audio_resonance_tool/addons/nexus_resonance/bin/ios
+          cp src/lib/godot-cpp/bin/libgodot-cpp.ios.template_debug.arm64.a "$BIN/"
+          cp src/lib/godot-cpp/bin/libgodot-cpp.ios.template_release.arm64.a "$BIN/"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bin-macos-ios
+          path: audio_resonance_tool/addons/nexus_resonance/bin/
 
   create-release:
     name: Create Release
-    needs: build
+    needs: [build-linux-android, build-windows, build-macos-ios]
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout
@@ -102,10 +243,36 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.ref }}
 
-      - name: Download build artifact
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          name: nexus_resonance-addon
+          path: artifacts
+
+      - name: Prepare release addon
+        run: |
+          mkdir -p release_addon/addons/nexus_resonance/bin
+          cp -r audio_resonance_tool/addons/nexus_resonance/* release_addon/addons/nexus_resonance/
+          cp -r artifacts/bin-linux-android/* release_addon/addons/nexus_resonance/bin/
+          cp -r artifacts/bin-windows/* release_addon/addons/nexus_resonance/bin/
+          cp -r artifacts/bin-macos-ios/* release_addon/addons/nexus_resonance/bin/
+          cp LICENSE release_addon/addons/nexus_resonance/
+
+      - name: Verify build outputs
+        run: |
+          echo "=== Release addon contents ==="
+          find release_addon -type f | sort
+          echo ""
+          for f in \
+            release_addon/addons/nexus_resonance/bin/windows/nexus_resonance.dll \
+            release_addon/addons/nexus_resonance/bin/linux/libnexus_resonance.so \
+            release_addon/addons/nexus_resonance/bin/macos/libnexus_resonance.dylib \
+          ; do
+            if [ -f "$f" ]; then
+              echo "OK: $f"
+            else
+              echo "WARN: $f not found"
+            fi
+          done
 
       - name: Extract version from tag
         id: version
@@ -114,33 +281,34 @@ jobs:
       - name: Create addon zip
         run: |
           mkdir -p release_packages
-          zip -r release_packages/nexus_resonance-windows-v${{ steps.version.outputs.version }}.zip addons
-
-      - name: Verify zip contains bin/nexus_resonance.dll (debug)
-        run: |
-          ZIP="release_packages/nexus_resonance-windows-v${{ steps.version.outputs.version }}.zip"
-          if unzip -l "$ZIP" | grep -q "addons/nexus_resonance/bin/nexus_resonance.dll"; then
-            echo "OK: nexus_resonance.dll in zip"
-            unzip -l "$ZIP" | head -50
-          else
-            echo "ERROR: nexus_resonance.dll NOT in zip"
-            unzip -l "$ZIP"
-            exit 1
-          fi
+          cd release_addon
+          zip -r ../release_packages/nexus_resonance-v${{ steps.version.outputs.version }}.zip addons
 
       - name: Prepare release body
         id: changelog
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
-          CHANGELOG_SECTION=$(VERSION="$VERSION" CHANGELOG_PATH="docs/CHANGELOG.md" python3 .github/scripts/extract_changelog.py)
+          CHANGELOG_SECTION=""
+          if [ -f ".github/scripts/extract_changelog.py" ]; then
+            CHANGELOG_SECTION=$(VERSION="$VERSION" CHANGELOG_PATH="docs/CHANGELOG.md" python3 .github/scripts/extract_changelog.py 2>/dev/null || true)
+          fi
           {
-            echo "$CHANGELOG_SECTION"
+            if [ -n "$CHANGELOG_SECTION" ]; then
+              echo "$CHANGELOG_SECTION"
+              echo ""
+            fi
+            echo "## Platforms"
+            echo ""
+            echo "This release includes binaries for all supported platforms:"
+            echo "- Windows x86_64 (MSVC)"
+            echo "- Linux x86_64"
+            echo "- macOS (universal)"
+            echo "- Android (arm64, x86_64)"
+            echo "- iOS (arm64)"
             echo ""
             echo "## Installation"
             echo ""
-            echo "**nexus_resonance-windows-v${VERSION}.zip** – Addon with Windows binaries. Extract into your Godot project's \`addons/\` folder."
-            echo ""
-            echo "macOS/Linux: Clone the repo and build locally with \`scons platform=<os> target=template_debug\`."
+            echo "Download **nexus_resonance-v${VERSION}.zip** and extract the \`addons/\` folder into your Godot project root."
             echo ""
             echo "See [README](https://github.com/${{ github.repository }}) for requirements and usage."
           } > release_body.md

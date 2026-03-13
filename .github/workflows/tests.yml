@@ -50,18 +50,6 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
-      - name: Ensure submodules (fallback if checkout missed them)
-        run: |
-          if [ ! -f src/lib/godot-cpp/SConstruct ]; then
-            mkdir -p src/lib
-            git clone -b 4.5 --depth 1 https://github.com/godotengine/godot-cpp src/lib/godot-cpp
-          fi
-          if [ ! -f src/lib/catch2/catch.hpp ]; then
-            git clone -b v2.x --depth 1 https://github.com/catchorg/Catch2 /tmp/Catch2
-            mkdir -p src/lib/catch2
-            cp /tmp/Catch2/single_include/catch2/catch.hpp src/lib/catch2/
-          fi
-
       - name: Install Steam Audio SDK
         run: python3 scripts/install_steam_audio.py
 
@@ -80,7 +68,10 @@ jobs:
         run: pip install scons
 
       - name: Create bin directory
-        run: mkdir -p audio_resonance_tool/addons/nexus_resonance/bin
+        run: mkdir -p audio_resonance_tool/addons/nexus_resonance/bin/linux
+
+      - name: Copy Steam Audio runtime libraries
+        run: cp src/lib/steamaudio/lib/linux-x64/libphonon.so audio_resonance_tool/addons/nexus_resonance/bin/linux/
 
       - name: Clang-format check (optional)
         continue-on-error: true
@@ -116,16 +107,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: nexus_resonance-bin-linux
-
-      - name: Place binaries
-        run: |
-          mkdir -p audio_resonance_tool/addons/nexus_resonance/bin
-          cp -r nexus_resonance-bin-linux/* audio_resonance_tool/addons/nexus_resonance/bin/
+          path: audio_resonance_tool/addons/nexus_resonance/bin
 
       - name: Setup Godot 4.6
         uses: chickensoft-games/setup-godot@v2
         with:
-          version: "4.6"
+          version: "4.6.0"
           use-dotnet: false
 
       - name: Import project
