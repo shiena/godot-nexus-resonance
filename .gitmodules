@@ -2,7 +2,13 @@
 	path = src/lib/godot-cpp
 	url = https://github.com/godotengine/godot-cpp
 	branch = 4.5
+[submodule "src/lib/pffft"]
+	path = src/lib/pffft
+	url = https://github.com/marton78/pffft
+[submodule "src/lib/libmysofa"]
+	path = src/lib/libmysofa
+	url = https://github.com/hoene/libmysofa
 [submodule "src/lib/catch2"]
 	path = src/lib/catch2
 	url = https://github.com/catchorg/Catch2
-	branch = devel
+	branch = v2.x
