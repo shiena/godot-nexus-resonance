@@ -56,15 +56,29 @@ elif env["platform"] == "android":
     env.Append(LIBPATH=[os.path.join(steam_audio_lib, steam_arch)])
     env.Append(LIBS=["phonon"])
 
+elif env["platform"] == "ios":
+    env.Append(LIBPATH=[os.path.join(steam_audio_lib, "ios")])
+    env.Append(LIBS=["phonon"])
+
 # TARGET PATH (Targeting your specific project folder)
-target_path = "audio_resonance_tool/addons/nexus_resonance/bin/"
+target_base = "audio_resonance_tool/addons/nexus_resonance/bin/"
 target_name = "nexus_resonance"
 
-# Android: output to arch-specific subdir for GDExtension (Godot ABI folder names)
+# Platform-specific subdirectories
 if env["platform"] == "android":
     arch_to_abi = {"arm64": "arm64-v8a", "arm32": "armeabi-v7a", "x86_64": "x86_64", "x86_32": "x86"}
     abi_dir = arch_to_abi.get(env["arch"], "arm64-v8a")
-    target_path = os.path.join(target_path, "android", abi_dir, "")
+    target_path = os.path.join(target_base, "android", abi_dir, "")
+elif env["platform"] == "ios":
+    target_path = os.path.join(target_base, "ios", "")
+elif env["platform"] == "macos":
+    target_path = os.path.join(target_base, "macos", "")
+elif env["platform"] == "windows":
+    target_path = os.path.join(target_base, "windows", "")
+elif env["platform"] == "linux":
+    target_path = os.path.join(target_base, "linux", "")
+else:
+    target_path = target_base
 
 # --- SOURCES ---
 # We now look for sources inside the 'build_dir' instead of 'src'.
@@ -84,10 +98,16 @@ if _target in ["editor", "template_debug", "template_release"]:
 	except (AttributeError, TypeError):
 		pass  # GodotCPPDocData not available (older godot-cpp)
 
-library = env.SharedLibrary(
-    target=target_path + target_name,
-    source=sources,
-)
+if env["platform"] == "ios":
+    library = env.StaticLibrary(
+        target=target_path + "lib" + target_name,
+        source=sources,
+    )
+else:
+    library = env.SharedLibrary(
+        target=target_path + target_name,
+        source=sources,
+    )
 
 # --- C++ UNIT TESTS (no Godot/Steam Audio) ---
 build_tests = ARGUMENTS.get("build_tests", "1") == "1"
@@ -95,7 +115,7 @@ test_exe = None
 if build_tests:
     env_test = env.Clone()
     env_test.Replace(LIBS=[], LIBPATH=[])
-    env_test.Append(CPPPATH=["src", "src/lib/catch2"])
+    env_test.Append(CPPPATH=["src", "src/lib/catch2/single_include/catch2"])
     test_sources = ["src/test/test_main.cpp", "src/test/test_ring_buffer.cpp", "src/test/test_volume_ramp.cpp", "src/test/test_resonance_hash.cpp", "src/test/test_handle_manager.cpp", "src/test/test_ipl_guard.cpp"]
     test_dir = "build/tests"
     test_exe = env_test.Program(os.path.join(test_dir, "nexus_resonance_tests"), test_sources)
