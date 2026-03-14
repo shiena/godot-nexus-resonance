@@ -172,6 +172,15 @@ jobs:
           name: nexus_resonance-bin-linux
           path: audio_resonance_tool/addons/nexus_resonance/bin
 
+      - name: Install GUT test framework
+        run: |
+          GUT_VERSION="9.3.0"
+          curl -fsSL -o /tmp/gut.zip "https://github.com/bitwes/Gut/archive/refs/tags/v${GUT_VERSION}.zip"
+          unzip -qo /tmp/gut.zip -d /tmp/gut
+          mkdir -p audio_resonance_tool/addons/gut
+          cp -r /tmp/gut/Gut-${GUT_VERSION}/addons/gut/* audio_resonance_tool/addons/gut/
+          rm -rf /tmp/gut /tmp/gut.zip
+
       - name: Setup Godot 4.6
         uses: chickensoft-games/setup-godot@v2
         with:

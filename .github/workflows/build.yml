@@ -260,7 +260,7 @@ jobs:
           cp src/lib/godot-cpp/bin/libgodot-cpp.ios.template_debug.arm64.a "$BIN/"
           cp src/lib/godot-cpp/bin/libgodot-cpp.ios.template_release.arm64.a "$BIN/"
 
-      - name: Upload Windows artifact
+      - name: Upload artifacts
         uses: actions/upload-artifact@v5
         with:
           name: bin-macos-ios

@@ -1,4 +1,4 @@
-#include "../lib/catch2/catch.hpp"
+#include "../lib/catch2/single_include/catch2/catch.hpp"
 #include <cstdint>
 
 // Tests the RAII scoped-release pattern used by IPLScopedRelease (resonance_ipl_guard.h).
