@@ -1,11 +1,11 @@
 #ifndef RESONANCE_PROBE_BATCH_REGISTRY_H
 #define RESONANCE_PROBE_BATCH_REGISTRY_H
 
-#include <phonon.h>
+#include <cstdint>
 #include <mutex>
+#include <phonon.h>
 #include <unordered_map>
 #include <vector>
-#include <cstdint>
 
 #include "handle_manager.h"
 #include "resonance_probe_data.h"
@@ -15,19 +15,19 @@ namespace godot {
 /// Manages probe batch hash mapping, refcount, and compatibility checks.
 /// ResonanceServer delegates probe batch load/remove/clear/revalidate to this class.
 class ResonanceProbeBatchRegistry {
-public:
+  public:
     ResonanceProbeBatchRegistry() = default;
 
     /// Load probe batch. Returns handle or -1. Caller must validate compatibility before calling.
     int32_t load_batch(IPLContext ctx, IPLSimulator sim, std::mutex* sim_mutex,
-        Ref<ResonanceProbeData> data, uint64_t data_hash);
+                       Ref<ResonanceProbeData> data, uint64_t data_hash);
 
     void remove_batch(int32_t handle, IPLSimulator sim, std::mutex* sim_mutex);
 
     void clear_batches(IPLSimulator sim, std::mutex* sim_mutex);
 
     int revalidate_with_config(IPLSimulator sim, std::mutex* sim_mutex,
-        int reflection_type, bool pathing_enabled);
+                               int reflection_type, bool pathing_enabled);
 
     /// Returns pathing batch for preferred_handle if valid, else first with pathing. Caller must iplProbeBatchRelease.
     IPLProbeBatch get_pathing_batch(int32_t preferred_handle) const;
@@ -41,7 +41,7 @@ public:
 
     bool has_any_batches() const;
 
-private:
+  private:
     static bool is_reflection_type_compatible(int baked_type, int reflection_type);
 
     ProbeBatchManager probe_batch_manager_;

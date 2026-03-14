@@ -1,11 +1,11 @@
 #include "../lib/catch2/catch.hpp"
 #include "../resonance_constants.h"
+#include <algorithm>
 #include <climits>
+#include <functional>
 #include <queue>
 #include <unordered_map>
 #include <vector>
-#include <functional>
-#include <algorithm>
 
 // Replicates HandleManagerBase alloc/recycle logic for unit testing without phonon.h.
 // Tests overflow, add/remove consistency, and kMaxProbeBatches.
@@ -32,14 +32,16 @@ struct TestHandleManager {
 
     int32_t add(int value) {
         int32_t h = alloc_handle();
-        if (h < 0) return -1;
+        if (h < 0)
+            return -1;
         items[h] = value;
         return h;
     }
 
     bool remove(int32_t handle) {
         auto it = items.find(handle);
-        if (it == items.end()) return false;
+        if (it == items.end())
+            return false;
         items.erase(it);
         recycle_handle(handle);
         return true;
@@ -78,7 +80,7 @@ TEST_CASE("HandleManager remove and re-add reuses handles", "[handle_manager]") 
     REQUIRE(m.remove(h0));
     REQUIRE(m.get(h0) == -1);
     int32_t h2 = m.add(30);
-    REQUIRE(h2 == h0);  // Reused
+    REQUIRE(h2 == h0); // Reused
     REQUIRE(m.get(h2) == 30);
     REQUIRE(m.get(h1) == 20);
 }
@@ -123,6 +125,6 @@ TEST_CASE("HandleManager overflow returns -1", "[handle_manager]") {
     int32_t h1 = m.add(2);
     REQUIRE(h1 >= 0);
     int32_t h2 = m.add(3);
-    REQUIRE(h2 == -1);  // Overflow
+    REQUIRE(h2 == -1); // Overflow
     REQUIRE(m.size() == 2u);
 }

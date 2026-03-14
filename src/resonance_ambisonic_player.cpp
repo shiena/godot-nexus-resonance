@@ -2,14 +2,14 @@
 #include "resonance_constants.h"
 #include "resonance_log.h"
 #include "resonance_server.h"
+#include <algorithm>
+#include <cstring>
+#include <godot_cpp/classes/audio_stream.hpp>
+#include <godot_cpp/classes/camera3d.hpp>
+#include <godot_cpp/classes/viewport.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 #include <godot_cpp/variant/variant.hpp>
-#include <godot_cpp/classes/viewport.hpp>
-#include <godot_cpp/classes/camera3d.hpp>
-#include <godot_cpp/classes/audio_stream.hpp>
-#include <cstring>
-#include <algorithm>
 
 using namespace godot;
 
@@ -18,10 +18,10 @@ using namespace godot;
 // ============================================================================
 
 ResonanceAmbisonicInternalPlayback::ResonanceAmbisonicInternalPlayback() {
-    params_next.listener_orientation.ahead = { 0,0,-1 };
-    params_next.listener_orientation.up = { 0,1,0 };
-    params_next.listener_orientation.right = { 1,0,0 };
-    params_next.listener_orientation.origin = { 0,0,0 };
+    params_next.listener_orientation.ahead = {0, 0, -1};
+    params_next.listener_orientation.up = {0, 1, 0};
+    params_next.listener_orientation.right = {1, 0, 0};
+    params_next.listener_orientation.origin = {0, 0, 0};
     params_current = params_next;
 
     // Buffers initialized in set_channel_playbacks when order is known
@@ -48,7 +48,7 @@ void ResonanceAmbisonicInternalPlayback::set_channel_playbacks(const Array& play
     output_ring_l.resize(out_capacity);
     output_ring_r.resize(out_capacity);
 
-    temp_interleaved_input.resize(static_cast<size_t>(resonance::kGodotDefaultFrameSize) * static_cast<size_t>(num_channels));  // Resized to frame_size_ in _lazy_init
+    temp_interleaved_input.resize(static_cast<size_t>(resonance::kGodotDefaultFrameSize) * static_cast<size_t>(num_channels)); // Resized to frame_size_ in _lazy_init
 }
 
 void ResonanceAmbisonicInternalPlayback::update_parameters(const AmbisonicPlaybackParameters& p_params) {
@@ -79,7 +79,8 @@ void ResonanceAmbisonicInternalPlayback::_cleanup_steam_audio() {
 
 void ResonanceAmbisonicInternalPlayback::_lazy_init_steam_audio() {
     ResonanceServer* srv = ResonanceServer::get_singleton();
-    if (!srv || !srv->is_initialized()) return;
+    if (!srv || !srv->is_initialized())
+        return;
 
     current_sample_rate = srv->get_sample_rate();
     frame_size_ = srv->get_audio_frame_size();
@@ -99,7 +100,8 @@ void ResonanceAmbisonicInternalPlayback::_lazy_init_steam_audio() {
 
 void ResonanceAmbisonicInternalPlayback::_process_steam_audio_block() {
     // Crash protection: validate buffers before use
-    if (!sa_out_buffer.data || !sa_out_buffer.data[0] || !sa_out_buffer.data[1]) return;
+    if (!sa_out_buffer.data || !sa_out_buffer.data[0] || !sa_out_buffer.data[1])
+        return;
 
     int num_channels = (ambisonic_order + 1) * (ambisonic_order + 1);
     size_t block_samples = static_cast<size_t>(frame_size_) * static_cast<size_t>(num_channels);
@@ -116,7 +118,8 @@ void ResonanceAmbisonicInternalPlayback::_process_steam_audio_block() {
 }
 
 int32_t ResonanceAmbisonicInternalPlayback::_mix(AudioFrame* buffer, float rate_scale, int32_t frames) {
-    if (channel_playbacks.empty()) return 0;
+    if (channel_playbacks.empty())
+        return 0;
 
     _sync_params();
 
@@ -127,7 +130,8 @@ int32_t ResonanceAmbisonicInternalPlayback::_mix(AudioFrame* buffer, float rate_
     PackedVector2Array buf_0 = channel_playbacks[0]->mix_audio(rate_scale, frames);
     int32_t samples_read = buf_0.size();
 
-    if (samples_read == 0) return 0;
+    if (samples_read == 0)
+        return 0;
 
     // 2. Collect all channel data (pad missing with 0)
     std::vector<PackedVector2Array> channel_bufs;
@@ -140,17 +144,18 @@ int32_t ResonanceAmbisonicInternalPlayback::_mix(AudioFrame* buffer, float rate_
 
     // Lazy Init
     if (!is_initialized) {
-            _lazy_init_steam_audio();
-            if (!is_initialized) {
-                for (int i = 0; i < samples_read; i++) {
-                    float w = (!channel_bufs[0].is_empty() && channel_bufs[0].size() > (unsigned)i)
-                        ? channel_bufs[0][i].x : 0.0f;
-                    buffer[i].left = w;
-                    buffer[i].right = w;
-                }
-                return samples_read;
+        _lazy_init_steam_audio();
+        if (!is_initialized) {
+            for (int i = 0; i < samples_read; i++) {
+                float w = (!channel_bufs[0].is_empty() && channel_bufs[0].size() > (unsigned)i)
+                              ? channel_bufs[0][i].x
+                              : 0.0f;
+                buffer[i].left = w;
+                buffer[i].right = w;
             }
+            return samples_read;
         }
+    }
 
     // 3. Interleave all channels and push to Input Ring (batch write for efficiency)
     size_t interleaved_count = static_cast<size_t>(samples_read) * static_cast<size_t>(num_channels);
@@ -160,7 +165,8 @@ int32_t ResonanceAmbisonicInternalPlayback::_mix(AudioFrame* buffer, float rate_
     for (int i = 0; i < samples_read; i++) {
         for (int c = 0; c < num_channels; c++) {
             float sample = (c < (int)channel_bufs.size() && (int)channel_bufs[c].size() > i)
-                ? channel_bufs[c][i].x : 0.0f;
+                               ? channel_bufs[c][i].x
+                               : 0.0f;
             temp_interleaved_input[static_cast<size_t>(i) * static_cast<size_t>(num_channels) + static_cast<size_t>(c)] = sample;
         }
     }
@@ -184,8 +190,10 @@ int32_t ResonanceAmbisonicInternalPlayback::_mix(AudioFrame* buffer, float rate_
 
     if (valid_copy > 0) {
         size_t copy_size = static_cast<size_t>(valid_copy);
-        if (temp_output_l.size() < copy_size) temp_output_l.resize(copy_size);
-        if (temp_output_r.size() < copy_size) temp_output_r.resize(copy_size);
+        if (temp_output_l.size() < copy_size)
+            temp_output_l.resize(copy_size);
+        if (temp_output_r.size() < copy_size)
+            temp_output_r.resize(copy_size);
         output_ring_l.read(temp_output_l.data(), copy_size);
         output_ring_r.read(temp_output_r.data(), copy_size);
         for (int i = 0; i < valid_copy; i++) {
@@ -204,12 +212,14 @@ int32_t ResonanceAmbisonicInternalPlayback::_mix(AudioFrame* buffer, float rate_
 
 void ResonanceAmbisonicInternalPlayback::_start(double from_pos) {
     for (size_t i = 0; i < channel_playbacks.size(); i++) {
-        if (channel_playbacks[i].is_valid()) channel_playbacks[i]->start(from_pos);
+        if (channel_playbacks[i].is_valid())
+            channel_playbacks[i]->start(from_pos);
     }
 }
 void ResonanceAmbisonicInternalPlayback::_stop() {
     for (size_t i = 0; i < channel_playbacks.size(); i++) {
-        if (channel_playbacks[i].is_valid()) channel_playbacks[i]->stop();
+        if (channel_playbacks[i].is_valid())
+            channel_playbacks[i]->stop();
     }
 }
 bool ResonanceAmbisonicInternalPlayback::_is_playing() const {
@@ -223,7 +233,8 @@ double ResonanceAmbisonicInternalPlayback::_get_playback_position() const {
 }
 void ResonanceAmbisonicInternalPlayback::_seek(double position) {
     for (size_t i = 0; i < channel_playbacks.size(); i++) {
-        if (channel_playbacks[i].is_valid()) channel_playbacks[i]->seek(position);
+        if (channel_playbacks[i].is_valid())
+            channel_playbacks[i]->seek(position);
     }
 }
 
@@ -259,7 +270,8 @@ double ResonanceAmbisonicInternalStream::_get_length() const {
         Variant elem = channel_streams[0];
         Object* obj = (elem.get_type() == Variant::OBJECT) ? static_cast<Object*>(elem) : nullptr;
         AudioStream* as = Object::cast_to<AudioStream>(obj);
-        if (as) return as->get_length();
+        if (as)
+            return as->get_length();
     }
     return stream_w.is_valid() ? stream_w->get_length() : 0.0;
 }
@@ -307,7 +319,8 @@ Ref<AudioStreamPlayback> ResonanceAmbisonicInternalStream::_instantiate_playback
         }
     }
 
-    if (streams.is_empty()) return playback;
+    if (streams.is_empty())
+        return playback;
 
     playback->set_channel_playbacks(streams, order);
     return playback;
@@ -342,11 +355,13 @@ void ResonanceAmbisonicInternalStream::_bind_methods() {
 void ResonanceAmbisonicPlayer::_ready() {
     // If stream is set in editor, we just play.
     // The stream must be a ResonanceAmbisonicInternalStream resource.
-    if (is_autoplay_enabled()) play();
+    if (is_autoplay_enabled())
+        play();
 }
 
 void ResonanceAmbisonicPlayer::_process(double delta) {
-    if (!is_playing()) return;
+    if (!is_playing())
+        return;
 
     IPLCoordinateSpace3 listener_orient{};
 
@@ -357,16 +372,16 @@ void ResonanceAmbisonicPlayer::_process(double delta) {
         Vector3 up = cam->get_global_transform().basis.get_column(1);
         Vector3 right = cam->get_global_transform().basis.get_column(0);
 
-        listener_orient.origin = { 0,0,0 };
-        listener_orient.ahead = { forward.x, forward.y, forward.z };
-        listener_orient.up = { up.x, up.y, up.z };
-        listener_orient.right = { right.x, right.y, right.z };
+        listener_orient.origin = {0, 0, 0};
+        listener_orient.ahead = {forward.x, forward.y, forward.z};
+        listener_orient.up = {up.x, up.y, up.z};
+        listener_orient.right = {right.x, right.y, right.z};
     } else {
         // Fallback: use identity orientation when no viewport/camera (avoids degenerate coord system)
-        listener_orient.origin = { 0,0,0 };
-        listener_orient.ahead = { 0,0,-1 };
-        listener_orient.up = { 0,1,0 };
-        listener_orient.right = { 1,0,0 };
+        listener_orient.origin = {0, 0, 0};
+        listener_orient.ahead = {0, 0, -1};
+        listener_orient.up = {0, 1, 0};
+        listener_orient.right = {1, 0, 0};
     }
 
     AmbisonicPlaybackParameters params;
@@ -376,7 +391,8 @@ void ResonanceAmbisonicPlayer::_process(double delta) {
     Ref<AudioStreamPlayback> pb = get_stream_playback();
     if (pb.is_valid()) {
         ResonanceAmbisonicInternalPlayback* res_pb = Object::cast_to<ResonanceAmbisonicInternalPlayback>(pb.ptr());
-        if (res_pb) res_pb->update_parameters(params);
+        if (res_pb)
+            res_pb->update_parameters(params);
     }
 }
 

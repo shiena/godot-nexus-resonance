@@ -19,7 +19,7 @@ inline bool operator&(PathInitFlags a, PathInitFlags b) {
 }
 
 class ResonancePathProcessor {
-private:
+  private:
     IPLContext context = nullptr;
     IPLPathEffect path_effect = nullptr;
     IPLAudioBuffer internal_mono_buffer{};
@@ -28,7 +28,7 @@ private:
     int frame_size = resonance::kGodotDefaultFrameSize;
     int ambisonic_order = 1;
 
-public:
+  public:
     ResonancePathProcessor() = default;
     ~ResonancePathProcessor();
 

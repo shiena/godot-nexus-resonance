@@ -1,63 +1,63 @@
 #ifndef RESONANCE_AUDIO_EFFECT_H
 #define RESONANCE_AUDIO_EFFECT_H
 
+#include "resonance_mixer_processor.h"
 #include <godot_cpp/classes/audio_effect.hpp>
 #include <godot_cpp/classes/audio_effect_instance.hpp>
 #include <godot_cpp/classes/ref.hpp>
-#include "resonance_mixer_processor.h"
 
 namespace godot {
 
-    class ResonanceAudioEffect;
+class ResonanceAudioEffect;
 
-    /// Resonance Reverb Bus Effect.
-    /// Reads from IPLReflectionMixer (fed by ResonancePlayer when reflection_type is Convolution). Parametric/Hybrid use per-source process_mix_direct instead.
-    class ResonanceAudioEffectInstance : public AudioEffectInstance {
-        GDCLASS(ResonanceAudioEffectInstance, AudioEffectInstance)
+/// Resonance Reverb Bus Effect.
+/// Reads from IPLReflectionMixer (fed by ResonancePlayer when reflection_type is Convolution). Parametric/Hybrid use per-source process_mix_direct instead.
+class ResonanceAudioEffectInstance : public AudioEffectInstance {
+    GDCLASS(ResonanceAudioEffectInstance, AudioEffectInstance)
 
-    public:
-        ResonanceAudioEffectInstance(const ResonanceAudioEffectInstance&) = delete;
-        ResonanceAudioEffectInstance(ResonanceAudioEffectInstance&&) = delete;
-        // Assignment implicitly deleted when copy ctor is deleted; explicit decl conflicts with Godot base.
+  public:
+    ResonanceAudioEffectInstance(const ResonanceAudioEffectInstance&) = delete;
+    ResonanceAudioEffectInstance(ResonanceAudioEffectInstance&&) = delete;
+    // Assignment implicitly deleted when copy ctor is deleted; explicit decl conflicts with Godot base.
 
-    private:
-        ResonanceMixerProcessor processor;
-        bool initialized_processor = false;
-        Ref<ResonanceAudioEffect> effect_ref;
+  private:
+    ResonanceMixerProcessor processor;
+    bool initialized_processor = false;
+    Ref<ResonanceAudioEffect> effect_ref;
 
-    public:
-        ResonanceAudioEffectInstance() = default;
-        ~ResonanceAudioEffectInstance();
+  public:
+    ResonanceAudioEffectInstance() = default;
+    ~ResonanceAudioEffectInstance();
 
-        void set_effect(const Ref<ResonanceAudioEffect>& p_effect) { effect_ref = p_effect; }
+    void set_effect(const Ref<ResonanceAudioEffect>& p_effect) { effect_ref = p_effect; }
 
-        virtual void _process(const void* src_buffer, AudioFrame* dst_buffer, int32_t frame_count) override;
-        virtual bool _process_silence() const override { return true; }  // Always process - we output mixer, not bus input
+    virtual void _process(const void* src_buffer, AudioFrame* dst_buffer, int32_t frame_count) override;
+    virtual bool _process_silence() const override { return true; } // Always process - we output mixer, not bus input
 
-    protected:
-        static void _bind_methods() {}
-    };
+  protected:
+    static void _bind_methods() {}
+};
 
-    class ResonanceAudioEffect : public AudioEffect {
-        GDCLASS(ResonanceAudioEffect, AudioEffect)
+class ResonanceAudioEffect : public AudioEffect {
+    GDCLASS(ResonanceAudioEffect, AudioEffect)
 
-    private:
-        // Future: Add Binaural Toggle, Gain, etc. here
-        // Default -4 dB to compensate for Convolution IR bass buildup and match Parametric balance
-        float gain_db = -4.0f;
+  private:
+    // Future: Add Binaural Toggle, Gain, etc. here
+    // Default -4 dB to compensate for Convolution IR bass buildup and match Parametric balance
+    float gain_db = -4.0f;
 
-    public:
-        ResonanceAudioEffect();
-        ~ResonanceAudioEffect() = default;
+  public:
+    ResonanceAudioEffect();
+    ~ResonanceAudioEffect() = default;
 
-        void set_gain_db(float p_db);
-        float get_gain_db() const;
+    void set_gain_db(float p_db);
+    float get_gain_db() const;
 
-        virtual Ref<AudioEffectInstance> _instantiate() override;
+    virtual Ref<AudioEffectInstance> _instantiate() override;
 
-    protected:
-        static void _bind_methods();
-    };
+  protected:
+    static void _bind_methods();
+};
 
 } // namespace godot
 

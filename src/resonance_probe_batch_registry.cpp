@@ -1,7 +1,7 @@
 #include "resonance_probe_batch_registry.h"
 #include "resonance_constants.h"
-#include "resonance_probe_data.h"
 #include "resonance_log.h"
+#include "resonance_probe_data.h"
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
@@ -9,16 +9,16 @@ namespace godot {
 
 bool ResonanceProbeBatchRegistry::is_reflection_type_compatible(int baked_type, int reflection_type) {
     bool uses_conv = (reflection_type == resonance::kReflectionConvolution ||
-        reflection_type == resonance::kReflectionHybrid || reflection_type == resonance::kReflectionTan);
+                      reflection_type == resonance::kReflectionHybrid || reflection_type == resonance::kReflectionTan);
     bool uses_param = (reflection_type == resonance::kReflectionParametric ||
-        reflection_type == resonance::kReflectionHybrid);
+                       reflection_type == resonance::kReflectionHybrid);
     return (baked_type == resonance::kBakedReflectionHybrid) ||
-        (baked_type == resonance::kBakedReflectionConvolution && uses_conv) ||
-        (baked_type == resonance::kBakedReflectionParametric && uses_param);
+           (baked_type == resonance::kBakedReflectionConvolution && uses_conv) ||
+           (baked_type == resonance::kBakedReflectionParametric && uses_param);
 }
 
 int32_t ResonanceProbeBatchRegistry::load_batch(IPLContext ctx, IPLSimulator sim, std::mutex* sim_mutex,
-    Ref<ResonanceProbeData> data, uint64_t data_hash) {
+                                                Ref<ResonanceProbeData> data, uint64_t data_hash) {
     {
         std::lock_guard<std::mutex> lock(mutex_);
         auto it = hash_to_handle_.find(data_hash);
@@ -96,9 +96,11 @@ void ResonanceProbeBatchRegistry::remove_batch(int32_t handle, IPLSimulator sim,
     {
         std::lock_guard<std::mutex> lock(mutex_);
         auto ref_it = refcount_.find(handle);
-        if (ref_it == refcount_.end()) return;
+        if (ref_it == refcount_.end())
+            return;
         ref_it->second--;
-        if (ref_it->second > 0) return;
+        if (ref_it->second > 0)
+            return;
         refcount_.erase(ref_it);
         handle_has_pathing_.erase(handle);
         handle_baked_refl_.erase(handle);
@@ -128,7 +130,8 @@ void ResonanceProbeBatchRegistry::clear_batches(IPLSimulator sim, std::mutex* si
         handle_baked_refl_.clear();
         probe_batch_manager_.get_all_batches(batches);
     }
-    if (batches.empty() || !sim) return;
+    if (batches.empty() || !sim)
+        return;
     std::lock_guard<std::mutex> lock(*sim_mutex);
     for (auto& batch : batches) {
         if (batch) {
@@ -140,16 +143,18 @@ void ResonanceProbeBatchRegistry::clear_batches(IPLSimulator sim, std::mutex* si
 }
 
 int ResonanceProbeBatchRegistry::revalidate_with_config(IPLSimulator sim, std::mutex* sim_mutex,
-    int reflection_type, bool pathing_enabled) {
+                                                        int reflection_type, bool pathing_enabled) {
     std::vector<int32_t> to_remove;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         for (const auto& kv : handle_to_hash_) {
             int32_t handle = kv.first;
-            if (!is_compatible(handle, reflection_type, pathing_enabled)) to_remove.push_back(handle);
+            if (!is_compatible(handle, reflection_type, pathing_enabled))
+                to_remove.push_back(handle);
         }
     }
-    for (int32_t h : to_remove) remove_batch(h, sim, sim_mutex);
+    for (int32_t h : to_remove)
+        remove_batch(h, sim, sim_mutex);
     return (int)to_remove.size();
 }
 
@@ -172,14 +177,18 @@ bool ResonanceProbeBatchRegistry::is_compatible(int32_t handle, int reflection_t
     int baked_type = -1;
     bool has_pathing = false;
     auto refl_it = handle_baked_refl_.find(handle);
-    if (refl_it != handle_baked_refl_.end()) baked_type = refl_it->second;
+    if (refl_it != handle_baked_refl_.end())
+        baked_type = refl_it->second;
     auto path_it = handle_has_pathing_.find(handle);
-    if (path_it != handle_has_pathing_.end()) has_pathing = path_it->second;
+    if (path_it != handle_has_pathing_.end())
+        has_pathing = path_it->second;
 
     if (baked_type >= resonance::kBakedReflectionConvolution && baked_type <= resonance::kBakedReflectionHybrid) {
-        if (!is_reflection_type_compatible(baked_type, reflection_type)) return false;
+        if (!is_reflection_type_compatible(baked_type, reflection_type))
+            return false;
     }
-    if (pathing_enabled && !has_pathing) return false;
+    if (pathing_enabled && !has_pathing)
+        return false;
     return true;
 }
 

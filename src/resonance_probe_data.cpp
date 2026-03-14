@@ -1,7 +1,7 @@
 #include "resonance_probe_data.h"
 #include <godot_cpp/core/class_db.hpp>
-#include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/array.hpp>
+#include <godot_cpp/variant/dictionary.hpp>
 
 using namespace godot;
 

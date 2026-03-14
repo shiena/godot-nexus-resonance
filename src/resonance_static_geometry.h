@@ -10,11 +10,11 @@ namespace godot {
 class ResonanceStaticGeometry : public ResonanceGeometry {
     GDCLASS(ResonanceStaticGeometry, ResonanceGeometry)
 
-protected:
+  protected:
     static void _bind_methods();
     void _validate_property(PropertyInfo& p_property) const override;
 
-public:
+  public:
     ResonanceStaticGeometry();
     ~ResonanceStaticGeometry();
 };

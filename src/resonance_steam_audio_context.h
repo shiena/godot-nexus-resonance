@@ -1,10 +1,10 @@
 #ifndef RESONANCE_STEAM_AUDIO_CONTEXT_H
 #define RESONANCE_STEAM_AUDIO_CONTEXT_H
 
-#include <atomic>
-#include <phonon.h>
 #include "resonance_constants.h"
 #include "resonance_sofa_asset.h"
+#include <atomic>
+#include <phonon.h>
 
 namespace godot {
 
@@ -14,9 +14,9 @@ struct ResonanceSteamAudioContextConfig {
     int frame_size = resonance::kGodotDefaultFrameSize;
     int ambisonic_order = 1;
     float max_reverb_duration = 2.0f;
-    int reflection_type = resonance::kReflectionConvolution;  // May be modified (e.g. TAN fallback)
-    int scene_type = 1;  // 0=Default, 1=Embree, 2=Radeon Rays
-    int opencl_device_type = 0;  // 0=GPU, 1=CPU, 2=Any
+    int reflection_type = resonance::kReflectionConvolution; // May be modified (e.g. TAN fallback)
+    int scene_type = 1;                                      // 0=Default, 1=Embree, 2=Radeon Rays
+    int opencl_device_type = 0;                              // 0=GPU, 1=CPU, 2=Any
     int opencl_device_index = 0;
     bool context_validation = false;
     int context_simd_level = -1;
@@ -26,7 +26,7 @@ struct ResonanceSteamAudioContextConfig {
 /// Manages Steam Audio context and all device handles (Context, Embree, OpenCL, Radeon Rays, TAN, HRTF).
 /// ResonanceServer delegates device creation and shutdown to this class.
 class ResonanceSteamAudioContext {
-public:
+  public:
     ResonanceSteamAudioContext() = default;
     ~ResonanceSteamAudioContext();
 
@@ -50,15 +50,15 @@ public:
     IPLHRTF get_hrtf() const;
     IPLSceneType get_scene_type() const { return scene_type_; }
 
-private:
+  private:
     IPLContext context_ = nullptr;
     IPLEmbreeDevice embree_device_ = nullptr;
     IPLOpenCLDeviceList opencl_device_list_ = nullptr;
     IPLOpenCLDevice opencl_device_ = nullptr;
     IPLRadeonRaysDevice radeon_rays_device_ = nullptr;
     IPLTrueAudioNextDevice tan_device_ = nullptr;
-    mutable IPLHRTF hrtf_[2] = { nullptr, nullptr };
-    mutable std::atomic<bool> new_hrtf_written_{ false };
+    mutable IPLHRTF hrtf_[2] = {nullptr, nullptr};
+    mutable std::atomic<bool> new_hrtf_written_{false};
     IPLSceneType scene_type_ = IPL_SCENETYPE_EMBREE;
 };
 
