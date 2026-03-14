@@ -26,7 +26,7 @@ void ResonanceDebugDrawer::cleanup() {
             parent_node->remove_child(mesh_instance);
             memdelete(mesh_instance);
             mesh_instance = nullptr;
-            immediate_mesh = nullptr;  // owned by mesh_instance, now invalid
+            immediate_mesh = nullptr; // owned by mesh_instance, now invalid
         }
         if (label_instance) {
             parent_node->remove_child(label_instance);
@@ -38,7 +38,8 @@ void ResonanceDebugDrawer::cleanup() {
 }
 
 void ResonanceDebugDrawer::_create_visuals_if_needed() {
-    if (!parent_node) return;
+    if (!parent_node)
+        return;
 
     if (!mesh_instance) {
         mesh_instance = memnew(MeshInstance3D);
@@ -55,14 +56,15 @@ void ResonanceDebugDrawer::_create_visuals_if_needed() {
         label_instance->set_position(Vector3(0, resonance::kDebugDrawerLabelOffsetY, 0));
         label_instance->set_pixel_size(resonance::kDebugDrawerLabelPixelSize);
         label_instance->set_modulate(Color(1, 1, 0));
-        label_instance->set("no_depth_test", true);   // See through walls
+        label_instance->set("no_depth_test", true); // See through walls
         label_instance->set_visible(false);
         parent_node->add_child(label_instance);
     }
 }
 
 void ResonanceDebugDrawer::_draw_line(const Vector3& from, const Vector3& to, float occlusion) {
-    if (!immediate_mesh || !parent_node) return;
+    if (!immediate_mesh || !parent_node)
+        return;
 
     immediate_mesh->clear_surfaces();
     immediate_mesh->surface_begin(Mesh::PRIMITIVE_LINES);
@@ -84,15 +86,16 @@ void ResonanceDebugDrawer::_draw_line(const Vector3& from, const Vector3& to, fl
 }
 
 void ResonanceDebugDrawer::_update_label_text(const ResonanceDebugData& data, String node_name) {
-    if (!label_instance) return;
+    if (!label_instance)
+        return;
 
     String air_str = data.air_abs_enabled
-        ? ("Air L/M/H: " + String::num(data.air_absorption.x, 2) + " / " + String::num(data.air_absorption.y, 2) + " / " + String::num(data.air_absorption.z, 2))
-        : "Air: OFF";
+                         ? ("Air L/M/H: " + String::num(data.air_absorption.x, 2) + " / " + String::num(data.air_absorption.y, 2) + " / " + String::num(data.air_absorption.z, 2))
+                         : "Air: OFF";
 
     String dir_str = data.directivity_enabled
-        ? ("Dir: " + String::num(data.directivity_val, 2))
-        : "";
+                         ? ("Dir: " + String::num(data.directivity_val, 2))
+                         : "";
 
     String text = "";
     if (!node_name.is_empty()) {
@@ -102,7 +105,8 @@ void ResonanceDebugDrawer::_update_label_text(const ResonanceDebugData& data, St
     text += "Trans L/M/H: " + String::num(data.transmission[0], 2) + " / " + String::num(data.transmission[1], 2) + " / " + String::num(data.transmission[2], 2) + "\n";
     text += "Atten: " + String::num(data.attenuation, 2) + "\n";
     text += air_str + "\n";
-    if (data.directivity_enabled) text += dir_str + "\n";
+    if (data.directivity_enabled)
+        text += dir_str + "\n";
 
     text += "Signal D/R/P: " + String::num(data.signal_direct, 2) + " / " +
             String::num(data.signal_reverb, 2) + " / " + String::num(data.signal_pathing, 2);
@@ -113,8 +117,10 @@ void ResonanceDebugDrawer::_update_label_text(const ResonanceDebugData& data, St
 void ResonanceDebugDrawer::process(double delta, const ResonanceDebugData& data, bool show_occ, bool show_reverb, String node_name) {
     // 1. Cleanup check
     if (!show_occ && !show_reverb) {
-        if (mesh_instance && mesh_instance->is_visible()) mesh_instance->set_visible(false);
-        if (label_instance && label_instance->is_visible()) label_instance->set_visible(false);
+        if (mesh_instance && mesh_instance->is_visible())
+            mesh_instance->set_visible(false);
+        if (label_instance && label_instance->is_visible())
+            label_instance->set_visible(false);
         return;
     }
 
@@ -135,8 +141,7 @@ void ResonanceDebugDrawer::process(double delta, const ResonanceDebugData& data,
         if (show_occ || show_reverb) {
             _update_label_text(data, node_name);
             label_instance->set_visible(true);
-        }
-        else {
+        } else {
             label_instance->set_visible(false);
         }
     }

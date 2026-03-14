@@ -48,7 +48,7 @@ void ResonanceStaticScene::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_export_hash"), &ResonanceStaticScene::get_export_hash);
 
     ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "static_scene_asset", PROPERTY_HINT_RESOURCE_TYPE, "ResonanceGeometryAsset"),
-        "set_static_scene_asset", "get_static_scene_asset");
+                 "set_static_scene_asset", "get_static_scene_asset");
     ADD_PROPERTY(PropertyInfo(Variant::STRING, "scene_name_when_exported"), "set_scene_name_when_exported", "get_scene_name_when_exported");
     ADD_PROPERTY(PropertyInfo(Variant::INT, "export_hash", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NO_EDITOR), "set_export_hash", "get_export_hash");
 }

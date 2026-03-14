@@ -1,30 +1,30 @@
 #include "resonance_server.h"
+#include "ray_trace_debug_context.h"
 #include "resonance_constants.h"
-#include "resonance_ipl_guard.h"
-#include "resonance_math.h"
-#include "resonance_log.h"
+#include "resonance_debug_agent.h"
 #include "resonance_geometry.h"
 #include "resonance_geometry_asset.h"
+#include "resonance_ipl_guard.h"
+#include "resonance_log.h"
 #include "resonance_material.h"
-#include "resonance_debug_agent.h"
-#include "ray_trace_debug_context.h"
+#include "resonance_math.h"
 #if defined(_WIN32) && defined(_MSC_VER)
 #include <excpt.h>
 #endif
-#include <godot_cpp/core/class_db.hpp>
-#include <godot_cpp/variant/variant.hpp>
-#include <godot_cpp/variant/char_string.hpp>
-#include <godot_cpp/variant/utility_functions.hpp>
-#include <godot_cpp/classes/project_settings.hpp>
+#include <algorithm>
+#include <climits>
+#include <cstring>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/file_access.hpp>
-#include <godot_cpp/classes/resource_saver.hpp>
 #include <godot_cpp/classes/mesh.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
 #include <godot_cpp/classes/node3d.hpp>
-#include <climits>
-#include <cstring>
-#include <algorithm>
+#include <godot_cpp/classes/project_settings.hpp>
+#include <godot_cpp/classes/resource_saver.hpp>
+#include <godot_cpp/core/class_db.hpp>
+#include <godot_cpp/variant/char_string.hpp>
+#include <godot_cpp/variant/utility_functions.hpp>
+#include <godot_cpp/variant/variant.hpp>
 #include <set>
 
 using namespace godot;
@@ -36,10 +36,14 @@ void bake_progress_callback(float p, void* ud) {
 String _ambient_order_ordinal(int64_t n) {
     int64_t mod10 = ((n < 0) ? -n : n) % 10;
     int64_t mod100 = ((n < 0) ? -n : n) % 100;
-    if (mod100 >= 11 && mod100 <= 13) return String::num_int64(n) + "th";
-    if (mod10 == 1) return String::num_int64(n) + "st";
-    if (mod10 == 2) return String::num_int64(n) + "nd";
-    if (mod10 == 3) return String::num_int64(n) + "rd";
+    if (mod100 >= 11 && mod100 <= 13)
+        return String::num_int64(n) + "th";
+    if (mod10 == 1)
+        return String::num_int64(n) + "st";
+    if (mod10 == 2)
+        return String::num_int64(n) + "nd";
+    if (mod10 == 3)
+        return String::num_int64(n) + "rd";
     return String::num_int64(n) + "th";
 }
 } // namespace
@@ -55,7 +59,8 @@ SourceManager::~SourceManager() {
 }
 
 int32_t SourceManager::add_source(IPLSource source) {
-    if (!source) return -1;
+    if (!source)
+        return -1;
     IPLSource retained_source = iplSourceRetain(source);
     std::lock_guard<std::mutex> lock(mutex);
     int32_t handle = alloc_handle();
@@ -106,7 +111,8 @@ ProbeBatchManager::~ProbeBatchManager() {
 }
 
 int32_t ProbeBatchManager::add_batch(IPLProbeBatch batch) {
-    if (!batch) return -1;
+    if (!batch)
+        return -1;
     std::lock_guard<std::mutex> lock(mutex);
     int32_t handle = alloc_handle();
     if (handle < 0) {
@@ -137,14 +143,16 @@ void ProbeBatchManager::get_all_batches(std::vector<IPLProbeBatch>& out) {
 
 IPLProbeBatch ProbeBatchManager::get_first_batch() {
     std::lock_guard<std::mutex> lock(mutex);
-    if (items.empty()) return nullptr;
+    if (items.empty())
+        return nullptr;
     return iplProbeBatchRetain(items.begin()->second);
 }
 
 IPLProbeBatch ProbeBatchManager::get_batch(int32_t handle) const {
     std::lock_guard<std::mutex> lock(mutex);
     auto it = items.find(handle);
-    if (it != items.end()) return iplProbeBatchRetain(it->second);
+    if (it != items.end())
+        return iplProbeBatchRetain(it->second);
     return nullptr;
 }
 
@@ -156,9 +164,11 @@ bool ResonanceServer::is_shutting_down_flag = false;
 static ResonanceServer* _singleton = nullptr;
 
 void IPLCALL ResonanceServer::_pathing_vis_callback(IPLVector3 from, IPLVector3 to, IPLbool occluded, void* userData) {
-    if (ResonanceServer::is_shutting_down_flag) return;
+    if (ResonanceServer::is_shutting_down_flag)
+        return;
     ResonanceServer* server = static_cast<ResonanceServer*>(userData);
-    if (!server) return;
+    if (!server)
+        return;
     PathVisSegment seg;
     seg.from = ResonanceUtils::to_godot_vector3(from);
     seg.to = ResonanceUtils::to_godot_vector3(to);
@@ -168,10 +178,12 @@ void IPLCALL ResonanceServer::_pathing_vis_callback(IPLVector3 from, IPLVector3 
 }
 
 void IPLCALL ResonanceServer::_custom_batched_closest_hit(IPLint32 numRays, const IPLRay* rays,
-    const IPLfloat32* minDistances, const IPLfloat32* maxDistances, IPLHit* hits, void* userData) {
-    if (ResonanceServer::is_shutting_down_flag) return;
+                                                          const IPLfloat32* minDistances, const IPLfloat32* maxDistances, IPLHit* hits, void* userData) {
+    if (ResonanceServer::is_shutting_down_flag)
+        return;
     ResonanceServer* server = static_cast<ResonanceServer*>(userData);
-    if (!server) return;
+    if (!server)
+        return;
 
     int bounce = server->ray_debug_bounce_index_.load(std::memory_order_relaxed);
     server->ray_trace_debug_context_.trace_batch(numRays, rays, minDistances, maxDistances, hits, bounce);
@@ -180,10 +192,12 @@ void IPLCALL ResonanceServer::_custom_batched_closest_hit(IPLint32 numRays, cons
 }
 
 void IPLCALL ResonanceServer::_custom_batched_any_hit(IPLint32 numRays, const IPLRay* rays,
-    const IPLfloat32* minDistances, const IPLfloat32* maxDistances, IPLuint8* occluded, void* userData) {
-    if (ResonanceServer::is_shutting_down_flag) return;
+                                                      const IPLfloat32* minDistances, const IPLfloat32* maxDistances, IPLuint8* occluded, void* userData) {
+    if (ResonanceServer::is_shutting_down_flag)
+        return;
     ResonanceServer* server = static_cast<ResonanceServer*>(userData);
-    if (!server) return;
+    if (!server)
+        return;
 
     std::vector<IPLHit> hits(numRays);
     int bounce = server->ray_debug_bounce_index_.load(std::memory_order_relaxed);
@@ -201,7 +215,8 @@ ResonanceServer::ResonanceServer() {
 ResonanceServer::~ResonanceServer() {
     is_shutting_down_flag = true;
     _shutdown_steam_audio();
-    if (_singleton == this) _singleton = nullptr;
+    if (_singleton == this)
+        _singleton = nullptr;
 }
 
 ResonanceServer* ResonanceServer::get_singleton() { return _singleton; }
@@ -306,8 +321,10 @@ void ResonanceServer::_init_internal() {
     instrumentation_fetch_cache_miss.store(0, std::memory_order_relaxed);
 
     _init_context_and_devices();
-    if (!steam_audio_context_) return;
-    if (!_init_scene_and_simulator()) return;
+    if (!steam_audio_context_)
+        return;
+    if (!_init_scene_and_simulator())
+        return;
     _start_worker_thread();
 
     String version_str = String::num_int64(STEAMAUDIO_VERSION_MAJOR) + "." + String::num_int64(STEAMAUDIO_VERSION_MINOR) + "." + String::num_int64(STEAMAUDIO_VERSION_PATCH);
@@ -315,7 +332,7 @@ void ResonanceServer::_init_internal() {
     int refl_idx = (reflection_type >= resonance::kReflectionConvolution && reflection_type <= resonance::kReflectionTan) ? reflection_type : resonance::kReflectionConvolution;
     String rays_str = (max_rays == 0) ? "Rays (Baked Only)" : "Rays (Realtime): " + String::num_int64(max_rays);
     String engine_msg = "Engine Started (Steam Audio " + version_str + "). Rate: " + String::num_int64(current_sample_rate) +
-        " | Ambient Order: " + _ambient_order_ordinal(ambisonic_order) + " | Reflection: " + refl_names[refl_idx] + " | " + rays_str;
+                        " | Ambient Order: " + _ambient_order_ordinal(ambisonic_order) + " | Reflection: " + refl_names[refl_idx] + " | " + rays_str;
     UtilityFunctions::print_rich("[color=cyan]Nexus Resonance:[/color] " + engine_msg);
     Engine* eng = Engine::get_singleton();
     if (max_rays == 0 && _uses_convolution_or_hybrid_or_tan() && (!eng || !eng->is_editor_hint())) {
@@ -351,7 +368,7 @@ void ResonanceServer::_init_context_and_devices() {
 }
 
 bool ResonanceServer::_init_scene_and_simulator() {
-    IPLAudioSettings audioSettings{ current_sample_rate, frame_size };
+    IPLAudioSettings audioSettings{current_sample_rate, frame_size};
     IPLSceneSettings sceneSettings{};
     sceneSettings.type = _scene_type();
     sceneSettings.embreeDevice = _embree();
@@ -365,10 +382,9 @@ bool ResonanceServer::_init_scene_and_simulator() {
     simulation_settings.flags = static_cast<IPLSimulationFlags>(IPL_SIMULATIONFLAGS_DIRECT | IPL_SIMULATIONFLAGS_REFLECTIONS);
     simulation_settings.sceneType = _scene_type();
     simulation_settings.reflectionType =
-        (reflection_type == resonance::kReflectionParametric) ? IPL_REFLECTIONEFFECTTYPE_PARAMETRIC :
-        (reflection_type == resonance::kReflectionHybrid) ? IPL_REFLECTIONEFFECTTYPE_HYBRID :
-        (reflection_type == resonance::kReflectionTan) ? IPL_REFLECTIONEFFECTTYPE_TAN :
-        IPL_REFLECTIONEFFECTTYPE_CONVOLUTION;
+        (reflection_type == resonance::kReflectionParametric) ? IPL_REFLECTIONEFFECTTYPE_PARAMETRIC : (reflection_type == resonance::kReflectionHybrid) ? IPL_REFLECTIONEFFECTTYPE_HYBRID
+                                                                                                  : (reflection_type == resonance::kReflectionTan)      ? IPL_REFLECTIONEFFECTTYPE_TAN
+                                                                                                                                                        : IPL_REFLECTIONEFFECTTYPE_CONVOLUTION;
     simulation_settings.openCLDevice = _opencl();
     simulation_settings.tanDevice = _tan();
     simulation_settings.maxNumOcclusionSamples = resonance::kMaxOcclusionSamples;
@@ -436,7 +452,8 @@ void ResonanceServer::tick(float delta) {
         reflections_pathing_requested.store(true, std::memory_order_release);
     }
 
-    if (!_should_run_throttled(tick_throttle_counter, simulation_tick_throttle)) return;
+    if (!_should_run_throttled(tick_throttle_counter, simulation_tick_throttle))
+        return;
     {
         std::lock_guard<std::mutex> lock(worker_mutex);
         simulation_requested = true;
@@ -449,7 +466,8 @@ void ResonanceServer::_worker_thread_func() {
         std::unique_lock<std::mutex> lock(worker_mutex);
         worker_cv.wait(lock, [this] { return simulation_requested || !thread_running; });
 
-        if (!thread_running) break;
+        if (!thread_running)
+            break;
         simulation_requested = false;
 
         IPLCoordinateSpace3 current_listener;
@@ -480,7 +498,8 @@ void ResonanceServer::_worker_thread_func() {
             inputs.pathingVisCallback = (pathing_enabled && debug_pathing) ? _pathing_vis_callback : nullptr;
             inputs.pathingUserData = (pathing_enabled && debug_pathing) ? static_cast<void*>(this) : nullptr;
             IPLSimulationFlags sim_flags = static_cast<IPLSimulationFlags>(IPL_SIMULATIONFLAGS_DIRECT | (run_reflections ? IPL_SIMULATIONFLAGS_REFLECTIONS : 0));
-            if (pathing_enabled) sim_flags = static_cast<IPLSimulationFlags>(sim_flags | IPL_SIMULATIONFLAGS_PATHING);
+            if (pathing_enabled)
+                sim_flags = static_cast<IPLSimulationFlags>(sim_flags | IPL_SIMULATIONFLAGS_PATHING);
             iplSimulatorSetSharedInputs(simulator, sim_flags, &inputs);
 
             if (scene_dirty) {
@@ -505,7 +524,8 @@ void ResonanceServer::_worker_thread_func() {
                 }
                 // Reduce crash cooldown each tick
                 int cooldown = pathing_crash_cooldown.load();
-                if (cooldown > 0) pathing_crash_cooldown.store(cooldown - 1);
+                if (cooldown > 0)
+                    pathing_crash_cooldown.store(cooldown - 1);
                 if (pathing_enabled && pending_listener_valid.load() && pathing_crash_cooldown.load() <= 0) {
                     if (debug_pathing) {
                         std::lock_guard<std::mutex> pv_lock(pathing_vis_mutex);
@@ -515,8 +535,7 @@ void ResonanceServer::_worker_thread_func() {
                     __try {
                         iplSimulatorRunPathing(simulator);
                         pathing_ran_this_tick.store(true);
-                    }
-                    __except (EXCEPTION_EXECUTE_HANDLER) {
+                    } __except (EXCEPTION_EXECUTE_HANDLER) {
                         // Steam Audio RunPathing can crash (SEH) when listener is behind wall / unreachable.
                         // Skip RunPathing for kPathingCrashCooldownTicks to reduce exception storm; avoids hundreds of crashes per second.
                         pathing_crash_cooldown.store(resonance::kPathingCrashCooldownTicks);
@@ -534,7 +553,8 @@ void ResonanceServer::_worker_thread_func() {
 // --- SHUTDOWN ---
 
 void ResonanceServer::_shutdown_steam_audio() {
-    if (!_ctx()) return;  // Idempotent; safe to call multiple times
+    if (!_ctx())
+        return; // Idempotent; safe to call multiple times
 
     // Reset atomic flags first to prevent late accesses during/after shutdown
     new_listener_written_.store(false);
@@ -552,7 +572,8 @@ void ResonanceServer::_shutdown_steam_audio() {
     if (thread_running) {
         thread_running = false;
         worker_cv.notify_all();
-        if (worker_thread.joinable()) worker_thread.join();
+        if (worker_thread.joinable())
+            worker_thread.join();
     }
     {
         std::lock_guard<std::mutex> cb_lock(_attenuation_callback_mutex);
@@ -585,9 +606,11 @@ void ResonanceServer::_shutdown_steam_audio() {
         if (simulator && batch) {
             iplSimulatorRemoveProbeBatch(simulator, batch);
         }
-        if (batch) iplProbeBatchRelease(&batch);
+        if (batch)
+            iplProbeBatchRelease(&batch);
     }
-    if (simulator && !batches_to_release.empty()) iplSimulatorCommit(simulator);
+    if (simulator && !batches_to_release.empty())
+        iplSimulatorCommit(simulator);
 
     // FMOD Bridge: Destroy reverb source before simulator release.
     if (fmod_reverb_source_handle_ >= 0) {
@@ -598,10 +621,17 @@ void ResonanceServer::_shutdown_steam_audio() {
     new_reflection_mixer_written_.store(false);
     {
         std::lock_guard<std::mutex> m_lock(mixer_access_mutex);
-        if (reflection_mixer_[0]) { iplReflectionMixerRelease(&reflection_mixer_[0]); reflection_mixer_[0] = nullptr; }
-        if (reflection_mixer_[1]) { iplReflectionMixerRelease(&reflection_mixer_[1]); reflection_mixer_[1] = nullptr; }
+        if (reflection_mixer_[0]) {
+            iplReflectionMixerRelease(&reflection_mixer_[0]);
+            reflection_mixer_[0] = nullptr;
+        }
+        if (reflection_mixer_[1]) {
+            iplReflectionMixerRelease(&reflection_mixer_[1]);
+            reflection_mixer_[1] = nullptr;
+        }
     }
-    if (simulator) iplSimulatorRelease(&simulator);
+    if (simulator)
+        iplSimulatorRelease(&simulator);
     for (IPLStaticMesh m : _runtime_static_meshes) {
         if (m && scene) {
             iplStaticMeshRemove(m, scene);
@@ -618,10 +648,12 @@ void ResonanceServer::_shutdown_steam_audio() {
     }
     _runtime_static_instanced_meshes.clear();
     for (IPLScene& sub : _runtime_static_sub_scenes) {
-        if (sub) iplSceneRelease(&sub);
+        if (sub)
+            iplSceneRelease(&sub);
     }
     _runtime_static_sub_scenes.clear();
-    if (scene) iplSceneRelease(&scene);
+    if (scene)
+        iplSceneRelease(&scene);
     if (steam_audio_context_) {
         steam_audio_context_->shutdown();
         steam_audio_context_.reset();
@@ -643,7 +675,10 @@ IPLCoordinateSpace3 ResonanceServer::get_current_listener_coords() {
 IPLReflectionMixer ResonanceServer::get_reflection_mixer_handle() const {
     std::lock_guard<std::mutex> lock(mixer_access_mutex);
     if (new_reflection_mixer_written_.exchange(false, std::memory_order_acq_rel)) {
-        if (reflection_mixer_[0]) { iplReflectionMixerRelease(&reflection_mixer_[0]); reflection_mixer_[0] = nullptr; }
+        if (reflection_mixer_[0]) {
+            iplReflectionMixerRelease(&reflection_mixer_[0]);
+            reflection_mixer_[0] = nullptr;
+        }
         if (reflection_mixer_[1]) {
             reflection_mixer_[0] = reflection_mixer_[1];
             reflection_mixer_[1] = nullptr;
@@ -653,23 +688,29 @@ IPLReflectionMixer ResonanceServer::get_reflection_mixer_handle() const {
 }
 
 static int snap_to_supported_frame_size(int value) {
-    const int supported[] = { 256, resonance::kGodotDefaultFrameSize, 1024, resonance::kMaxAudioFrameSize };
+    const int supported[] = {256, resonance::kGodotDefaultFrameSize, 1024, resonance::kMaxAudioFrameSize};
     int best = resonance::kGodotDefaultFrameSize;
     int best_dist = INT_MAX;
     for (int s : supported) {
         int d = (value > s) ? (value - s) : (s - value);
-        if (d < best_dist) { best_dist = d; best = s; }
+        if (d < best_dist) {
+            best_dist = d;
+            best = s;
+        }
     }
     return best;
 }
 
 void ResonanceServer::request_reinit_with_frame_size(int detected_frame_count) {
-    if (detected_frame_count <= 0) return;
-    if (!audio_frame_size_was_auto_.load(std::memory_order_acquire)) return;  // User set explicit value; do not override
+    if (detected_frame_count <= 0)
+        return;
+    if (!audio_frame_size_was_auto_.load(std::memory_order_acquire))
+        return; // User set explicit value; do not override
     int snapped = snap_to_supported_frame_size(detected_frame_count);
-    if (snapped == frame_size) return;  // Already at nearest supported; avoid redundant reinit
+    if (snapped == frame_size)
+        return; // Already at nearest supported; avoid redundant reinit
     int prev = pending_reinit_frame_size_.exchange(snapped, std::memory_order_release);
-    (void)prev;  // Ignore overwrites; main thread consumes once
+    (void)prev; // Ignore overwrites; main thread consumes once
 }
 
 int ResonanceServer::consume_pending_reinit_frame_size() {
@@ -686,9 +727,11 @@ void ResonanceServer::notify_listener_changed() {
 }
 
 void ResonanceServer::notify_listener_changed_to(Node* listener_node) {
-    if (!listener_node || !_ctx()) return;
+    if (!listener_node || !_ctx())
+        return;
     Node3D* n3d = Object::cast_to<Node3D>(listener_node);
-    if (!n3d) return;
+    if (!n3d)
+        return;
     Transform3D tr = n3d->get_global_transform();
     Vector3 pos = tr.origin;
     Vector3 forward = -tr.basis.get_column(2);
@@ -697,7 +740,8 @@ void ResonanceServer::notify_listener_changed_to(Node* listener_node) {
 }
 
 void ResonanceServer::update_listener(Vector3 pos, Vector3 dir, Vector3 up) {
-    if (!_ctx()) return;
+    if (!_ctx())
+        return;
 
     // Orthonormalize basis for safety; use safe_unit_vector to avoid NaN from degenerate transforms
     Vector3 dir_n = ResonanceUtils::safe_unit_vector(dir, Vector3(0, 0, -1));
@@ -723,10 +767,12 @@ void ResonanceServer::update_listener(Vector3 pos, Vector3 dir, Vector3 up) {
 // --- SOURCE API ---
 
 int32_t ResonanceServer::create_source_handle(Vector3 pos, float radius) {
-    if (!_ctx() || !simulator) return -1;
+    if (!_ctx() || !simulator)
+        return -1;
     IPLSourceSettings settings{};
     settings.flags = static_cast<IPLSimulationFlags>(IPL_SIMULATIONFLAGS_DIRECT | IPL_SIMULATIONFLAGS_REFLECTIONS);
-    if (pathing_enabled) settings.flags = static_cast<IPLSimulationFlags>(settings.flags | IPL_SIMULATIONFLAGS_PATHING);
+    if (pathing_enabled)
+        settings.flags = static_cast<IPLSimulationFlags>(settings.flags | IPL_SIMULATIONFLAGS_PATHING);
     IPLSource src = nullptr;
     if (iplSourceCreate(simulator, &settings, &src) != IPL_STATUS_SUCCESS || !src) {
         ResonanceLog::error("ResonanceServer: iplSourceCreate failed (create_source_handle).");
@@ -741,17 +787,19 @@ int32_t ResonanceServer::create_source_handle(Vector3 pos, float radius) {
             reflections_pending_handles_.insert(handle);
         }
         _update_source_internal(src, handle, pos, radius, Vector3(0, 0, -1), Vector3(0, 1, 0), 0.0f, 1.0f, true, false, 1.0f,
-            false, false, resonance::kDefaultOcclusionSamples, resonance::kDefaultTransmissionRays, 0, Vector3(0, 0, 0), 0.0f);
+                                false, false, resonance::kDefaultOcclusionSamples, resonance::kDefaultTransmissionRays, 0, Vector3(0, 0, 0), 0.0f);
         iplSourceRelease(&src);
         return handle;
     }
 }
 
 void ResonanceServer::destroy_source_handle(int32_t handle) {
-    if (handle < 0 || is_shutting_down_flag || !_ctx()) return;
+    if (handle < 0 || is_shutting_down_flag || !_ctx())
+        return;
     IPLSource src = source_manager.get_source(handle);
     if (src) {
-        if (simulator) iplSourceRemove(src, simulator);
+        if (simulator)
+            iplSourceRemove(src, simulator);
         iplSourceRelease(&src);
     }
     {
@@ -783,34 +831,36 @@ void ResonanceServer::destroy_source_handle(int32_t handle) {
 }
 
 void ResonanceServer::update_source(int32_t handle, Vector3 pos, float radius,
-    Vector3 source_forward, Vector3 source_up,
-    float directivity_weight, float directivity_power, bool air_absorption_enabled,
-    bool use_sim_distance_attenuation, float min_distance,
-    bool path_validation_enabled, bool find_alternate_paths,
-    int occlusion_samples, int num_transmission_rays,
-    int baked_data_variation, Vector3 baked_endpoint_center, float baked_endpoint_radius,
-    int32_t pathing_probe_batch_handle,
-    int reflections_enabled_override,
-    int pathing_enabled_override) {
-    if (handle < 0) return;
+                                    Vector3 source_forward, Vector3 source_up,
+                                    float directivity_weight, float directivity_power, bool air_absorption_enabled,
+                                    bool use_sim_distance_attenuation, float min_distance,
+                                    bool path_validation_enabled, bool find_alternate_paths,
+                                    int occlusion_samples, int num_transmission_rays,
+                                    int baked_data_variation, Vector3 baked_endpoint_center, float baked_endpoint_radius,
+                                    int32_t pathing_probe_batch_handle,
+                                    int reflections_enabled_override,
+                                    int pathing_enabled_override) {
+    if (handle < 0)
+        return;
     IPLSource src = source_manager.get_source(handle);
     if (src) {
         {
             std::lock_guard<std::mutex> lock(simulation_mutex);
             _update_source_internal(src, handle, pos, radius, source_forward, source_up,
-                directivity_weight, directivity_power, air_absorption_enabled,
-                use_sim_distance_attenuation, min_distance,
-                path_validation_enabled, find_alternate_paths,
-                occlusion_samples, num_transmission_rays,
-                baked_data_variation, baked_endpoint_center, baked_endpoint_radius,
-                pathing_probe_batch_handle, reflections_enabled_override, pathing_enabled_override);
+                                    directivity_weight, directivity_power, air_absorption_enabled,
+                                    use_sim_distance_attenuation, min_distance,
+                                    path_validation_enabled, find_alternate_paths,
+                                    occlusion_samples, num_transmission_rays,
+                                    baked_data_variation, baked_endpoint_center, baked_endpoint_radius,
+                                    pathing_probe_batch_handle, reflections_enabled_override, pathing_enabled_override);
         }
         iplSourceRelease(&src);
     }
 }
 
 void ResonanceServer::set_source_attenuation_callback_data(int32_t handle, int attenuation_mode, float min_distance, float max_distance, const PackedFloat32Array& curve_samples) {
-    if (handle < 0) return;
+    if (handle < 0)
+        return;
     std::lock_guard<std::mutex> lock(_attenuation_callback_mutex);
     AttenuationCallbackData& d = _source_attenuation_callback_data[handle];
     d.mode = attenuation_mode;
@@ -823,7 +873,8 @@ void ResonanceServer::set_source_attenuation_callback_data(int32_t handle, int a
 }
 
 void ResonanceServer::clear_source_attenuation_callback_data(int32_t handle) {
-    if (handle < 0) return;
+    if (handle < 0)
+        return;
     std::lock_guard<std::mutex> lock(_attenuation_callback_mutex);
     _source_attenuation_callback_data.erase(handle);
     _source_attenuation_context.erase(handle);
@@ -831,15 +882,21 @@ void ResonanceServer::clear_source_attenuation_callback_data(int32_t handle) {
 
 static float IPLCALL _distance_attenuation_callback(IPLfloat32 distance, void* userData) {
     const ResonanceServer::AttenuationCallbackContext* ctx = static_cast<const ResonanceServer::AttenuationCallbackContext*>(userData);
-    if (!ctx || !ctx->mutex || !ctx->data) return 1.0f;
+    if (!ctx || !ctx->mutex || !ctx->data)
+        return 1.0f;
     std::lock_guard<std::mutex> lock(*ctx->mutex);
     const ResonanceServer::AttenuationCallbackData* d = ctx->data;
-    if (!d || d->max_distance <= d->min_distance) return 1.0f;
-    if (distance <= d->min_distance) return (d->mode == 2 && d->num_curve_samples > 0) ? resonance::sanitize_audio_float(d->curve_samples[0]) : 1.0f;
-    if (distance >= d->max_distance) return (d->mode == 2 && d->num_curve_samples > 0) ? resonance::sanitize_audio_float(d->curve_samples[d->num_curve_samples - 1]) : 0.0f;
+    if (!d || d->max_distance <= d->min_distance)
+        return 1.0f;
+    if (distance <= d->min_distance)
+        return (d->mode == 2 && d->num_curve_samples > 0) ? resonance::sanitize_audio_float(d->curve_samples[0]) : 1.0f;
+    if (distance >= d->max_distance)
+        return (d->mode == 2 && d->num_curve_samples > 0) ? resonance::sanitize_audio_float(d->curve_samples[d->num_curve_samples - 1]) : 0.0f;
     float t = (distance - d->min_distance) / (d->max_distance - d->min_distance);
-    t = (t < 0.0f) ? 0.0f : (t > 1.0f) ? 1.0f : t;
-    if (d->mode == 1) return 1.0f - t;
+    t = (t < 0.0f) ? 0.0f : (t > 1.0f) ? 1.0f
+                                       : t;
+    if (d->mode == 1)
+        return 1.0f - t;
     if (d->mode == 2 && d->num_curve_samples > 1) {
         float idx = t * (d->num_curve_samples - 1);
         int i0 = (int)idx;
@@ -852,25 +909,30 @@ static float IPLCALL _distance_attenuation_callback(IPLfloat32 distance, void* u
 }
 
 void ResonanceServer::_update_source_internal(IPLSource src, int32_t handle, Vector3 pos, float radius,
-    Vector3 source_forward, Vector3 source_up,
-    float directivity_weight, float directivity_power, bool air_absorption_enabled,
-    bool use_sim_distance_attenuation, float min_distance,
-    bool path_validation_enabled, bool find_alternate_paths,
-    int occlusion_samples, int num_transmission_rays,
-    int baked_data_variation, Vector3 baked_endpoint_center, float baked_endpoint_radius,
-    int32_t pathing_probe_batch_handle,
-    int reflections_enabled_override,
-    int pathing_enabled_override) {
-    if (!src || !_ctx()) return;
+                                              Vector3 source_forward, Vector3 source_up,
+                                              float directivity_weight, float directivity_power, bool air_absorption_enabled,
+                                              bool use_sim_distance_attenuation, float min_distance,
+                                              bool path_validation_enabled, bool find_alternate_paths,
+                                              int occlusion_samples, int num_transmission_rays,
+                                              int baked_data_variation, Vector3 baked_endpoint_center, float baked_endpoint_radius,
+                                              int32_t pathing_probe_batch_handle,
+                                              int reflections_enabled_override,
+                                              int pathing_enabled_override) {
+    if (!src || !_ctx())
+        return;
     IPLSimulationInputs inputs{};
     bool enable_reflections = (reflections_enabled_override == -1) ? true : (reflections_enabled_override != 0);
     bool enable_pathing = (pathing_enabled_override == -1) ? pathing_enabled : (pathing_enabled_override != 0);
     IPLSimulationFlags sim_flags = static_cast<IPLSimulationFlags>(IPL_SIMULATIONFLAGS_DIRECT);
-    if (enable_reflections) sim_flags = static_cast<IPLSimulationFlags>(sim_flags | IPL_SIMULATIONFLAGS_REFLECTIONS);
+    if (enable_reflections)
+        sim_flags = static_cast<IPLSimulationFlags>(sim_flags | IPL_SIMULATIONFLAGS_REFLECTIONS);
     inputs.directFlags = (IPLDirectSimulationFlags)(IPL_DIRECTSIMULATIONFLAGS_OCCLUSION | IPL_DIRECTSIMULATIONFLAGS_TRANSMISSION);
-    if (use_sim_distance_attenuation) inputs.directFlags = (IPLDirectSimulationFlags)(inputs.directFlags | IPL_DIRECTSIMULATIONFLAGS_DISTANCEATTENUATION);
-    if (air_absorption_enabled) inputs.directFlags = (IPLDirectSimulationFlags)(inputs.directFlags | IPL_DIRECTSIMULATIONFLAGS_AIRABSORPTION);
-    if (directivity_weight != 0.0f || directivity_power != 1.0f) inputs.directFlags = (IPLDirectSimulationFlags)(inputs.directFlags | IPL_DIRECTSIMULATIONFLAGS_DIRECTIVITY);
+    if (use_sim_distance_attenuation)
+        inputs.directFlags = (IPLDirectSimulationFlags)(inputs.directFlags | IPL_DIRECTSIMULATIONFLAGS_DISTANCEATTENUATION);
+    if (air_absorption_enabled)
+        inputs.directFlags = (IPLDirectSimulationFlags)(inputs.directFlags | IPL_DIRECTSIMULATIONFLAGS_AIRABSORPTION);
+    if (directivity_weight != 0.0f || directivity_power != 1.0f)
+        inputs.directFlags = (IPLDirectSimulationFlags)(inputs.directFlags | IPL_DIRECTSIMULATIONFLAGS_DIRECTIVITY);
     inputs.source.origin = ResonanceUtils::to_ipl_vector3(pos);
     Vector3 ahead_n = ResonanceUtils::safe_unit_vector(source_forward, Vector3(0, 0, -1));
     Vector3 up_raw = ResonanceUtils::safe_unit_vector(source_up, Vector3(0, 1, 0));
@@ -931,7 +993,7 @@ void ResonanceServer::_update_source_internal(IPLSource src, int32_t handle, Vec
         inputs.baked = IPL_FALSE;
         inputs.bakedDataIdentifier.type = IPL_BAKEDDATATYPE_REFLECTIONS;
         inputs.bakedDataIdentifier.variation = IPL_BAKEDDATAVARIATION_REVERB;
-        inputs.bakedDataIdentifier.endpointInfluence.center = { 0.0f, 0.0f, 0.0f };
+        inputs.bakedDataIdentifier.endpointInfluence.center = {0.0f, 0.0f, 0.0f};
         inputs.bakedDataIdentifier.endpointInfluence.radius = 0.0f;
     } else {
         inputs.baked = IPL_TRUE;
@@ -946,7 +1008,7 @@ void ResonanceServer::_update_source_internal(IPLSource src, int32_t handle, Vec
             inputs.bakedDataIdentifier.endpointInfluence.radius = (baked_endpoint_radius > 0.0f) ? baked_endpoint_radius : reverb_influence_radius;
         } else {
             inputs.bakedDataIdentifier.variation = IPL_BAKEDDATAVARIATION_REVERB;
-            inputs.bakedDataIdentifier.endpointInfluence.center = { 0.0f, 0.0f, 0.0f };
+            inputs.bakedDataIdentifier.endpointInfluence.center = {0.0f, 0.0f, 0.0f};
             inputs.bakedDataIdentifier.endpointInfluence.radius = 0.0f;
         }
     }
@@ -990,7 +1052,8 @@ IPLSource ResonanceServer::get_source_from_handle(int32_t handle) {
 // --- CALCULATIONS ---
 
 float ResonanceServer::calculate_distance_attenuation(Vector3 source_pos, Vector3 listener_pos, float min_dist, float max_dist) {
-    if (!_ctx()) return 1.0f;
+    if (!_ctx())
+        return 1.0f;
     IPLDistanceAttenuationModel model{};
     model.type = IPL_DISTANCEATTENUATIONTYPE_INVERSEDISTANCE;
     model.minDistance = min_dist;
@@ -1000,18 +1063,20 @@ float ResonanceServer::calculate_distance_attenuation(Vector3 source_pos, Vector
 }
 
 Vector3 ResonanceServer::calculate_air_absorption(Vector3 source_pos, Vector3 listener_pos) {
-    if (!_ctx()) return Vector3(1, 1, 1);
+    if (!_ctx())
+        return Vector3(1, 1, 1);
     IPLAirAbsorptionModel model{};
     model.type = IPL_AIRABSORPTIONTYPE_DEFAULT;
     IPLVector3 src = ResonanceUtils::to_ipl_vector3(source_pos);
     IPLVector3 dst = ResonanceUtils::to_ipl_vector3(listener_pos);
-    float air_abs[3] = { 1.0f, 1.0f, 1.0f };
+    float air_abs[3] = {1.0f, 1.0f, 1.0f};
     iplAirAbsorptionCalculate(_ctx(), src, dst, &model, air_abs);
     return Vector3(air_abs[0], air_abs[1], air_abs[2]);
 }
 
 float ResonanceServer::calculate_directivity(Vector3 source_pos, Vector3 fwd, Vector3 up, Vector3 right, Vector3 listener_pos, float weight, float power) {
-    if (!_ctx()) return 1.0f;
+    if (!_ctx())
+        return 1.0f;
     IPLDirectivity dSettings{};
     dSettings.dipoleWeight = weight;
     dSettings.dipolePower = power;
@@ -1029,13 +1094,19 @@ float ResonanceServer::calculate_directivity(Vector3 source_pos, Vector3 fwd, Ve
 OcclusionData ResonanceServer::get_source_occlusion_data(int32_t handle) {
     OcclusionData result;
     result.occlusion = 0.0f;
-    result.transmission[0] = 1.0f; result.transmission[1] = 1.0f; result.transmission[2] = 1.0f;
-    result.air_absorption[0] = 1.0f; result.air_absorption[1] = 1.0f; result.air_absorption[2] = 1.0f;
+    result.transmission[0] = 1.0f;
+    result.transmission[1] = 1.0f;
+    result.transmission[2] = 1.0f;
+    result.air_absorption[0] = 1.0f;
+    result.air_absorption[1] = 1.0f;
+    result.air_absorption[2] = 1.0f;
     result.directivity = 1.0f;
     result.distance_attenuation = 1.0f;
-    if (handle < 0 || !_ctx()) return result;
+    if (handle < 0 || !_ctx())
+        return result;
     IPLSource src = source_manager.get_source(handle);
-    if (!src) return result;
+    if (!src)
+        return result;
 
     {
         std::lock_guard<std::mutex> lock(simulation_mutex);
@@ -1056,9 +1127,11 @@ OcclusionData ResonanceServer::get_source_occlusion_data(int32_t handle) {
 }
 
 bool ResonanceServer::fetch_reverb_params(int32_t handle, IPLReflectionEffectParams& out_params) {
-    if (handle < 0 || !_ctx()) return false;
+    if (handle < 0 || !_ctx())
+        return false;
     IPLSource src = source_manager.get_source(handle);
-    if (!src) return false;
+    if (!src)
+        return false;
     bool result = false;
 
     // Steam Audio can return non-zero reverb times even with no probes and numRays=0 (e.g. scene-based
@@ -1112,8 +1185,8 @@ bool ResonanceServer::fetch_reverb_params(int32_t handle, IPLReflectionEffectPar
             out_params.delay = resonance::sanitize_audio_float(out_params.delay);
             // IR validation: reject convolution when ir metadata is invalid (avoids Steam Audio NaN warnings).
             if (has_convolution && out_params.ir != nullptr) {
-                const int max_ir_samples = 480000;  // ~10 s at 48 kHz
-                const int max_ir_channels = 64;     // 7th-order ambisonics
+                const int max_ir_samples = 480000; // ~10 s at 48 kHz
+                const int max_ir_channels = 64;    // 7th-order ambisonics
                 if (out_params.irSize <= 0 || out_params.irSize > max_ir_samples ||
                     out_params.numChannels <= 0 || out_params.numChannels > max_ir_channels) {
                     out_params.ir = nullptr;
@@ -1123,11 +1196,12 @@ bool ResonanceServer::fetch_reverb_params(int32_t handle, IPLReflectionEffectPar
             }
             // For Hybrid: Steam Audio validation requires ir non-null when type=HYBRID. Use PARAMETRIC when no IR.
             bool use_hybrid_type = (reflection_type == resonance::kReflectionHybrid && has_convolution && has_parametric);
-            out_params.type = (reflection_type == resonance::kReflectionParametric) ? IPL_REFLECTIONEFFECTTYPE_PARAMETRIC :
-                (reflection_type == resonance::kReflectionHybrid && use_hybrid_type) ? IPL_REFLECTIONEFFECTTYPE_HYBRID :
-                (reflection_type == resonance::kReflectionHybrid) ? IPL_REFLECTIONEFFECTTYPE_PARAMETRIC :
-                (reflection_type == resonance::kReflectionTan) ? IPL_REFLECTIONEFFECTTYPE_TAN : IPL_REFLECTIONEFFECTTYPE_CONVOLUTION;
-            if (reflection_type == resonance::kReflectionTan) out_params.tanDevice = _tan();
+            out_params.type = (reflection_type == resonance::kReflectionParametric) ? IPL_REFLECTIONEFFECTTYPE_PARAMETRIC : (reflection_type == resonance::kReflectionHybrid && use_hybrid_type) ? IPL_REFLECTIONEFFECTTYPE_HYBRID
+                                                                                                                        : (reflection_type == resonance::kReflectionHybrid)                      ? IPL_REFLECTIONEFFECTTYPE_PARAMETRIC
+                                                                                                                        : (reflection_type == resonance::kReflectionTan)                         ? IPL_REFLECTIONEFFECTTYPE_TAN
+                                                                                                                                                                                                 : IPL_REFLECTIONEFFECTTYPE_CONVOLUTION;
+            if (reflection_type == resonance::kReflectionTan)
+                out_params.tanDevice = _tan();
             result = true;
             if (reflection_type == resonance::kReflectionConvolution && has_convolution) {
                 reverb_convolution_valid_fetches.fetch_add(1, std::memory_order_relaxed);
@@ -1186,9 +1260,11 @@ bool ResonanceServer::fetch_reverb_params(int32_t handle, IPLReflectionEffectPar
 }
 
 bool ResonanceServer::fetch_pathing_params(int32_t handle, IPLPathEffectParams& out_params) {
-    if (handle < 0 || !_ctx() || !pathing_enabled) return false;
+    if (handle < 0 || !_ctx() || !pathing_enabled)
+        return false;
     IPLSource src = source_manager.get_source(handle);
-    if (!src) return false;
+    if (!src)
+        return false;
     bool result = false;
 
     // Use try_lock + cache fallback to avoid blocking audio thread (same pattern as fetch_reverb_params).
@@ -1254,7 +1330,8 @@ bool ResonanceServer::fetch_pathing_params(int32_t handle, IPLPathEffectParams& 
             out_entry.order = it->second.order;
             out_entry.valid = true;
             memset(&out_params, 0, sizeof(out_params));
-            for (int i = 0; i < resonance::kReverbBandCount; i++) out_params.eqCoeffs[i] = out_entry.eqCoeffs[i];
+            for (int i = 0; i < resonance::kReverbBandCount; i++)
+                out_params.eqCoeffs[i] = out_entry.eqCoeffs[i];
             out_params.shCoeffs = out_entry.sh_coeffs.data();
             out_params.order = out_entry.order;
             out_params.binaural = reverb_binaural ? IPL_TRUE : IPL_FALSE;
@@ -1291,11 +1368,13 @@ void ResonanceServer::clear_pathing_deviation_callback() {
 // --- SCENE I/O ---
 
 void ResonanceServer::notify_geometry_changed(int triangle_delta) {
-    if (!_ctx()) return;
+    if (!_ctx())
+        return;
     bool should_mark_dirty = (triangle_delta != 0) || _should_run_throttled(geometry_update_throttle_counter, geometry_update_throttle);
     std::lock_guard<std::mutex> lock(simulation_mutex);
     global_triangle_count += triangle_delta;
-    if (should_mark_dirty) scene_dirty = true;
+    if (should_mark_dirty)
+        scene_dirty = true;
 }
 
 void ResonanceServer::save_scene_data(String filename) {
@@ -1312,7 +1391,8 @@ void ResonanceServer::save_scene_obj(String file_base_name) {
     String abs_path = file_base_name;
     if (file_base_name.begins_with("res://") || file_base_name.begins_with("user://")) {
         ProjectSettings* ps = ProjectSettings::get_singleton();
-        if (ps) abs_path = ps->globalize_path(file_base_name);
+        if (ps)
+            abs_path = ps->globalize_path(file_base_name);
     }
     // Steam Audio dumpObj writes the OBJ file to the given path as-is (no .obj appended).
     if (!abs_path.ends_with(".obj")) {
@@ -1327,7 +1407,8 @@ void ResonanceServer::save_scene_obj(String file_base_name) {
 }
 
 void ResonanceServer::load_scene_data(String filename) {
-    if (!_ctx() || !simulator) return;
+    if (!_ctx() || !simulator)
+        return;
     std::lock_guard<std::mutex> lock(simulation_mutex);
     scene_manager_.load_scene_data(_ctx(), &scene, simulator, _scene_type(), _embree(), _radeon(), filename, &global_triangle_count);
 }
@@ -1359,15 +1440,17 @@ uint64_t ResonanceServer::_hash_probe_data(const PackedByteArray& pba) {
 }
 
 PackedVector3Array ResonanceServer::generate_manual_grid(const Transform3D& tr, Vector3 extents, float spacing,
-    int generation_type, float height_above_floor) {
+                                                         int generation_type, float height_above_floor) {
     return baker.generate_manual_grid(tr, extents, spacing, generation_type, height_above_floor);
 }
 
 PackedVector3Array ResonanceServer::generate_probes_scene_aware(const Transform3D& volume_transform, Vector3 extents,
-    float spacing, int generation_type, float height_above_floor) {
+                                                                float spacing, int generation_type, float height_above_floor) {
     PackedVector3Array out;
-    if (!_ctx()) return out;
-    if (generation_type != ResonanceBaker::GEN_CENTROID && generation_type != ResonanceBaker::GEN_UNIFORM_FLOOR) return out;
+    if (!_ctx())
+        return out;
+    if (generation_type != ResonanceBaker::GEN_CENTROID && generation_type != ResonanceBaker::GEN_UNIFORM_FLOOR)
+        return out;
     std::lock_guard<std::mutex> lock(simulation_mutex);
     if (scene_dirty) {
         iplSceneCommit(scene);
@@ -1376,7 +1459,8 @@ PackedVector3Array ResonanceServer::generate_probes_scene_aware(const Transform3
     IPLScene temp_scene = nullptr;
     IPLStaticMesh temp_mesh = nullptr;
     IPLScene bake_scene = _prepare_bake_scene(&temp_scene, &temp_mesh);
-    if (!bake_scene) return out;
+    if (!bake_scene)
+        return out;
     IPLProbeArray probeArray = nullptr;
     if (iplProbeArrayCreate(_ctx(), &probeArray) != IPL_STATUS_SUCCESS) {
         ResonanceLog::error("ResonanceServer: iplProbeArrayCreate failed (generate_probes_scene_aware).");
@@ -1398,7 +1482,8 @@ PackedVector3Array ResonanceServer::generate_probes_scene_aware(const Transform3
         iplStaticMeshRemove(temp_mesh, temp_scene);
         iplStaticMeshRelease(&temp_mesh);
     }
-    if (temp_scene) iplSceneRelease(&temp_scene);
+    if (temp_scene)
+        iplSceneRelease(&temp_scene);
     return out;
 }
 
@@ -1411,86 +1496,113 @@ void ResonanceServer::set_bake_static_scene_asset(const Ref<ResonanceGeometryAss
 }
 
 void ResonanceServer::clear_static_scenes() {
-    if (!_ctx() || !scene) return;
+    if (!_ctx() || !scene)
+        return;
     std::lock_guard<std::mutex> lock(simulation_mutex);
     RuntimeSceneState state(_runtime_static_meshes, _runtime_static_triangle_count, _runtime_static_debug_mesh_ids,
-        &global_triangle_count, &scene_dirty, _runtime_static_sub_scenes, _runtime_static_instanced_meshes);
+                            &global_triangle_count, &scene_dirty, _runtime_static_sub_scenes, _runtime_static_instanced_meshes);
     scene_manager_.clear_static_scenes(scene, &ray_trace_debug_context_, state);
 }
 
 void ResonanceServer::add_static_scene_from_asset(const Ref<ResonanceGeometryAsset>& p_asset, const Transform3D& p_transform) {
-    if (!_ctx() || !scene) return;
+    if (!_ctx() || !scene)
+        return;
     std::lock_guard<std::mutex> lock(simulation_mutex);
     RuntimeSceneState state(_runtime_static_meshes, _runtime_static_triangle_count, _runtime_static_debug_mesh_ids,
-        &global_triangle_count, &scene_dirty, _runtime_static_sub_scenes, _runtime_static_instanced_meshes);
+                            &global_triangle_count, &scene_dirty, _runtime_static_sub_scenes, _runtime_static_instanced_meshes);
     scene_manager_.add_static_scene_from_asset(_ctx(), scene, p_asset, &ray_trace_debug_context_,
-        wants_debug_reflection_viz(), state, p_transform, _scene_type(), _embree(), _radeon());
+                                               wants_debug_reflection_viz(), state, p_transform, _scene_type(), _embree(), _radeon());
 }
 
 void ResonanceServer::load_static_scene_from_asset(const Ref<ResonanceGeometryAsset>& p_asset, const Transform3D& p_transform) {
-    if (!_ctx() || !scene) return;
+    if (!_ctx() || !scene)
+        return;
     std::lock_guard<std::mutex> lock(simulation_mutex);
     RuntimeSceneState state(_runtime_static_meshes, _runtime_static_triangle_count, _runtime_static_debug_mesh_ids,
-        &global_triangle_count, &scene_dirty, _runtime_static_sub_scenes, _runtime_static_instanced_meshes);
+                            &global_triangle_count, &scene_dirty, _runtime_static_sub_scenes, _runtime_static_instanced_meshes);
     scene_manager_.load_static_scene_from_asset(_ctx(), scene, p_asset, &ray_trace_debug_context_,
-        wants_debug_reflection_viz(), state, p_transform, _scene_type(), _embree(), _radeon());
+                                                wants_debug_reflection_viz(), state, p_transform, _scene_type(), _embree(), _radeon());
 }
 
 void ResonanceServer::set_bake_params(Dictionary params) {
-    if (params.has("bake_num_rays")) _bake_num_rays = (int)params["bake_num_rays"];
-    if (params.has("bake_num_bounces")) _bake_num_bounces = (int)params["bake_num_bounces"];
-    if (params.has("bake_num_threads")) _bake_num_threads = (int)params["bake_num_threads"];
-    if (params.has("bake_reflection_type")) _bake_reflection_type = (int)params["bake_reflection_type"];
-    if (params.has("bake_pathing_vis_range")) _bake_pathing_vis_range = (float)params["bake_pathing_vis_range"];
-    if (params.has("bake_pathing_path_range")) _bake_pathing_path_range = (float)params["bake_pathing_path_range"];
-    if (params.has("bake_pathing_num_samples")) _bake_pathing_num_samples = (int)params["bake_pathing_num_samples"];
-    if (params.has("bake_pathing_radius")) _bake_pathing_radius = (float)params["bake_pathing_radius"];
-    if (params.has("bake_pathing_threshold")) _bake_pathing_threshold = (float)params["bake_pathing_threshold"];
+    if (params.has("bake_num_rays"))
+        _bake_num_rays = (int)params["bake_num_rays"];
+    if (params.has("bake_num_bounces"))
+        _bake_num_bounces = (int)params["bake_num_bounces"];
+    if (params.has("bake_num_threads"))
+        _bake_num_threads = (int)params["bake_num_threads"];
+    if (params.has("bake_reflection_type"))
+        _bake_reflection_type = (int)params["bake_reflection_type"];
+    if (params.has("bake_pathing_vis_range"))
+        _bake_pathing_vis_range = (float)params["bake_pathing_vis_range"];
+    if (params.has("bake_pathing_path_range"))
+        _bake_pathing_path_range = (float)params["bake_pathing_path_range"];
+    if (params.has("bake_pathing_num_samples"))
+        _bake_pathing_num_samples = (int)params["bake_pathing_num_samples"];
+    if (params.has("bake_pathing_radius"))
+        _bake_pathing_radius = (float)params["bake_pathing_radius"];
+    if (params.has("bake_pathing_threshold"))
+        _bake_pathing_threshold = (float)params["bake_pathing_threshold"];
 }
 
 int ResonanceServer::_get_bake_num_rays() const {
-    if (_bake_num_rays >= 0) return _bake_num_rays;
+    if (_bake_num_rays >= 0)
+        return _bake_num_rays;
     ProjectSettings* ps = ProjectSettings::get_singleton();
-    if (ps) return (int)ps->get_setting("audio/nexus_resonance/bake_num_rays", resonance::kBakeDefaultNumRays);
+    if (ps)
+        return (int)ps->get_setting("audio/nexus_resonance/bake_num_rays", resonance::kBakeDefaultNumRays);
     return resonance::kBakeDefaultNumRays;
 }
 
 int ResonanceServer::_get_bake_num_bounces() const {
-    if (_bake_num_bounces >= 0) return _bake_num_bounces;
+    if (_bake_num_bounces >= 0)
+        return _bake_num_bounces;
     ProjectSettings* ps = ProjectSettings::get_singleton();
-    if (ps) return (int)ps->get_setting("audio/nexus_resonance/bake_num_bounces", resonance::kBakeDefaultNumBounces);
+    if (ps)
+        return (int)ps->get_setting("audio/nexus_resonance/bake_num_bounces", resonance::kBakeDefaultNumBounces);
     return resonance::kBakeDefaultNumBounces;
 }
 
 int ResonanceServer::_get_bake_num_threads() const {
-    if (_bake_num_threads >= 0) return _bake_num_threads;
+    if (_bake_num_threads >= 0)
+        return _bake_num_threads;
     ProjectSettings* ps = ProjectSettings::get_singleton();
-    if (ps) return (int)ps->get_setting("audio/nexus_resonance/bake_num_threads", resonance::kBakeDefaultNumThreads);
+    if (ps)
+        return (int)ps->get_setting("audio/nexus_resonance/bake_num_threads", resonance::kBakeDefaultNumThreads);
     return resonance::kBakeDefaultNumThreads;
 }
 
 int ResonanceServer::_get_bake_reflection_type() const {
-    if (_bake_reflection_type >= 0) return _bake_reflection_type;
+    if (_bake_reflection_type >= 0)
+        return _bake_reflection_type;
     ProjectSettings* ps = ProjectSettings::get_singleton();
-    if (ps) return (int)ps->get_setting("audio/nexus_resonance/bake_reflection_type", 2);
+    if (ps)
+        return (int)ps->get_setting("audio/nexus_resonance/bake_reflection_type", 2);
     return 2;
 }
 
 float ResonanceServer::_get_bake_pathing_param(const char* key, float default_val) const {
-    if (strcmp(key, "bake_pathing_vis_range") == 0 && _bake_pathing_vis_range >= 0) return _bake_pathing_vis_range;
-    if (strcmp(key, "bake_pathing_path_range") == 0 && _bake_pathing_path_range >= 0) return _bake_pathing_path_range;
-    if (strcmp(key, "bake_pathing_radius") == 0 && _bake_pathing_radius >= 0) return _bake_pathing_radius;
-    if (strcmp(key, "bake_pathing_threshold") == 0 && _bake_pathing_threshold >= 0) return _bake_pathing_threshold;
+    if (strcmp(key, "bake_pathing_vis_range") == 0 && _bake_pathing_vis_range >= 0)
+        return _bake_pathing_vis_range;
+    if (strcmp(key, "bake_pathing_path_range") == 0 && _bake_pathing_path_range >= 0)
+        return _bake_pathing_path_range;
+    if (strcmp(key, "bake_pathing_radius") == 0 && _bake_pathing_radius >= 0)
+        return _bake_pathing_radius;
+    if (strcmp(key, "bake_pathing_threshold") == 0 && _bake_pathing_threshold >= 0)
+        return _bake_pathing_threshold;
     ProjectSettings* ps = ProjectSettings::get_singleton();
-    if (!ps) return default_val;
+    if (!ps)
+        return default_val;
     String path = String("audio/nexus_resonance/") + key;
     return (float)ps->get_setting(path, default_val);
 }
 
 int ResonanceServer::_get_bake_pathing_num_samples() const {
-    if (_bake_pathing_num_samples >= 0) return _bake_pathing_num_samples;
+    if (_bake_pathing_num_samples >= 0)
+        return _bake_pathing_num_samples;
     ProjectSettings* ps = ProjectSettings::get_singleton();
-    if (ps) return (int)ps->get_setting("audio/nexus_resonance/bake_pathing_num_samples", resonance::kBakePathingDefaultNumSamples);
+    if (ps)
+        return (int)ps->get_setting("audio/nexus_resonance/bake_pathing_num_samples", resonance::kBakePathingDefaultNumSamples);
     return resonance::kBakePathingDefaultNumSamples;
 }
 
@@ -1533,7 +1645,8 @@ IPLScene ResonanceServer::_prepare_bake_scene(IPLScene* out_temp_scene, IPLStati
 }
 
 bool ResonanceServer::_should_run_throttled(std::atomic<uint32_t>& counter, int throttle) {
-    if (throttle <= 1) return true;
+    if (throttle <= 1)
+        return true;
     uint32_t c = counter.fetch_add(1, std::memory_order_relaxed);
     return (c % (uint32_t)throttle) == 0;
 }
@@ -1552,7 +1665,8 @@ bool ResonanceServer::_with_bake_scene(std::function<bool(IPLScene)> bake_fn) {
         iplStaticMeshRemove(temp_mesh, temp_scene);
         iplStaticMeshRelease(&temp_mesh);
     }
-    if (temp_scene) iplSceneRelease(&temp_scene);
+    if (temp_scene)
+        iplSceneRelease(&temp_scene);
     return ok;
 }
 
@@ -1577,7 +1691,7 @@ bool ResonanceServer::bake_manual_grid(const PackedVector3Array& points, Ref<Res
 }
 
 bool ResonanceServer::bake_probes_for_volume(const Transform3D& volume_transform, Vector3 extents, float spacing,
-    int generation_type, float height_above_floor, Ref<ResonanceProbeData> probe_data_res) {
+                                             int generation_type, float height_above_floor, Ref<ResonanceProbeData> probe_data_res) {
     if (!_ctx() || !scene) {
         UtilityFunctions::push_error("Nexus Resonance Bake: Server not initialized.");
         return false;
@@ -1595,18 +1709,21 @@ bool ResonanceServer::bake_probes_for_volume(const Transform3D& volume_transform
     return _with_bake_scene([this, volume_transform, extents, spacing, generation_type, height_above_floor, probe_data_res, nb, nr, bake_reflection, nt](IPLScene bake_scene) {
         if (generation_type == ResonanceBaker::GEN_CENTROID || generation_type == ResonanceBaker::GEN_UNIFORM_FLOOR) {
             return baker.bake_with_probe_array(_ctx(), bake_scene, _scene_type(), _opencl(), _radeon(),
-                volume_transform, extents, spacing, generation_type, height_above_floor,
-                nb, nr, bake_reflection, probe_data_res, bake_progress_callback, this, _bake_pipeline_pathing, nt);
+                                               volume_transform, extents, spacing, generation_type, height_above_floor,
+                                               nb, nr, bake_reflection, probe_data_res, bake_progress_callback, this, _bake_pipeline_pathing, nt);
         }
         PackedVector3Array points = baker.generate_manual_grid(volume_transform, extents, spacing, generation_type, height_above_floor);
-        if (points.size() == 0) return false;
+        if (points.size() == 0)
+            return false;
         return baker.bake_manual_grid(_ctx(), bake_scene, _scene_type(), _opencl(), _radeon(), points, nb, nr, bake_reflection, probe_data_res, bake_progress_callback, this, _bake_pipeline_pathing, nt);
     });
 }
 
 bool ResonanceServer::bake_pathing(Ref<ResonanceProbeData> data) {
-    if (!_ctx() || !scene) return false;
-    if (data.is_null() || data->get_data().is_empty()) return false;
+    if (!_ctx() || !scene)
+        return false;
+    if (data.is_null() || data->get_data().is_empty())
+        return false;
     float vis_range = _get_bake_pathing_param("bake_pathing_vis_range", resonance::kBakePathingDefaultVisRange);
     float path_range = _get_bake_pathing_param("bake_pathing_path_range", resonance::kBakePathingDefaultPathRange);
     int num_samples = _get_bake_pathing_num_samples();
@@ -1619,35 +1736,41 @@ bool ResonanceServer::bake_pathing(Ref<ResonanceProbeData> data) {
 }
 
 bool ResonanceServer::bake_static_source(Ref<ResonanceProbeData> data, Vector3 endpoint_position, float influence_radius) {
-    if (!_ctx() || !scene) return false;
-    if (data.is_null() || data->get_data().is_empty()) return false;
+    if (!_ctx() || !scene)
+        return false;
+    if (data.is_null() || data->get_data().is_empty())
+        return false;
     int nb = _get_bake_num_bounces();
     int nr = _get_bake_num_rays();
     int nt = _get_bake_num_threads();
     return _with_bake_scene([this, data, endpoint_position, influence_radius, nb, nr, nt](IPLScene bake_scene) {
         return baker.bake_static_source(_ctx(), bake_scene, _scene_type(), _opencl(), _radeon(),
-            data, endpoint_position, influence_radius, nb, nr, bake_progress_callback, this, nt);
+                                        data, endpoint_position, influence_radius, nb, nr, bake_progress_callback, this, nt);
     });
 }
 
 bool ResonanceServer::bake_static_listener(Ref<ResonanceProbeData> data, Vector3 endpoint_position, float influence_radius) {
-    if (!_ctx() || !scene) return false;
-    if (data.is_null() || data->get_data().is_empty()) return false;
+    if (!_ctx() || !scene)
+        return false;
+    if (data.is_null() || data->get_data().is_empty())
+        return false;
     int nb = _get_bake_num_bounces();
     int nr = _get_bake_num_rays();
     int nt = _get_bake_num_threads();
     return _with_bake_scene([this, data, endpoint_position, influence_radius, nb, nr, nt](IPLScene bake_scene) {
         return baker.bake_static_listener(_ctx(), bake_scene, _scene_type(), _opencl(), _radeon(),
-            data, endpoint_position, influence_radius, nb, nr, bake_progress_callback, this, nt);
+                                          data, endpoint_position, influence_radius, nb, nr, bake_progress_callback, this, nt);
     });
 }
 
 void ResonanceServer::cancel_reflections_bake() {
-    if (_ctx()) iplReflectionsBakerCancelBake(_ctx());
+    if (_ctx())
+        iplReflectionsBakerCancelBake(_ctx());
 }
 
 void ResonanceServer::cancel_pathing_bake() {
-    if (_ctx()) iplPathBakerCancelBake(_ctx());
+    if (_ctx())
+        iplPathBakerCancelBake(_ctx());
 }
 
 int32_t ResonanceServer::load_probe_batch(Ref<ResonanceProbeData> data) {
@@ -1671,8 +1794,8 @@ int32_t ResonanceServer::load_probe_batch(Ref<ResonanceProbeData> data) {
                 const char* baked_names[] = {"Convolution", "Parametric", "Hybrid"};
                 const char* runt_names[] = {"Convolution", "Parametric", "Hybrid", "TrueAudio Next"};
                 String err = String("Probe data was baked as ") + baked_names[baked_type] +
-                    " but runtime is set to " + runt_names[(reflection_type >= resonance::kReflectionConvolution && reflection_type <= resonance::kReflectionTan) ? reflection_type : resonance::kReflectionConvolution] +
-                    ". Re-bake probes with matching reflection type or change runtime ReflectionType to match.";
+                             " but runtime is set to " + runt_names[(reflection_type >= resonance::kReflectionConvolution && reflection_type <= resonance::kReflectionTan) ? reflection_type : resonance::kReflectionConvolution] +
+                             ". Re-bake probes with matching reflection type or change runtime ReflectionType to match.";
                 UtilityFunctions::push_error(err);
                 Engine* eng = Engine::get_singleton();
                 if (eng && eng->has_singleton("ResonanceLogger")) {
@@ -1731,7 +1854,8 @@ void ResonanceServer::_clear_all_param_caches() {
 }
 
 void ResonanceServer::remove_probe_batch(int32_t handle) {
-    if (handle < 0 || is_shutting_down_flag || !_ctx() || !simulator) return;
+    if (handle < 0 || is_shutting_down_flag || !_ctx() || !simulator)
+        return;
     probe_batch_registry_.remove_batch(handle, simulator, &simulation_mutex);
     _clear_all_param_caches();
 }
@@ -1750,8 +1874,8 @@ bool ResonanceServer::_uses_parametric_or_hybrid() const {
 
 bool ResonanceServer::_is_reflection_type_compatible(int baked_type) const {
     return (baked_type == 2) ||
-        (baked_type == 0 && _uses_convolution_or_hybrid_or_tan()) ||
-        (baked_type == 1 && _uses_parametric_or_hybrid());
+           (baked_type == 0 && _uses_convolution_or_hybrid_or_tan()) ||
+           (baked_type == 1 && _uses_parametric_or_hybrid());
 }
 
 bool ResonanceServer::_is_batch_compatible_with_config(int32_t handle) const {
@@ -1767,7 +1891,8 @@ int ResonanceServer::revalidate_probe_batches_with_config() {
 }
 
 void ResonanceServer::clear_probe_batches() {
-    if (is_shutting_down_flag || !_ctx()) return;
+    if (is_shutting_down_flag || !_ctx())
+        return;
     probe_batch_registry_.clear_batches(simulator, &simulation_mutex);
     _clear_all_param_caches();
 }
@@ -1795,7 +1920,8 @@ Array ResonanceServer::get_pathing_visualization_segments() {
 
 Array ResonanceServer::get_ray_debug_segments() {
     Array result;
-    if (!wants_debug_reflection_viz()) return result;
+    if (!wants_debug_reflection_viz())
+        return result;
     IPLCoordinateSpace3 listener = get_current_listener_coords();
     IPLVector3 origin = listener.origin;
     ray_trace_debug_context_.trace_reflection_rays_for_viz(origin, max_rays, resonance::kRayDebugMaxDistance, result);
@@ -1804,7 +1930,8 @@ Array ResonanceServer::get_ray_debug_segments() {
 
 Array ResonanceServer::get_ray_debug_segments_at(Vector3 origin) {
     Array result;
-    if (!wants_debug_reflection_viz()) return result;
+    if (!wants_debug_reflection_viz())
+        return result;
     IPLVector3 o;
     o.x = origin.x;
     o.y = origin.y;
@@ -1818,8 +1945,8 @@ bool ResonanceServer::uses_custom_ray_tracer() const {
 }
 
 int ResonanceServer::register_debug_mesh(const std::vector<IPLVector3>& vertices,
-    const std::vector<IPLTriangle>& triangles,
-    const IPLint32* material_indices, const IPLMatrix4x4* transform, const IPLMaterial* material) {
+                                         const std::vector<IPLTriangle>& triangles,
+                                         const IPLint32* material_indices, const IPLMatrix4x4* transform, const IPLMaterial* material) {
     return ray_trace_debug_context_.register_mesh(vertices, triangles, material_indices, transform, material);
 }
 
@@ -1865,23 +1992,29 @@ Dictionary ResonanceServer::get_reverb_bus_instrumentation() const {
 }
 
 void ResonanceServer::record_convolution_feed(bool ir_non_null, float reverb_gain, float input_rms) {
-    if (!ir_non_null) reverb_convolution_feed_ir_null.fetch_add(1, std::memory_order_relaxed);
+    if (!ir_non_null)
+        reverb_convolution_feed_ir_null.fetch_add(1, std::memory_order_relaxed);
     float gmin = reverb_convolution_gain_min.load(std::memory_order_relaxed);
-    if (reverb_gain < gmin) reverb_convolution_gain_min.store(reverb_gain, std::memory_order_relaxed);
+    if (reverb_gain < gmin)
+        reverb_convolution_gain_min.store(reverb_gain, std::memory_order_relaxed);
     float gmax = reverb_convolution_gain_max.load(std::memory_order_relaxed);
-    if (reverb_gain > gmax) reverb_convolution_gain_max.store(reverb_gain, std::memory_order_relaxed);
+    if (reverb_gain > gmax)
+        reverb_convolution_gain_max.store(reverb_gain, std::memory_order_relaxed);
     float rmax = reverb_convolution_input_rms_max.load(std::memory_order_relaxed);
-    if (input_rms > rmax) reverb_convolution_input_rms_max.store(input_rms, std::memory_order_relaxed);
+    if (input_rms > rmax)
+        reverb_convolution_input_rms_max.store(input_rms, std::memory_order_relaxed);
 }
 
 void ResonanceServer::update_reverb_effect_instrumentation(bool mixer_null, bool success, int32_t frames_written, float output_peak) {
     reverb_effect_process_calls.fetch_add(1, std::memory_order_relaxed);
-    if (mixer_null) reverb_effect_mixer_null.fetch_add(1, std::memory_order_relaxed);
+    if (mixer_null)
+        reverb_effect_mixer_null.fetch_add(1, std::memory_order_relaxed);
     if (success) {
         reverb_effect_success.fetch_add(1, std::memory_order_relaxed);
         reverb_effect_frames_written.fetch_add(static_cast<uint64_t>(frames_written), std::memory_order_relaxed);
         float prev = reverb_effect_output_peak.load(std::memory_order_relaxed);
-        if (output_peak > prev) reverb_effect_output_peak.store(output_peak, std::memory_order_relaxed);
+        if (output_peak > prev)
+            reverb_effect_output_peak.store(output_peak, std::memory_order_relaxed);
     }
 }
 
@@ -1932,9 +2065,9 @@ void ResonanceServer::_bind_methods() {
 
     // Probes
     ClassDB::bind_method(D_METHOD("generate_manual_grid", "tr", "ext", "sp", "generation_type", "height_above_floor"),
-        &ResonanceServer::generate_manual_grid, DEFVAL(2), DEFVAL(1.5));
+                         &ResonanceServer::generate_manual_grid, DEFVAL(2), DEFVAL(1.5));
     ClassDB::bind_method(D_METHOD("generate_probes_scene_aware", "volume_transform", "extents", "spacing", "generation_type", "height_above_floor"),
-        &ResonanceServer::generate_probes_scene_aware, DEFVAL(1), DEFVAL(1.5));
+                         &ResonanceServer::generate_probes_scene_aware, DEFVAL(1), DEFVAL(1.5));
     ClassDB::bind_method(D_METHOD("bake_manual_grid", "pts", "dat"), &ResonanceServer::bake_manual_grid);
     ClassDB::bind_method(D_METHOD("set_bake_params", "params"), &ResonanceServer::set_bake_params);
     ClassDB::bind_method(D_METHOD("set_bake_static_scene_asset", "p_asset"), &ResonanceServer::set_bake_static_scene_asset);
@@ -1943,7 +2076,7 @@ void ResonanceServer::_bind_methods() {
     ClassDB::bind_method(D_METHOD("clear_static_scenes"), &ResonanceServer::clear_static_scenes);
     ClassDB::bind_method(D_METHOD("set_bake_pipeline_pathing", "pathing"), &ResonanceServer::set_bake_pipeline_pathing);
     ClassDB::bind_method(D_METHOD("bake_probes_for_volume", "volume_transform", "extents", "spacing", "generation_type", "height_above_floor", "probe_data"),
-        &ResonanceServer::bake_probes_for_volume);
+                         &ResonanceServer::bake_probes_for_volume);
     ClassDB::bind_method(D_METHOD("bake_pathing", "dat"), &ResonanceServer::bake_pathing);
     ClassDB::bind_method(D_METHOD("bake_static_source", "dat", "endpoint_position", "influence_radius"), &ResonanceServer::bake_static_source);
     ClassDB::bind_method(D_METHOD("bake_static_listener", "dat", "endpoint_position", "influence_radius"), &ResonanceServer::bake_static_listener);

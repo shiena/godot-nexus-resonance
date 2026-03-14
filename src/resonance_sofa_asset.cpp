@@ -1,9 +1,9 @@
 #include "resonance_sofa_asset.h"
 #include "resonance_constants.h"
-#include <godot_cpp/core/class_db.hpp>
+#include <cmath>
 #include <godot_cpp/classes/file_access.hpp>
 #include <godot_cpp/classes/project_settings.hpp>
-#include <cmath>
+#include <godot_cpp/core/class_db.hpp>
 
 using namespace godot;
 
@@ -38,14 +38,16 @@ Error ResonanceSOFAAsset::load_from_file(const String& p_path) {
             path = ps->globalize_path(path);
     }
     Ref<FileAccess> f = FileAccess::open(path, FileAccess::READ);
-    if (f.is_null()) return ERR_FILE_CANT_OPEN;
+    if (f.is_null())
+        return ERR_FILE_CANT_OPEN;
     sofa_data = f->get_buffer(f->get_length());
     // Empty file = ERR_FILE_CORRUPT (invalid SOFA); non-empty = OK.
     return !sofa_data.is_empty() ? OK : ERR_FILE_CORRUPT;
 }
 
 float ResonanceSOFAAsset::db_to_gain(float db) {
-    if (db <= resonance::kHRTFMinDB) return 0.0f;
+    if (db <= resonance::kHRTFMinDB)
+        return 0.0f;
     return static_cast<float>(std::pow(10.0, static_cast<double>(db) / 20.0));
 }
 

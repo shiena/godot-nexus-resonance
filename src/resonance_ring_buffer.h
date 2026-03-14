@@ -1,9 +1,9 @@
 #ifndef RESONANCE_RING_BUFFER_H
 #define RESONANCE_RING_BUFFER_H
 
-#include <vector>
-#include <cstring>
 #include <algorithm>
+#include <cstring>
+#include <vector>
 
 namespace godot {
 
@@ -11,14 +11,14 @@ namespace godot {
 /// Intended for audio-thread use only; not thread-safe for concurrent access from multiple threads.
 template <typename T>
 class RingBuffer {
-private:
+  private:
     std::vector<T> buffer;
     size_t read_pos = 0;
     size_t write_pos = 0;
     size_t capacity = 0;
     size_t count = 0;
 
-public:
+  public:
     /// Resize buffer; resets read/write positions. Call only before first use or when no read/write is in progress.
     void resize(size_t p_capacity) {
         buffer.resize(p_capacity, 0);
@@ -32,7 +32,8 @@ public:
     size_t get_available_write() const { return capacity - count; }
 
     void write(const T* data, size_t n) {
-        if (n > get_available_write()) n = get_available_write();
+        if (n > get_available_write())
+            n = get_available_write();
 
         size_t first_chunk = std::min(n, capacity - write_pos);
         memcpy(buffer.data() + write_pos, data, first_chunk * sizeof(T));
@@ -47,7 +48,8 @@ public:
     }
 
     void read(T* out_data, size_t n) {
-        if (n > count) n = count;
+        if (n > count)
+            n = count;
 
         size_t first_chunk = std::min(n, capacity - read_pos);
         memcpy(out_data, buffer.data() + read_pos, first_chunk * sizeof(T));
@@ -61,7 +63,11 @@ public:
         count -= n;
     }
 
-    void clear() { read_pos = 0; write_pos = 0; count = 0; }
+    void clear() {
+        read_pos = 0;
+        write_pos = 0;
+        count = 0;
+    }
 };
 
 } // namespace godot

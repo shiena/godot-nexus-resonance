@@ -1,45 +1,63 @@
 #include "resonance_server_config.h"
 #include "resonance_constants.h"
 #include <algorithm>
-#include <thread>
 #include <climits>
+#include <thread>
 
 namespace godot {
 
 int ResonanceServerConfig::config_int(const Dictionary& c, const char* key, int def) {
-    if (!c.has(key)) return def;
+    if (!c.has(key))
+        return def;
     Variant v = c[key];
-    if (v.get_type() == Variant::INT) return (int)v;
+    if (v.get_type() == Variant::INT)
+        return (int)v;
     if (v.get_type() == Variant::FLOAT) {
         double d = (double)v;
-        if (d > static_cast<double>(INT_MAX)) return INT_MAX;
-        if (d < static_cast<double>(INT_MIN)) return INT_MIN;
+        if (d > static_cast<double>(INT_MAX))
+            return INT_MAX;
+        if (d < static_cast<double>(INT_MIN))
+            return INT_MIN;
         return static_cast<int>(d);
     }
     return def;
 }
 
 float ResonanceServerConfig::config_float(const Dictionary& c, const char* key, float def) {
-    if (!c.has(key)) return def;
+    if (!c.has(key))
+        return def;
     Variant v = c[key];
-    if (v.get_type() == Variant::FLOAT) return (float)v;
-    if (v.get_type() == Variant::INT) return (float)(int)v;
+    if (v.get_type() == Variant::FLOAT)
+        return (float)v;
+    if (v.get_type() == Variant::INT)
+        return (float)(int)v;
     return def;
 }
 
 bool ResonanceServerConfig::config_bool(const Dictionary& c, const char* key, bool def) {
-    if (!c.has(key)) return def;
+    if (!c.has(key))
+        return def;
     Variant v = c[key];
-    if (v.get_type() == Variant::BOOL) return (bool)v;
+    if (v.get_type() == Variant::BOOL)
+        return (bool)v;
     return def;
 }
 
 void ResonanceServerConfig::config_sofa_asset(const Dictionary& c, const char* key, Ref<ResonanceSOFAAsset>& out) {
-    if (!c.has(key)) { out.unref(); return; }
+    if (!c.has(key)) {
+        out.unref();
+        return;
+    }
     Variant v = c[key];
-    if (v.get_type() != Variant::OBJECT) { out.unref(); return; }
+    if (v.get_type() != Variant::OBJECT) {
+        out.unref();
+        return;
+    }
     Object* o = v.operator Object*();
-    if (!o) { out.unref(); return; }
+    if (!o) {
+        out.unref();
+        return;
+    }
     ResonanceSOFAAsset* a = Object::cast_to<ResonanceSOFAAsset>(o);
     if (a && a->is_valid())
         out = Ref<ResonanceSOFAAsset>(a);
@@ -48,53 +66,78 @@ void ResonanceServerConfig::config_sofa_asset(const Dictionary& c, const char* k
 }
 
 void ResonanceServerConfig::apply(const Dictionary& config,
-    std::function<float(const char*, float)> get_bake_pathing_param) {
+                                  std::function<float(const char*, float)> get_bake_pathing_param) {
     sample_rate = config_int(config, "sample_rate", sample_rate);
-    if (sample_rate < 8000) sample_rate = 8000;
-    if (sample_rate > 192000) sample_rate = 192000;
+    if (sample_rate < 8000)
+        sample_rate = 8000;
+    if (sample_rate > 192000)
+        sample_rate = 192000;
     frame_size = config_int(config, "audio_frame_size", frame_size);
     {
-        static const int kValidFrameSizes[] = { 256, resonance::kGodotDefaultFrameSize, 1024, resonance::kMaxAudioFrameSize };
+        static const int kValidFrameSizes[] = {256, resonance::kGodotDefaultFrameSize, 1024, resonance::kMaxAudioFrameSize};
         bool valid = false;
         for (int fs : kValidFrameSizes) {
-            if (frame_size == fs) { valid = true; break; }
+            if (frame_size == fs) {
+                valid = true;
+                break;
+            }
         }
-        if (!valid) frame_size = resonance::kGodotDefaultFrameSize;
+        if (!valid)
+            frame_size = resonance::kGodotDefaultFrameSize;
     }
     ambisonic_order = config_int(config, "ambisonic_order", ambisonic_order);
-    if (ambisonic_order < 1) ambisonic_order = 1;
-    if (ambisonic_order > 3) ambisonic_order = 3;
+    if (ambisonic_order < 1)
+        ambisonic_order = 1;
+    if (ambisonic_order > 3)
+        ambisonic_order = 3;
     max_reverb_duration = config_float(config, "max_reverb_duration", max_reverb_duration);
-    if (max_reverb_duration < 0.1f) max_reverb_duration = 0.1f;
-    if (max_reverb_duration > 10.0f) max_reverb_duration = 10.0f;
+    if (max_reverb_duration < 0.1f)
+        max_reverb_duration = 0.1f;
+    if (max_reverb_duration > 10.0f)
+        max_reverb_duration = 10.0f;
     simulation_cpu_cores_percent = config_float(config, "simulation_cpu_cores_percent", simulation_cpu_cores_percent);
     if (simulation_cpu_cores_percent <= 0.0f || simulation_cpu_cores_percent > 1.0f)
         simulation_cpu_cores_percent = 0.05f;
     unsigned int nc = std::thread::hardware_concurrency();
-    if (nc == 0) nc = 1;
+    if (nc == 0)
+        nc = 1;
     simulation_threads = static_cast<int>(std::max(1u, static_cast<unsigned int>(simulation_cpu_cores_percent * static_cast<float>(nc))));
     max_rays = config_int(config, "realtime_rays", max_rays);
-    if (max_rays < 0) max_rays = 0;  // 0 = Baked Only
-    if (max_rays > 65535) max_rays = 65535;
+    if (max_rays < 0)
+        max_rays = 0; // 0 = Baked Only
+    if (max_rays > 65535)
+        max_rays = 65535;
     max_bounces = config_int(config, "realtime_bounces", max_bounces);
-    if (max_bounces < 1) max_bounces = 1;
-    if (max_bounces > 64) max_bounces = 64;
+    if (max_bounces < 1)
+        max_bounces = 1;
+    if (max_bounces > 64)
+        max_bounces = 64;
     reverb_influence_radius = config_float(config, "reverb_influence_radius", reverb_influence_radius);
-    if (reverb_influence_radius < 0.0f) reverb_influence_radius = 0.0f;
+    if (reverb_influence_radius < 0.0f)
+        reverb_influence_radius = 0.0f;
     reverb_max_distance = config_float(config, "reverb_max_distance", reverb_max_distance);
-    if (reverb_max_distance < 0.0f) reverb_max_distance = 0.0f;
+    if (reverb_max_distance < 0.0f)
+        reverb_max_distance = 0.0f;
     reverb_transmission_amount = config_float(config, "reverb_transmission_amount", reverb_transmission_amount);
-    if (reverb_transmission_amount < 0.0f) reverb_transmission_amount = 0.0f;
-    if (reverb_transmission_amount > 1.0f) reverb_transmission_amount = 1.0f;
+    if (reverb_transmission_amount < 0.0f)
+        reverb_transmission_amount = 0.0f;
+    if (reverb_transmission_amount > 1.0f)
+        reverb_transmission_amount = 1.0f;
     reflection_type = config_int(config, "reflection_type", reflection_type);
-    if (reflection_type < resonance::kReflectionConvolution) reflection_type = resonance::kReflectionConvolution;
-    if (reflection_type > resonance::kReflectionTan) reflection_type = resonance::kReflectionTan;
+    if (reflection_type < resonance::kReflectionConvolution)
+        reflection_type = resonance::kReflectionConvolution;
+    if (reflection_type > resonance::kReflectionTan)
+        reflection_type = resonance::kReflectionTan;
     default_reflections_mode = config_int(config, "default_reflections_mode", default_reflections_mode);
-    if (default_reflections_mode < 0) default_reflections_mode = 0;
-    if (default_reflections_mode > 1) default_reflections_mode = 1;
+    if (default_reflections_mode < 0)
+        default_reflections_mode = 0;
+    if (default_reflections_mode > 1)
+        default_reflections_mode = 1;
     hybrid_reverb_transition_time = config_float(config, "hybrid_reverb_transition_time", hybrid_reverb_transition_time);
-    if (hybrid_reverb_transition_time < 0.1f) hybrid_reverb_transition_time = 0.1f;
-    if (hybrid_reverb_transition_time > 2.0f) hybrid_reverb_transition_time = 2.0f;
+    if (hybrid_reverb_transition_time < 0.1f)
+        hybrid_reverb_transition_time = 0.1f;
+    if (hybrid_reverb_transition_time > 2.0f)
+        hybrid_reverb_transition_time = 2.0f;
     float overlap_pct = config_float(config, "hybrid_reverb_overlap_percent", hybrid_reverb_overlap_percent * 100.0f);
     hybrid_reverb_overlap_percent = (overlap_pct >= 0.0f && overlap_pct <= 100.0f) ? (overlap_pct / 100.0f) : 0.25f;
     transmission_type = config_int(config, "transmission_type", transmission_type);
@@ -109,45 +152,61 @@ void ResonanceServerConfig::apply(const Dictionary& config,
         pathing_vis_radius = config_float(config, "pathing_vis_radius", pathing_vis_radius);
     else if (get_bake_pathing_param)
         pathing_vis_radius = get_bake_pathing_param("bake_pathing_radius", resonance::kBakePathingDefaultRadius);
-    if (pathing_vis_radius < 0.0f) pathing_vis_radius = 0.0f;
-    if (pathing_vis_radius > 2.0f) pathing_vis_radius = 2.0f;
+    if (pathing_vis_radius < 0.0f)
+        pathing_vis_radius = 0.0f;
+    if (pathing_vis_radius > 2.0f)
+        pathing_vis_radius = 2.0f;
 
     if (config.has("pathing_vis_threshold"))
         pathing_vis_threshold = config_float(config, "pathing_vis_threshold", pathing_vis_threshold);
     else if (get_bake_pathing_param)
         pathing_vis_threshold = get_bake_pathing_param("bake_pathing_threshold", resonance::kBakePathingDefaultThreshold);
-    if (pathing_vis_threshold < 0.0f) pathing_vis_threshold = 0.0f;
-    if (pathing_vis_threshold > 1.0f) pathing_vis_threshold = 1.0f;
+    if (pathing_vis_threshold < 0.0f)
+        pathing_vis_threshold = 0.0f;
+    if (pathing_vis_threshold > 1.0f)
+        pathing_vis_threshold = 1.0f;
 
     if (config.has("pathing_vis_range"))
         pathing_vis_range = config_float(config, "pathing_vis_range", pathing_vis_range);
     else if (get_bake_pathing_param)
         pathing_vis_range = get_bake_pathing_param("bake_pathing_vis_range", resonance::kBakePathingDefaultVisRange);
-    if (pathing_vis_range < 1.0f) pathing_vis_range = 1.0f;
-    if (pathing_vis_range > 1000.0f) pathing_vis_range = 1000.0f;
+    if (pathing_vis_range < 1.0f)
+        pathing_vis_range = 1.0f;
+    if (pathing_vis_range > 1000.0f)
+        pathing_vis_range = 1000.0f;
 
     pathing_normalize_eq = config_bool(config, "pathing_normalize_eq", pathing_normalize_eq);
     if (config.has("scene_type"))
         scene_type = config_int(config, "scene_type", scene_type);
     else
-        scene_type = config_bool(config, "use_radeon_rays", false) ? 2 : 1;  // backwards compatibility
-    if (scene_type < 0 || scene_type > 2) scene_type = 1;
+        scene_type = config_bool(config, "use_radeon_rays", false) ? 2 : 1; // backwards compatibility
+    if (scene_type < 0 || scene_type > 2)
+        scene_type = 1;
     opencl_device_type = config_int(config, "opencl_device_type", opencl_device_type);
-    if (opencl_device_type < 0) opencl_device_type = 0;
-    if (opencl_device_type > 2) opencl_device_type = 2;
+    if (opencl_device_type < 0)
+        opencl_device_type = 0;
+    if (opencl_device_type > 2)
+        opencl_device_type = 2;
     opencl_device_index = config_int(config, "opencl_device_index", opencl_device_index);
-    if (opencl_device_index < 0) opencl_device_index = 0;
+    if (opencl_device_index < 0)
+        opencl_device_index = 0;
     context_validation = config_bool(config, "context_validation", context_validation);
     context_simd_level = config_int(config, "context_simd_level", context_simd_level);
     realtime_irradiance_min_distance = config_float(config, "realtime_irradiance_min_distance", realtime_irradiance_min_distance);
-    if (realtime_irradiance_min_distance < 0.05f) realtime_irradiance_min_distance = 0.05f;
-    if (realtime_irradiance_min_distance > 10.0f) realtime_irradiance_min_distance = 10.0f;
+    if (realtime_irradiance_min_distance < 0.05f)
+        realtime_irradiance_min_distance = 0.05f;
+    if (realtime_irradiance_min_distance > 10.0f)
+        realtime_irradiance_min_distance = 10.0f;
     realtime_simulation_duration = config_float(config, "realtime_simulation_duration", realtime_simulation_duration);
-    if (realtime_simulation_duration < 0.1f) realtime_simulation_duration = 0.1f;
-    if (realtime_simulation_duration > 10.0f) realtime_simulation_duration = 10.0f;
+    if (realtime_simulation_duration < 0.1f)
+        realtime_simulation_duration = 0.1f;
+    if (realtime_simulation_duration > 10.0f)
+        realtime_simulation_duration = 10.0f;
     realtime_num_diffuse_samples = config_int(config, "realtime_num_diffuse_samples", realtime_num_diffuse_samples);
-    if (realtime_num_diffuse_samples < 8) realtime_num_diffuse_samples = 8;
-    if (realtime_num_diffuse_samples > 64) realtime_num_diffuse_samples = 64;
+    if (realtime_num_diffuse_samples < 8)
+        realtime_num_diffuse_samples = 8;
+    if (realtime_num_diffuse_samples > 64)
+        realtime_num_diffuse_samples = 64;
     debug_occlusion = config_bool(config, "debug_occlusion", debug_occlusion);
     debug_reflections = config_bool(config, "debug_reflections", debug_reflections);
     debug_pathing = config_bool(config, "debug_pathing", debug_pathing);
@@ -156,14 +215,20 @@ void ResonanceServerConfig::apply(const Dictionary& config,
     perspective_correction_enabled = config_bool(config, "perspective_correction_enabled", perspective_correction_enabled);
     perspective_correction_factor = config_float(config, "perspective_correction_factor", perspective_correction_factor);
     geometry_update_throttle = config_int(config, "geometry_update_throttle", geometry_update_throttle);
-    if (geometry_update_throttle < 1) geometry_update_throttle = 1;
-    if (geometry_update_throttle > 16) geometry_update_throttle = 16;
+    if (geometry_update_throttle < 1)
+        geometry_update_throttle = 1;
+    if (geometry_update_throttle > 16)
+        geometry_update_throttle = 16;
     simulation_tick_throttle = config_int(config, "simulation_tick_throttle", simulation_tick_throttle);
-    if (simulation_tick_throttle < 1) simulation_tick_throttle = 1;
-    if (simulation_tick_throttle > 8) simulation_tick_throttle = 8;
+    if (simulation_tick_throttle < 1)
+        simulation_tick_throttle = 1;
+    if (simulation_tick_throttle > 8)
+        simulation_tick_throttle = 8;
     simulation_update_interval = config_float(config, "simulation_update_interval", simulation_update_interval);
-    if (simulation_update_interval < 0.0f) simulation_update_interval = 0.0f;
-    if (simulation_update_interval > 1.0f) simulation_update_interval = 1.0f;
+    if (simulation_update_interval < 0.0f)
+        simulation_update_interval = 0.0f;
+    if (simulation_update_interval > 1.0f)
+        simulation_update_interval = 1.0f;
 }
 
 } // namespace godot

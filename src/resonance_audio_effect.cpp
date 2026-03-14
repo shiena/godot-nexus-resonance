@@ -1,6 +1,6 @@
 #include "resonance_audio_effect.h"
-#include "resonance_server.h"
 #include "resonance_log.h"
+#include "resonance_server.h"
 #include <algorithm>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
@@ -36,9 +36,8 @@ void ResonanceAudioEffectInstance::_process(const void* src_buffer, AudioFrame* 
         processor.initialize(
             srv->get_context_handle(),
             srv->get_sample_rate(),
-            server_frame_size,  // Must match ReflectionMixer / Steam Audio block size
-            srv->get_ambisonic_order()
-        );
+            server_frame_size, // Must match ReflectionMixer / Steam Audio block size
+            srv->get_ambisonic_order());
         initialized_processor = true;
     }
 
@@ -95,7 +94,8 @@ void ResonanceAudioEffectInstance::_process(const void* src_buffer, AudioFrame* 
             dst_buffer[i].left = std::clamp(dst_buffer[i].left * gain, -1.0f, 1.0f);
             dst_buffer[i].right = std::clamp(dst_buffer[i].right * gain, -1.0f, 1.0f);
             float v = std::max(std::abs(dst_buffer[i].left), std::abs(dst_buffer[i].right));
-            if (v > peak) peak = v;
+            if (v > peak)
+                peak = v;
         }
     }
 

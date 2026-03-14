@@ -5,7 +5,6 @@
 #include <godot_cpp/variant/utility_functions.hpp>
 #include <string>
 
-
 #if defined(_WIN32) || defined(_WIN64)
 #include <windows.h>
 #else
@@ -35,7 +34,8 @@ void* ResonanceFMODBridge::get_proc(const char* name) {
 }
 
 bool ResonanceFMODBridge::load_plugin() {
-    if (plugin_handle_ != nullptr) return true;
+    if (plugin_handle_ != nullptr)
+        return true;
 
 #if defined(_WIN32) || defined(_WIN64)
     const char* plugin_name = "phonon_fmod.dll";
@@ -53,7 +53,8 @@ bool ResonanceFMODBridge::load_plugin() {
         if (GetModuleFileNameA(NULL, path, sizeof(path))) {
             std::string dir(path);
             size_t last = dir.find_last_of("/\\");
-            if (last != std::string::npos) dir = dir.substr(0, last + 1);
+            if (last != std::string::npos)
+                dir = dir.substr(0, last + 1);
             plugin_handle_ = LoadLibraryA((dir + plugin_name).c_str());
         }
         if (!plugin_handle_) {
@@ -69,32 +70,32 @@ bool ResonanceFMODBridge::load_plugin() {
             resonance::kFmodPluginPathNexusOsx,
             resonance::kFmodPluginPathFmodOsx,
             resonance::kFmodPluginPathFmodLib,
-            nullptr
-        };
+            nullptr};
 #else
         const char* paths[] = {
             resonance::kFmodPluginPathNexusLinux,
             resonance::kFmodPluginPathFmodLinux,
             resonance::kFmodPluginPathFmodLib,
-            nullptr
-        };
+            nullptr};
 #endif
         for (int i = 0; paths[i]; i++) {
             std::string full = std::string(paths[i]) + plugin_name;
             plugin_handle_ = dlopen(full.c_str(), RTLD_NOW);
-            if (plugin_handle_) break;
+            if (plugin_handle_)
+                break;
         }
     }
 #endif
 
-    if (!plugin_handle_) return false;
+    if (!plugin_handle_)
+        return false;
 
     fn_iplFMODInitialize_ = (void (*)(IPLContext))get_proc("iplFMODInitialize");
     fn_iplFMODTerminate_ = (void (*)())get_proc("iplFMODTerminate");
     fn_iplFMODSetHRTF_ = (void (*)(IPLHRTF))get_proc("iplFMODSetHRTF");
     fn_iplFMODSetSimulationSettings_ = (void (*)(IPLSimulationSettings))get_proc("iplFMODSetSimulationSettings");
     fn_iplFMODSetReverbSource_ = (void (*)(IPLSource))get_proc("iplFMODSetReverbSource");
-    fn_iplFMODAddSource_ = (int32_t (*)(IPLSource))get_proc("iplFMODAddSource");
+    fn_iplFMODAddSource_ = (int32_t(*)(IPLSource))get_proc("iplFMODAddSource");
     fn_iplFMODRemoveSource_ = (void (*)(int32_t))get_proc("iplFMODRemoveSource");
 
     if (!fn_iplFMODInitialize_ || !fn_iplFMODTerminate_ || !fn_iplFMODSetHRTF_ ||
@@ -126,7 +127,8 @@ void ResonanceFMODBridge::unload_plugin() {
 }
 
 bool ResonanceFMODBridge::init_bridge() {
-    if (initialized_) return true;
+    if (initialized_)
+        return true;
 
     ResonanceServer* server = ResonanceServer::get_singleton();
     if (!server || !server->is_initialized()) {
@@ -175,13 +177,16 @@ void ResonanceFMODBridge::shutdown_bridge() {
 }
 
 int32_t ResonanceFMODBridge::add_fmod_source(int32_t resonance_source_handle) {
-    if (!initialized_ || !fn_iplFMODAddSource_ || resonance_source_handle < 0) return -1;
+    if (!initialized_ || !fn_iplFMODAddSource_ || resonance_source_handle < 0)
+        return -1;
 
     ResonanceServer* server = ResonanceServer::get_singleton();
-    if (!server) return -1;
+    if (!server)
+        return -1;
 
     IPLSource src = server->get_source_from_handle(resonance_source_handle);
-    if (!src) return -1;
+    if (!src)
+        return -1;
 
     int32_t handle = fn_iplFMODAddSource_(src);
     return handle;
@@ -193,4 +198,4 @@ void ResonanceFMODBridge::remove_fmod_source(int32_t fmod_handle) {
     }
 }
 
-}  // namespace godot
+} // namespace godot

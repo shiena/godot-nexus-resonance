@@ -1,10 +1,10 @@
 #include "resonance_listener.h"
 #include "resonance_constants.h"
 #include "resonance_server.h"
-#include <godot_cpp/core/class_db.hpp>
+#include <godot_cpp/classes/camera3d.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/viewport.hpp>
-#include <godot_cpp/classes/camera3d.hpp>
+#include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/transform3d.hpp>
 #include <godot_cpp/variant/vector3.hpp>
@@ -21,10 +21,12 @@ void ResonanceListener::_exit_tree() {
 
 void ResonanceListener::_process(double delta) {
     Engine* eng = Engine::get_singleton();
-    if (eng && eng->is_editor_hint()) return;
+    if (eng && eng->is_editor_hint())
+        return;
 
     ResonanceServer* server = ResonanceServer::get_singleton();
-    if (!server || !server->is_initialized()) return;
+    if (!server || !server->is_initialized())
+        return;
 
     // Only update when this listener is in the active viewport path (descendant of viewport's camera).
     // With multiple listeners (e.g. split-screen), only the one under the active camera drives the server.
@@ -50,17 +52,21 @@ void ResonanceListener::_process(double delta) {
         if (!segments.is_empty()) {
             _ensure_reflection_viz();
             _draw_reflection_rays(segments);
-            if (reflection_mesh_instance) reflection_mesh_instance->set_visible(true);
+            if (reflection_mesh_instance)
+                reflection_mesh_instance->set_visible(true);
         } else {
-            if (reflection_mesh_instance) reflection_mesh_instance->set_visible(false);
+            if (reflection_mesh_instance)
+                reflection_mesh_instance->set_visible(false);
         }
     } else {
-        if (reflection_mesh_instance) reflection_mesh_instance->set_visible(false);
+        if (reflection_mesh_instance)
+            reflection_mesh_instance->set_visible(false);
     }
 }
 
 void ResonanceListener::_ensure_reflection_viz() {
-    if (reflection_mesh_instance) return;
+    if (reflection_mesh_instance)
+        return;
 
     reflection_material.instantiate();
     reflection_material->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
@@ -77,7 +83,8 @@ void ResonanceListener::_ensure_reflection_viz() {
 }
 
 void ResonanceListener::_draw_reflection_rays(const Array& segments) {
-    if (!reflection_immediate_mesh.is_valid()) return;
+    if (!reflection_immediate_mesh.is_valid())
+        return;
 
     reflection_immediate_mesh->clear_surfaces();
     reflection_immediate_mesh->surface_begin(Mesh::PRIMITIVE_LINES);
@@ -87,7 +94,8 @@ void ResonanceListener::_draw_reflection_rays(const Array& segments) {
 
     for (int i = 0; i < segments.size(); i++) {
         Variant v = segments[i];
-        if (v.get_type() != Variant::DICTIONARY) continue;
+        if (v.get_type() != Variant::DICTIONARY)
+            continue;
         Dictionary d = v;
         Variant from_v = d.get("from", Vector3());
         Variant to_v = d.get("to", Vector3());
