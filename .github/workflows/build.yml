@@ -18,11 +18,11 @@ jobs:
     outputs:
       src: ${{ steps.result.outputs.src }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 2
 
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: filter
         if: github.event_name != 'workflow_dispatch'
         with:
@@ -45,7 +45,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.src == 'true'
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           submodules: recursive
@@ -64,7 +64,7 @@ jobs:
         run: echo "::add-matcher::${{ github.workspace }}/.github/gcc-problem-matcher.json"
 
       - name: Cache SCons build
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .scons-cache
           key: scons-Linux-windows-v3-${{ hashFiles('src/lib/godot-cpp/SConstruct', 'src/lib/godot-cpp/gdextension/extension_api.json', 'SConstruct', 'src/register_types.cpp', 'src/resonance_server.cpp') }}
@@ -92,7 +92,7 @@ jobs:
         run: scons platform=windows target=template_debug arch=x86_64 build_tests=0 -j$(nproc)
 
       - name: Upload Windows artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: windows-editor-x86_64
           path: audio_resonance_tool/addons/nexus_resonance/bin/

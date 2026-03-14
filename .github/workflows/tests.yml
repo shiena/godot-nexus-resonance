@@ -14,11 +14,11 @@ jobs:
       src: ${{ steps.result.outputs.src }}
       run_gut: ${{ steps.result.outputs.run_gut }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 2
 
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
@@ -45,7 +45,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           submodules: recursive
@@ -69,7 +69,7 @@ jobs:
         run: echo "::add-matcher::${{ github.workspace }}/.github/gcc-problem-matcher.json"
 
       - name: Cache SCons build
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .scons-cache
           key: scons-tests-Linux-v3-${{ hashFiles('src/lib/godot-cpp/SConstruct', 'SConstruct', 'src/register_types.cpp', 'src/resonance_server.cpp', 'src/test/test_main.cpp', 'src/test/test_ipl_guard.cpp') }}
@@ -85,7 +85,10 @@ jobs:
       - name: Clang-format check
         run: |
           sudo apt-get update && sudo apt-get install -y clang-format
-          find src -type f \( -name "*.cpp" -o -name "*.h" \) ! -path "*/lib/*" | xargs clang-format --dry-run -Werror
+          find src -type f \( -name "*.cpp" -o -name "*.h" \) ! -path "*/lib/*" | xargs clang-format -i
+          echo "--- Diff (clang-format expected changes) ---"
+          git diff
+          git diff --exit-code || exit 1
 
       - name: Build C++ extension and tests
         env:
@@ -103,7 +106,7 @@ jobs:
           fi
 
       - name: Upload bin artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: nexus_resonance-bin-linux
           path: audio_resonance_tool/addons/nexus_resonance/bin/
@@ -115,7 +118,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           submodules: recursive
@@ -137,7 +140,7 @@ jobs:
         run: python scripts/install_steam_audio.py
 
       - name: Cache SCons build
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .scons-cache
           key: scons-tests-Windows-v2-${{ hashFiles('src/lib/godot-cpp/SConstruct', 'SConstruct', 'src/register_types.cpp', 'src/resonance_server.cpp', 'src/test/test_main.cpp') }}
@@ -166,10 +169,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Download bin artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: nexus_resonance-bin-linux
 

@@ -21,7 +21,7 @@ jobs:
         shell: bash
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           submodules: recursive
@@ -37,7 +37,7 @@ jobs:
         run: python scripts/install_steam_audio.py
 
       - name: Cache SCons build
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .scons-cache
           key: scons-Windows-windows-v3-${{ hashFiles('src/lib/godot-cpp/SConstruct', 'src/lib/godot-cpp/gdextension/extension_api.json', 'SConstruct', 'src/register_types.cpp', 'src/resonance_server.cpp') }}
@@ -86,7 +86,7 @@ jobs:
           fi
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: nexus_resonance-addon
           path: release_addon
@@ -97,13 +97,13 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           ref: ${{ github.ref }}
 
       - name: Download build artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: nexus_resonance-addon
 

@@ -14,9 +14,7 @@ namespace godot {
     inline PathInitFlags operator|(PathInitFlags a, PathInitFlags b) {
         return static_cast<PathInitFlags>(static_cast<int>(a) | static_cast<int>(b));
     }
-    inline bool operator&(PathInitFlags a, PathInitFlags b) {
-        return (static_cast<int>(a) & static_cast<int>(b)) != 0;
-    }
+    inline bool operator&(PathInitFlags a, PathInitFlags b) { return (static_cast<int>(a) & static_cast<int>(b)) != 0; }
 
     class ResonancePathProcessor {
     private:
