@@ -1,24 +1,24 @@
 #include "register_types.h"
-#include "resonance_server.h"
-#include "resonance_material.h"
-#include "resonance_geometry.h"
-#include "resonance_static_geometry.h"
-#include "resonance_dynamic_geometry.h"
-#include "resonance_player.h"
-#include "resonance_listener.h"
 #include "resonance_ambisonic_player.h"
-#include "resonance_probe_volume.h"
-#include "resonance_probe_data.h"
-#include "resonance_geometry_asset.h"
-#include "resonance_static_scene.h"
-#include "resonance_sofa_asset.h"
 #include "resonance_audio_effect.h"
+#include "resonance_dynamic_geometry.h"
 #include "resonance_fmod_bridge.h"
+#include "resonance_geometry.h"
+#include "resonance_geometry_asset.h"
+#include "resonance_listener.h"
+#include "resonance_material.h"
+#include "resonance_player.h"
+#include "resonance_probe_data.h"
+#include "resonance_probe_volume.h"
+#include "resonance_server.h"
+#include "resonance_sofa_asset.h"
+#include "resonance_static_geometry.h"
+#include "resonance_static_scene.h"
 
 #include <gdextension_interface.h>
+#include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/core/defs.hpp>
 #include <godot_cpp/godot.hpp>
-#include <godot_cpp/classes/engine.hpp>
 
 using namespace godot;
 
@@ -82,11 +82,11 @@ void uninitialize_nexus_resonance_module(godot::ModuleInitializationLevel p_leve
 }
 
 extern "C" {
-    GDExtensionBool GDE_EXPORT nexus_resonance_library_init(GDExtensionInterfaceGetProcAddress p_get_proc_address, const GDExtensionClassLibraryPtr p_library, GDExtensionInitialization* r_initialization) {
-        godot::GDExtensionBinding::InitObject init_obj(p_get_proc_address, p_library, r_initialization);
-        init_obj.register_initializer(initialize_nexus_resonance_module);
-        init_obj.register_terminator(uninitialize_nexus_resonance_module);
-        init_obj.set_minimum_library_initialization_level(godot::MODULE_INITIALIZATION_LEVEL_SCENE);
-        return init_obj.init();
-    }
+GDExtensionBool GDE_EXPORT nexus_resonance_library_init(GDExtensionInterfaceGetProcAddress p_get_proc_address, const GDExtensionClassLibraryPtr p_library, GDExtensionInitialization* r_initialization) {
+    godot::GDExtensionBinding::InitObject init_obj(p_get_proc_address, p_library, r_initialization);
+    init_obj.register_initializer(initialize_nexus_resonance_module);
+    init_obj.register_terminator(uninitialize_nexus_resonance_module);
+    init_obj.set_minimum_library_initialization_level(godot::MODULE_INITIALIZATION_LEVEL_SCENE);
+    return init_obj.init();
+}
 }

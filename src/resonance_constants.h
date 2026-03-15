@@ -26,10 +26,10 @@ constexpr float kDefaultReverbDurationSec = 2.0f;
 /// Baker defaults for probe reflections bake
 constexpr float kBakerSimulatedDuration = 2.0f;
 constexpr float kBakerIrradianceMinDistance = 0.5f;
-constexpr int kBakerNumDiffuseSamples = 32;       // Steam Audio diffuse propagation samples (low/mid/high bands)
-constexpr float kBakerMinSpacing = 0.1f;        // Floor for probe spacing in generate_manual_grid
-constexpr float kBakerStaticEndpointSphereRadius = 1.0f;  // IPLSphere.radius when adding probes manually
-constexpr float kBakerStaticEndpointInfluenceFallback = 10.0f;  // Fallback when influence_radius <= 0 for static endpoint bake
+constexpr int kBakerNumDiffuseSamples = 32;                    // Steam Audio diffuse propagation samples (low/mid/high bands)
+constexpr float kBakerMinSpacing = 0.1f;                       // Floor for probe spacing in generate_manual_grid
+constexpr float kBakerStaticEndpointSphereRadius = 1.0f;       // IPLSphere.radius when adding probes manually
+constexpr float kBakerStaticEndpointInfluenceFallback = 10.0f; // Fallback when influence_radius <= 0 for static endpoint bake
 
 /// Baker default parameters (overridable via ProjectSettings audio/nexus_resonance/bake_*)
 constexpr int kBakeDefaultNumRays = 4096;

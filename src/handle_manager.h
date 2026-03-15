@@ -1,37 +1,39 @@
 #ifndef HANDLE_MANAGER_H
 #define HANDLE_MANAGER_H
 
-#include <phonon.h>
-#include <mutex>
-#include <unordered_map>
-#include <queue>
-#include <vector>
-#include <cstdint>
 #include <climits>
+#include <cstdint>
+#include <mutex>
+#include <phonon.h>
+#include <queue>
+#include <unordered_map>
+#include <vector>
 
 namespace godot {
 
 /// Shared release helpers for Steam Audio handles (forward declarations; phonon.h required)
 inline void _handle_release_source(IPLSource* p) {
-    if (p && *p) iplSourceRelease(p);
+    if (p && *p)
+        iplSourceRelease(p);
 }
 inline void _handle_release_batch(IPLProbeBatch* p) {
-    if (p && *p) iplProbeBatchRelease(p);
+    if (p && *p)
+        iplProbeBatchRelease(p);
 }
 
 /// Generic handle-based resource manager. Reduces duplication between SourceManager and ProbeBatchManager.
 /// T: stored resource type (IPLSource, IPLProbeBatch).
 /// ReleaseFunc: void (*)(T*) - called with address of stored resource when releasing. Must handle null.
-template<typename T, void (*ReleaseFunc)(T*)>
+template <typename T, void (*ReleaseFunc)(T*)>
 class HandleManagerBase {
-public:
+  public:
     HandleManagerBase() = default;
     HandleManagerBase(const HandleManagerBase&) = delete;
     HandleManagerBase(HandleManagerBase&&) = delete;
     HandleManagerBase& operator=(const HandleManagerBase&) = delete;
     HandleManagerBase& operator=(HandleManagerBase&&) = delete;
 
-protected:
+  protected:
     int32_t next_handle = 0;
     std::priority_queue<int32_t, std::vector<int32_t>, std::greater<int32_t>> free_handles;
     std::unordered_map<int32_t, T> items;
@@ -54,7 +56,8 @@ protected:
 
     void release_all() {
         for (auto& pair : items) {
-            if (pair.second) ReleaseFunc(&pair.second);
+            if (pair.second)
+                ReleaseFunc(&pair.second);
         }
         items.clear();
     }
@@ -73,7 +76,7 @@ protected:
 };
 
 class SourceManager : public HandleManagerBase<IPLSource, _handle_release_source> {
-public:
+  public:
     SourceManager();
     ~SourceManager();
     /// Retains source (takes ownership of a ref). Caller may release their ref after. Returns handle or -1 for null.
@@ -84,7 +87,7 @@ public:
 };
 
 class ProbeBatchManager : public HandleManagerBase<IPLProbeBatch, _handle_release_batch> {
-public:
+  public:
     ProbeBatchManager();
     ~ProbeBatchManager();
     /// Takes ownership of batch; caller must not retain. Returns handle or -1 for null.

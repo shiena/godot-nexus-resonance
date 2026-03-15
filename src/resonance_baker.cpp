@@ -2,15 +2,15 @@
 #include "resonance_constants.h"
 #include "resonance_ipl_guard.h"
 #include "resonance_log.h"
-#include <godot_cpp/variant/utility_functions.hpp>
+#include <atomic>
+#include <cmath>
+#include <godot_cpp/classes/dir_access.hpp>
 #include <godot_cpp/classes/engine.hpp>
+#include <godot_cpp/classes/file_access.hpp>
 #include <godot_cpp/classes/project_settings.hpp>
 #include <godot_cpp/classes/resource_saver.hpp>
 #include <godot_cpp/classes/resource_uid.hpp>
-#include <godot_cpp/classes/dir_access.hpp>
-#include <godot_cpp/classes/file_access.hpp>
-#include <atomic>
-#include <cmath>
+#include <godot_cpp/variant/utility_functions.hpp>
 
 using namespace godot;
 
@@ -19,16 +19,18 @@ static std::atomic<int> s_fallback_counter{0};
 
 /// Convolution=0 -> BAKECONVOLUTION only; Parametric=1 -> BAKEPARAMETRIC only; Hybrid=2 or -1 -> both
 static IPLReflectionsBakeFlags _bake_flags_from_reflection_type(int reflection_type) {
-    if (reflection_type == resonance::kReflectionConvolution) return static_cast<IPLReflectionsBakeFlags>(IPL_REFLECTIONSBAKEFLAGS_BAKECONVOLUTION);
-    if (reflection_type == resonance::kReflectionParametric) return static_cast<IPLReflectionsBakeFlags>(IPL_REFLECTIONSBAKEFLAGS_BAKEPARAMETRIC);
+    if (reflection_type == resonance::kReflectionConvolution)
+        return static_cast<IPLReflectionsBakeFlags>(IPL_REFLECTIONSBAKEFLAGS_BAKECONVOLUTION);
+    if (reflection_type == resonance::kReflectionParametric)
+        return static_cast<IPLReflectionsBakeFlags>(IPL_REFLECTIONSBAKEFLAGS_BAKEPARAMETRIC);
     return static_cast<IPLReflectionsBakeFlags>(IPL_REFLECTIONSBAKEFLAGS_BAKECONVOLUTION | IPL_REFLECTIONSBAKEFLAGS_BAKEPARAMETRIC);
 }
 
 static void _fill_reflections_bake_params(IPLReflectionsBakeParams& out,
-    IPLScene scene, IPLProbeBatch probe_batch, IPLSceneType scene_type,
-    IPLOpenCLDevice opencl_device, IPLRadeonRaysDevice radeon_rays_device,
-    IPLBakedDataVariation variation, int num_rays, int num_bounces, int reflection_type, int num_threads,
-    const Vector3* endpoint_position = nullptr, float influence_radius = 0.0f) {
+                                          IPLScene scene, IPLProbeBatch probe_batch, IPLSceneType scene_type,
+                                          IPLOpenCLDevice opencl_device, IPLRadeonRaysDevice radeon_rays_device,
+                                          IPLBakedDataVariation variation, int num_rays, int num_bounces, int reflection_type, int num_threads,
+                                          const Vector3* endpoint_position = nullptr, float influence_radius = 0.0f) {
     out.scene = scene;
     out.probeBatch = probe_batch;
     out.sceneType = scene_type;
@@ -53,7 +55,8 @@ static void _fill_reflections_bake_params(IPLReflectionsBakeParams& out,
 
 /// Load probe batch from ResonanceProbeData. Caller must call iplProbeBatchRelease.
 static IPLProbeBatch _load_probe_batch_from_resource(IPLContext context, Ref<ResonanceProbeData> probe_data_res) {
-    if (probe_data_res.is_null() || probe_data_res->get_data().is_empty()) return nullptr;
+    if (probe_data_res.is_null() || probe_data_res->get_data().is_empty())
+        return nullptr;
     PackedByteArray pba = probe_data_res->get_data();
     IPLSerializedObjectSettings sSettings{};
     sSettings.data = reinterpret_cast<IPLbyte*>(pba.ptrw());
@@ -81,21 +84,23 @@ static String _build_tres_content(const PackedByteArray& pba, Ref<ResonanceProbe
     String data_str = UtilityFunctions::var_to_str(pba);
     String probe_pos_str = UtilityFunctions::var_to_str(probe_data_res->get_probe_positions());
     return "[gd_resource type=\"ResonanceProbeData\" format=3]\n\n[resource]\ndata = " + data_str +
-        "\nprobe_positions = " + probe_pos_str +
-        "\nbake_params_hash = " + String::num_int64(bph) +
-        "\nbaked_reflection_type = " + String::num_int64(reflection_type) +
-        "\npathing_params_hash = " + String::num_int64(pph) +
-        "\nstatic_source_params_hash = " + String::num_int64(ssp) +
-        "\nstatic_listener_params_hash = " + String::num_int64(slp) + "\n";
+           "\nprobe_positions = " + probe_pos_str +
+           "\nbake_params_hash = " + String::num_int64(bph) +
+           "\nbaked_reflection_type = " + String::num_int64(reflection_type) +
+           "\npathing_params_hash = " + String::num_int64(pph) +
+           "\nstatic_source_params_hash = " + String::num_int64(ssp) +
+           "\nstatic_listener_params_hash = " + String::num_int64(slp) + "\n";
 }
 
 /// Save probe_data to disk. path must be non-empty. Returns true on success.
 /// Skips save when pathing_scheduled; caller saves after pathing bake.
 static bool _save_probe_data_to_disk(Ref<ResonanceProbeData> probe_data_res, const String& path,
-    const PackedByteArray& pba, int reflection_type, IPLsize size, bool pathing_scheduled) {
-    if (path.is_empty() || pathing_scheduled) return true;
+                                     const PackedByteArray& pba, int reflection_type, IPLsize size, bool pathing_scheduled) {
+    if (path.is_empty() || pathing_scheduled)
+        return true;
     Error err = ResourceSaver::get_singleton()->save(probe_data_res, path, ResourceSaver::FLAG_CHANGE_PATH);
-    if (err == OK) return true;
+    if (err == OK)
+        return true;
     String tres_path = path.get_basename() + ".tres";
     Ref<FileAccess> f = FileAccess::open(tres_path, FileAccess::WRITE);
     if (!f.is_valid()) {
@@ -120,7 +125,8 @@ static String _resolve_save_path(Ref<ResonanceProbeData> probe_data_res) {
         ProjectSettings* ps = ProjectSettings::get_singleton();
         if (ps && ps->has_setting("audio/nexus_resonance/bake/output_dir")) {
             base_dir = String(ps->get_setting("audio/nexus_resonance/bake/output_dir"));
-            if (!base_dir.ends_with("/")) base_dir += "/";
+            if (!base_dir.ends_with("/"))
+                base_dir += "/";
         }
         int n = s_fallback_counter.fetch_add(1) + 1;
         path = base_dir + "baked_probe_data_" + String::num_int64(n) + ".tres";
@@ -143,10 +149,11 @@ struct AdapterData {
 };
 
 PackedVector3Array ResonanceBaker::generate_manual_grid(const Transform3D& volume_transform, Vector3 extents, float spacing,
-    int generation_type, float height_above_floor) {
+                                                        int generation_type, float height_above_floor) {
     PackedVector3Array points;
 
-    if (spacing <= resonance::kBakerMinSpacing) spacing = resonance::kBakerMinSpacing;
+    if (spacing <= resonance::kBakerMinSpacing)
+        spacing = resonance::kBakerMinSpacing;
     Vector3 size = extents * 2.0f;
 
     if (generation_type == GEN_CENTROID) {
@@ -163,8 +170,10 @@ PackedVector3Array ResonanceBaker::generate_manual_grid(const Transform3D& volum
         float plane_y = -extents.y + height_above_floor;
         int count_x = static_cast<int>(std::floor(size.x / spacing));
         int count_z = static_cast<int>(std::floor(size.z / spacing));
-        if (count_x <= 0) count_x = 1;
-        if (count_z <= 0) count_z = 1;
+        if (count_x <= 0)
+            count_x = 1;
+        if (count_z <= 0)
+            count_z = 1;
 
         float offset_x = (size.x < spacing) ? extents.x : spacing * 0.5f;
         float offset_z = (size.z < spacing) ? extents.z : spacing * 0.5f;
@@ -182,24 +191,29 @@ PackedVector3Array ResonanceBaker::generate_manual_grid(const Transform3D& volum
     int count_x = static_cast<int>(std::floor(size.x / spacing));
     int count_y = static_cast<int>(std::floor(size.y / spacing));
     int count_z = static_cast<int>(std::floor(size.z / spacing));
-    if (count_x <= 0) count_x = 1;
-    if (count_y <= 0) count_y = 1;
-    if (count_z <= 0) count_z = 1;
+    if (count_x <= 0)
+        count_x = 1;
+    if (count_y <= 0)
+        count_y = 1;
+    if (count_z <= 0)
+        count_z = 1;
 
     Vector3 local_start = -extents;
     Vector3 offset(spacing * 0.5f, spacing * 0.5f, spacing * 0.5f);
-    if (size.x < spacing) offset.x = extents.x;
-    if (size.y < spacing) offset.y = extents.y;
-    if (size.z < spacing) offset.z = extents.z;
+    if (size.x < spacing)
+        offset.x = extents.x;
+    if (size.y < spacing)
+        offset.y = extents.y;
+    if (size.z < spacing)
+        offset.z = extents.z;
 
     for (int ix = 0; ix < count_x; ix++) {
         for (int iy = 0; iy < count_y; iy++) {
             for (int iz = 0; iz < count_z; iz++) {
                 Vector3 local_pos = local_start + Vector3(
-                    (ix * spacing) + offset.x,
-                    (iy * spacing) + offset.y,
-                    (iz * spacing) + offset.z
-                );
+                                                      (ix * spacing) + offset.x,
+                                                      (iy * spacing) + offset.y,
+                                                      (iz * spacing) + offset.z);
                 points.push_back(volume_transform.xform(local_pos));
             }
         }
@@ -209,16 +223,17 @@ PackedVector3Array ResonanceBaker::generate_manual_grid(const Transform3D& volum
 
 static void IPLCALL _ipl_progress_adapter(IPLfloat32 progress, void* userData) {
     AdapterData* ad = static_cast<AdapterData*>(userData);
-    if (ad && ad->cb) ad->cb(static_cast<float>(progress), ad->ud);
+    if (ad && ad->cb)
+        ad->cb(static_cast<float>(progress), ad->ud);
 }
 
 bool ResonanceBaker::bake_with_probe_array(IPLContext context, IPLScene scene, IPLSceneType scene_type,
-    IPLOpenCLDevice opencl_device, IPLRadeonRaysDevice radeon_rays_device,
-    const Transform3D& volume_transform, Vector3 extents, float spacing,
-    int generation_type, float height_above_floor,
-    int num_bounces, int num_rays, int reflection_type,
-    Ref<ResonanceProbeData> probe_data_res,
-    void (*progress_callback)(float, void*), void* progress_user_data, bool pathing_scheduled, int num_threads) {
+                                           IPLOpenCLDevice opencl_device, IPLRadeonRaysDevice radeon_rays_device,
+                                           const Transform3D& volume_transform, Vector3 extents, float spacing,
+                                           int generation_type, float height_above_floor,
+                                           int num_bounces, int num_rays, int reflection_type,
+                                           Ref<ResonanceProbeData> probe_data_res,
+                                           void (*progress_callback)(float, void*), void* progress_user_data, bool pathing_scheduled, int num_threads) {
     if (generation_type != GEN_CENTROID && generation_type != GEN_UNIFORM_FLOOR) {
         UtilityFunctions::push_error("ResonanceBaker: bake_with_probe_array only supports Centroid (0) and UniformFloor (1). Use bake_manual_grid for Volume.");
         return false;
@@ -254,7 +269,7 @@ bool ResonanceBaker::bake_with_probe_array(IPLContext context, IPLScene scene, I
             PackedVector3Array points = generate_manual_grid(volume_transform, extents, spacing, generation_type, height_above_floor);
             if (!points.is_empty()) {
                 return bake_manual_grid(context, scene, scene_type, opencl_device, radeon_rays_device,
-                    points, num_bounces, num_rays, reflection_type, probe_data_res, progress_callback, progress_user_data, pathing_scheduled, num_threads);
+                                        points, num_bounces, num_rays, reflection_type, probe_data_res, progress_callback, progress_user_data, pathing_scheduled, num_threads);
             }
         }
         UtilityFunctions::push_error("ResonanceBaker: Steam probe array generated 0 probes. Check volume and scene geometry.");
@@ -280,11 +295,11 @@ bool ResonanceBaker::bake_with_probe_array(IPLContext context, IPLScene scene, I
     iplProbeBatchCommit(probeBatch);
     IPLReflectionsBakeParams bakeParams{};
     _fill_reflections_bake_params(bakeParams, scene, probeBatch, scene_type, opencl_device, radeon_rays_device,
-        IPL_BAKEDDATAVARIATION_REVERB, num_rays, num_bounces, reflection_type, num_threads);
-    AdapterData adapter = { progress_callback, progress_user_data };
+                                  IPL_BAKEDDATAVARIATION_REVERB, num_rays, num_bounces, reflection_type, num_threads);
+    AdapterData adapter = {progress_callback, progress_user_data};
     iplReflectionsBakerBake(context, &bakeParams,
-        (progress_callback && progress_user_data) ? _ipl_progress_adapter : nullptr,
-        (progress_callback && progress_user_data) ? &adapter : nullptr);
+                            (progress_callback && progress_user_data) ? _ipl_progress_adapter : nullptr,
+                            (progress_callback && progress_user_data) ? &adapter : nullptr);
     IPLSerializedObjectSettings serialSettings{};
     IPLSerializedObject serializedObject = nullptr;
     if (iplSerializedObjectCreate(context, &serialSettings, &serializedObject) != IPL_STATUS_SUCCESS) {
@@ -319,10 +334,11 @@ bool ResonanceBaker::bake_with_probe_array(IPLContext context, IPLScene scene, I
 bool ResonanceBaker::bake_manual_grid(IPLContext context, IPLScene scene, IPLSceneType scene_type, IPLOpenCLDevice opencl_device, IPLRadeonRaysDevice radeon_rays_device, const PackedVector3Array& probe_positions, int num_bounces, int num_rays, int reflection_type, Ref<ResonanceProbeData> probe_data_res, void (*progress_callback)(float, void*), void* progress_user_data, bool pathing_scheduled, int num_threads) {
     Engine* eng = Engine::get_singleton();
     if (eng && eng->is_editor_hint()) {
-        const char* refl_name = (reflection_type == resonance::kReflectionConvolution) ? "Convolution" : (reflection_type == resonance::kReflectionParametric) ? "Parametric" : "Hybrid";
+        const char* refl_name = (reflection_type == resonance::kReflectionConvolution) ? "Convolution" : (reflection_type == resonance::kReflectionParametric) ? "Parametric"
+                                                                                                                                                               : "Hybrid";
         String msg = pathing_scheduled
-            ? String("Starting Bake (") + refl_name + " + Pathing) Process..."
-            : String("Starting Bake (") + refl_name + ") Process...";
+                         ? String("Starting Bake (") + refl_name + " + Pathing) Process..."
+                         : String("Starting Bake (") + refl_name + ") Process...";
         UtilityFunctions::print_rich("[color=cyan]Nexus Resonance:[/color] " + msg);
     }
 
@@ -366,13 +382,13 @@ bool ResonanceBaker::bake_manual_grid(IPLContext context, IPLScene scene, IPLSce
     // 3. Bake Params - always bake both so Convolution, Parametric and Hybrid work at runtime without re-bake
     IPLReflectionsBakeParams bakeParams{};
     _fill_reflections_bake_params(bakeParams, scene, probeBatch, scene_type, opencl_device, radeon_rays_device,
-        IPL_BAKEDDATAVARIATION_REVERB, num_rays, num_bounces, reflection_type, num_threads);
+                                  IPL_BAKEDDATAVARIATION_REVERB, num_rays, num_bounces, reflection_type, num_threads);
 
     // 4. Run Bake (with optional progress callback)
-    AdapterData adapter = { progress_callback, progress_user_data };
+    AdapterData adapter = {progress_callback, progress_user_data};
     iplReflectionsBakerBake(context, &bakeParams,
-        (progress_callback && progress_user_data) ? _ipl_progress_adapter : nullptr,
-        (progress_callback && progress_user_data) ? &adapter : nullptr);
+                            (progress_callback && progress_user_data) ? _ipl_progress_adapter : nullptr,
+                            (progress_callback && progress_user_data) ? &adapter : nullptr);
 
     // 5. Save to Memory
     IPLScopedRelease<IPLProbeBatch> probeBatchGuard(probeBatch, iplProbeBatchRelease);
@@ -415,8 +431,8 @@ bool ResonanceBaker::bake_manual_grid(IPLContext context, IPLScene scene, IPLSce
 }
 
 bool ResonanceBaker::bake_pathing(IPLContext context, IPLScene scene, Ref<ResonanceProbeData> probe_data_res,
-    float vis_range, float path_range, int num_samples, float radius, float threshold,
-    void (*progress_callback)(float, void*), void* progress_user_data, int num_threads) {
+                                  float vis_range, float path_range, int num_samples, float radius, float threshold,
+                                  void (*progress_callback)(float, void*), void* progress_user_data, int num_threads) {
     if (probe_data_res.is_null() || probe_data_res->get_data().is_empty()) {
         UtilityFunctions::push_error("Nexus Resonance: bake_pathing requires probe_data with existing baked reflections.");
         return false;
@@ -445,10 +461,10 @@ bool ResonanceBaker::bake_pathing(IPLContext context, IPLScene scene, Ref<Resona
     pathParams.pathRange = path_range;
     pathParams.numThreads = (num_threads < 1) ? 1 : num_threads;
 
-    AdapterData adapter = { progress_callback, progress_user_data };
+    AdapterData adapter = {progress_callback, progress_user_data};
     iplPathBakerBake(context, &pathParams,
-        (progress_callback && progress_user_data) ? _ipl_progress_adapter : nullptr,
-        (progress_callback && progress_user_data) ? &adapter : nullptr);
+                     (progress_callback && progress_user_data) ? _ipl_progress_adapter : nullptr,
+                     (progress_callback && progress_user_data) ? &adapter : nullptr);
 
     IPLSerializedObjectSettings serialSettings{};
     IPLSerializedObject serializedObject = nullptr;
@@ -493,10 +509,10 @@ bool ResonanceBaker::bake_pathing(IPLContext context, IPLScene scene, Ref<Resona
 }
 
 bool ResonanceBaker::_bake_static_endpoint(IPLContext context, IPLScene scene, IPLSceneType scene_type,
-    IPLOpenCLDevice opencl_device, IPLRadeonRaysDevice radeon_rays_device,
-    Ref<ResonanceProbeData> probe_data_res, Vector3 endpoint_position, float influence_radius,
-    IPLBakedDataVariation variation, const char* error_prefix, const char* success_msg,
-    int num_bounces, int num_rays, void (*progress_callback)(float, void*), void* progress_user_data, int num_threads) {
+                                           IPLOpenCLDevice opencl_device, IPLRadeonRaysDevice radeon_rays_device,
+                                           Ref<ResonanceProbeData> probe_data_res, Vector3 endpoint_position, float influence_radius,
+                                           IPLBakedDataVariation variation, const char* error_prefix, const char* success_msg,
+                                           int num_bounces, int num_rays, void (*progress_callback)(float, void*), void* progress_user_data, int num_threads) {
     String prefix(error_prefix);
     if (probe_data_res.is_null() || probe_data_res->get_data().is_empty()) {
         UtilityFunctions::push_error("Nexus Resonance: " + prefix + " requires probe_data with existing baked probes (Bake Probes first).");
@@ -506,7 +522,8 @@ bool ResonanceBaker::_bake_static_endpoint(IPLContext context, IPLScene scene, I
         UtilityFunctions::push_error("Nexus Resonance: " + prefix + " requires initialized context and scene.");
         return false;
     }
-    if (influence_radius <= 0.0f) influence_radius = resonance::kBakerStaticEndpointInfluenceFallback;
+    if (influence_radius <= 0.0f)
+        influence_radius = resonance::kBakerStaticEndpointInfluenceFallback;
 
     IPLProbeBatch batch = _load_probe_batch_from_resource(context, probe_data_res);
     if (!batch) {
@@ -519,13 +536,13 @@ bool ResonanceBaker::_bake_static_endpoint(IPLContext context, IPLScene scene, I
     int refl_type = baked_type >= 0 ? baked_type : 2;
     IPLReflectionsBakeParams bakeParams{};
     _fill_reflections_bake_params(bakeParams, scene, batch, scene_type, opencl_device, radeon_rays_device,
-        variation, num_rays, num_bounces, refl_type, num_threads,
-        &endpoint_position, influence_radius);
+                                  variation, num_rays, num_bounces, refl_type, num_threads,
+                                  &endpoint_position, influence_radius);
 
-    AdapterData adapter = { progress_callback, progress_user_data };
+    AdapterData adapter = {progress_callback, progress_user_data};
     iplReflectionsBakerBake(context, &bakeParams,
-        (progress_callback && progress_user_data) ? _ipl_progress_adapter : nullptr,
-        (progress_callback && progress_user_data) ? &adapter : nullptr);
+                            (progress_callback && progress_user_data) ? _ipl_progress_adapter : nullptr,
+                            (progress_callback && progress_user_data) ? &adapter : nullptr);
 
     IPLSerializedObjectSettings serialSettings{};
     IPLSerializedObject serializedObject = nullptr;
@@ -555,21 +572,21 @@ bool ResonanceBaker::_bake_static_endpoint(IPLContext context, IPLScene scene, I
 }
 
 bool ResonanceBaker::bake_static_source(IPLContext context, IPLScene scene, IPLSceneType scene_type,
-    IPLOpenCLDevice opencl_device, IPLRadeonRaysDevice radeon_rays_device,
-    Ref<ResonanceProbeData> probe_data_res, Vector3 endpoint_position, float influence_radius,
-    int num_bounces, int num_rays, void (*progress_callback)(float, void*), void* progress_user_data, int num_threads) {
+                                        IPLOpenCLDevice opencl_device, IPLRadeonRaysDevice radeon_rays_device,
+                                        Ref<ResonanceProbeData> probe_data_res, Vector3 endpoint_position, float influence_radius,
+                                        int num_bounces, int num_rays, void (*progress_callback)(float, void*), void* progress_user_data, int num_threads) {
     return _bake_static_endpoint(context, scene, scene_type, opencl_device, radeon_rays_device,
-        probe_data_res, endpoint_position, influence_radius,
-        IPL_BAKEDDATAVARIATION_STATICSOURCE, "bake_static_source", "Static source baked successfully.",
-        num_bounces, num_rays, progress_callback, progress_user_data, num_threads);
+                                 probe_data_res, endpoint_position, influence_radius,
+                                 IPL_BAKEDDATAVARIATION_STATICSOURCE, "bake_static_source", "Static source baked successfully.",
+                                 num_bounces, num_rays, progress_callback, progress_user_data, num_threads);
 }
 
 bool ResonanceBaker::bake_static_listener(IPLContext context, IPLScene scene, IPLSceneType scene_type,
-    IPLOpenCLDevice opencl_device, IPLRadeonRaysDevice radeon_rays_device,
-    Ref<ResonanceProbeData> probe_data_res, Vector3 endpoint_position, float influence_radius,
-    int num_bounces, int num_rays, void (*progress_callback)(float, void*), void* progress_user_data, int num_threads) {
+                                          IPLOpenCLDevice opencl_device, IPLRadeonRaysDevice radeon_rays_device,
+                                          Ref<ResonanceProbeData> probe_data_res, Vector3 endpoint_position, float influence_radius,
+                                          int num_bounces, int num_rays, void (*progress_callback)(float, void*), void* progress_user_data, int num_threads) {
     return _bake_static_endpoint(context, scene, scene_type, opencl_device, radeon_rays_device,
-        probe_data_res, endpoint_position, influence_radius,
-        IPL_BAKEDDATAVARIATION_STATICLISTENER, "bake_static_listener", "Static listener baked successfully.",
-        num_bounces, num_rays, progress_callback, progress_user_data, num_threads);
+                                 probe_data_res, endpoint_position, influence_radius,
+                                 IPL_BAKEDDATAVARIATION_STATICLISTENER, "bake_static_listener", "Static listener baked successfully.",
+                                 num_bounces, num_rays, progress_callback, progress_user_data, num_threads);
 }

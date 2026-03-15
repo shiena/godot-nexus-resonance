@@ -14,7 +14,7 @@ namespace godot {
 class ResonanceFMODBridge : public Object {
     GDCLASS(ResonanceFMODBridge, Object)
 
-public:
+  public:
     ResonanceFMODBridge() = default;
     ~ResonanceFMODBridge();
 
@@ -39,11 +39,11 @@ public:
     /// Remove an FMOD source. Call when the FMOD event stops.
     void remove_fmod_source(int32_t fmod_handle);
 
-private:
+  private:
 #if defined(_WIN32) || defined(_WIN64)
-    void* plugin_handle_ = nullptr;  // HMODULE
+    void* plugin_handle_ = nullptr; // HMODULE
 #else
-    void* plugin_handle_ = nullptr;  // void* from dlopen
+    void* plugin_handle_ = nullptr; // void* from dlopen
 #endif
 
     bool initialized_ = false;
@@ -64,6 +64,6 @@ private:
     static void _bind_methods();
 };
 
-}  // namespace godot
+} // namespace godot
 
-#endif  // RESONANCE_FMOD_BRIDGE_H
+#endif // RESONANCE_FMOD_BRIDGE_H

@@ -1,9 +1,9 @@
 #ifndef RESONANCE_SERVER_CONFIG_H
 #define RESONANCE_SERVER_CONFIG_H
 
+#include <functional>
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/variant.hpp>
-#include <functional>
 
 #include "resonance_constants.h"
 #include "resonance_sofa_asset.h"
@@ -53,7 +53,7 @@ struct ResonanceServerConfig {
     // Ray tracer / OpenCL / Radeon Rays
     /// 0=Default (built-in Phonon), 1=Embree (Intel, faster CPU), 2=Radeon Rays (GPU)
     int scene_type = 1;
-    int opencl_device_type = 0;  // 0=GPU, 1=CPU, 2=Any
+    int opencl_device_type = 0; // 0=GPU, 1=CPU, 2=Any
     int opencl_device_index = 0;
 
     // Context
@@ -85,9 +85,9 @@ struct ResonanceServerConfig {
     /// Apply config from Dictionary. Optional get_bake_pathing_param used for pathing_vis_* fallback when keys missing.
     /// config_int truncates FLOAT to int; use integer values from GDScript/JSON for exact results.
     void apply(const Dictionary& config,
-        std::function<float(const char*, float)> get_bake_pathing_param = nullptr);
+               std::function<float(const char*, float)> get_bake_pathing_param = nullptr);
 
-private:
+  private:
     static int config_int(const Dictionary& c, const char* key, int def);
     static float config_float(const Dictionary& c, const char* key, float def);
     static bool config_bool(const Dictionary& c, const char* key, bool def);

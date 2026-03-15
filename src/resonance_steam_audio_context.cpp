@@ -1,7 +1,7 @@
 #include "resonance_steam_audio_context.h"
 #include "resonance_constants.h"
-#include <godot_cpp/variant/utility_functions.hpp>
 #include <climits>
+#include <godot_cpp/variant/utility_functions.hpp>
 #if defined(_WIN32) && defined(_MSC_VER)
 #include <excpt.h>
 #endif
@@ -11,8 +11,10 @@ namespace godot {
 namespace {
 void IPLCALL log_callback(IPLLogLevel level, const char* message) {
     String msg = "SteamAudio: " + String(message);
-    if (level == IPL_LOGLEVEL_ERROR) UtilityFunctions::push_error(msg);
-    else if (level == IPL_LOGLEVEL_WARNING) UtilityFunctions::push_warning(msg);
+    if (level == IPL_LOGLEVEL_ERROR)
+        UtilityFunctions::push_error(msg);
+    else if (level == IPL_LOGLEVEL_WARNING)
+        UtilityFunctions::push_warning(msg);
 }
 } // namespace
 
@@ -29,8 +31,8 @@ bool ResonanceSteamAudioContext::init(ResonanceSteamAudioContextConfig& config) 
     // Phonon: SSE2=0, SSE4=1, AVX=2, AVX2=3, AVX512=4.
     // config 0=highest (AVX512), 4=lowest (SSE2). Maps to 4 - config.
     ctxSettings.simdLevel = (config.context_simd_level >= 0 && config.context_simd_level <= 4)
-        ? static_cast<IPLSIMDLevel>(4 - config.context_simd_level)
-        : IPL_SIMDLEVEL_AVX512;
+                                ? static_cast<IPLSIMDLevel>(4 - config.context_simd_level)
+                                : IPL_SIMDLEVEL_AVX512;
     // Respect config: validation can produce warnings (reverbTimes=0, eqCoeffs>1) from Steam Audio
     // simulation edge cases. Set context_validation=true in config when debugging API misuse.
     bool use_validation = config.context_validation;
@@ -41,7 +43,7 @@ bool ResonanceSteamAudioContext::init(ResonanceSteamAudioContextConfig& config) 
         return false;
     }
 
-    IPLAudioSettings audioSettings{ config.sample_rate, config.frame_size };
+    IPLAudioSettings audioSettings{config.sample_rate, config.frame_size};
     IPLHRTFSettings hrtfSettings{};
     if (config.hrtf_sofa_asset.is_valid() && config.hrtf_sofa_asset->is_valid()) {
         const uint8_t* ptr = config.hrtf_sofa_asset->get_data_ptr();
@@ -56,7 +58,8 @@ bool ResonanceSteamAudioContext::init(ResonanceSteamAudioContextConfig& config) 
             hrtfSettings.sofaDataSize = static_cast<int>(sz);
             hrtfSettings.volume = ResonanceSOFAAsset::db_to_gain(config.hrtf_sofa_asset->get_volume_db());
             hrtfSettings.normType = (config.hrtf_sofa_asset->get_norm_type() == ResonanceSOFAAsset::NORM_RMS)
-                ? IPL_HRTFNORMTYPE_RMS : IPL_HRTFNORMTYPE_NONE;
+                                        ? IPL_HRTFNORMTYPE_RMS
+                                        : IPL_HRTFNORMTYPE_NONE;
         }
     }
     if (hrtfSettings.type != IPL_HRTFTYPE_SOFA) {
@@ -79,60 +82,63 @@ bool ResonanceSteamAudioContext::init(ResonanceSteamAudioContextConfig& config) 
 #if defined(_WIN32) && defined(_MSC_VER)
         __try {
 #endif
-        IPLOpenCLDeviceSettings openclSettings{};
-        openclSettings.type = (config.reflection_type == resonance::kReflectionTan) ? IPL_OPENCLDEVICETYPE_GPU
-            : (config.opencl_device_type == 0) ? IPL_OPENCLDEVICETYPE_GPU
-            : (config.opencl_device_type == 1) ? IPL_OPENCLDEVICETYPE_CPU
-            : IPL_OPENCLDEVICETYPE_ANY;
-        openclSettings.numCUsToReserve = 0;
-        openclSettings.fractionCUsForIRUpdate = 0.5f;
-        openclSettings.requiresTAN = (config.reflection_type == resonance::kReflectionTan) ? IPL_TRUE : IPL_FALSE;
-        IPLerror opencl_list_status = iplOpenCLDeviceListCreate(context_, &openclSettings, &opencl_device_list_);
-        if (opencl_list_status == IPL_STATUS_SUCCESS && opencl_device_list_ && iplOpenCLDeviceListGetNumDevices(opencl_device_list_) > 0) {
-            int num_devs = iplOpenCLDeviceListGetNumDevices(opencl_device_list_);
-            int dev_idx = (config.opencl_device_index >= 0 && config.opencl_device_index < num_devs) ? config.opencl_device_index : 0;
-            IPLerror opencl_dev_status = iplOpenCLDeviceCreate(context_, opencl_device_list_, dev_idx, &opencl_device_);
-            if (opencl_dev_status == IPL_STATUS_SUCCESS && opencl_device_) {
-                if (config.scene_type == 2) {
-                    IPLRadeonRaysDeviceSettings rrSettings{};
-                    IPLerror rr_status = iplRadeonRaysDeviceCreate(opencl_device_, &rrSettings, &radeon_rays_device_);
-                    if (rr_status == IPL_STATUS_SUCCESS && radeon_rays_device_) {
-                        scene_type_ = IPL_SCENETYPE_RADEONRAYS;
-                        UtilityFunctions::print_rich("[color=cyan]Nexus Resonance:[/color] Using Radeon Rays (GPU) for ray tracing.");
-                    } else {
-                        iplOpenCLDeviceRelease(&opencl_device_);
-                        opencl_device_ = nullptr;
+            IPLOpenCLDeviceSettings openclSettings{};
+            openclSettings.type = (config.reflection_type == resonance::kReflectionTan) ? IPL_OPENCLDEVICETYPE_GPU
+                                  : (config.opencl_device_type == 0)                    ? IPL_OPENCLDEVICETYPE_GPU
+                                  : (config.opencl_device_type == 1)                    ? IPL_OPENCLDEVICETYPE_CPU
+                                                                                        : IPL_OPENCLDEVICETYPE_ANY;
+            openclSettings.numCUsToReserve = 0;
+            openclSettings.fractionCUsForIRUpdate = 0.5f;
+            openclSettings.requiresTAN = (config.reflection_type == resonance::kReflectionTan) ? IPL_TRUE : IPL_FALSE;
+            IPLerror opencl_list_status = iplOpenCLDeviceListCreate(context_, &openclSettings, &opencl_device_list_);
+            if (opencl_list_status == IPL_STATUS_SUCCESS && opencl_device_list_ && iplOpenCLDeviceListGetNumDevices(opencl_device_list_) > 0) {
+                int num_devs = iplOpenCLDeviceListGetNumDevices(opencl_device_list_);
+                int dev_idx = (config.opencl_device_index >= 0 && config.opencl_device_index < num_devs) ? config.opencl_device_index : 0;
+                IPLerror opencl_dev_status = iplOpenCLDeviceCreate(context_, opencl_device_list_, dev_idx, &opencl_device_);
+                if (opencl_dev_status == IPL_STATUS_SUCCESS && opencl_device_) {
+                    if (config.scene_type == 2) {
+                        IPLRadeonRaysDeviceSettings rrSettings{};
+                        IPLerror rr_status = iplRadeonRaysDeviceCreate(opencl_device_, &rrSettings, &radeon_rays_device_);
+                        if (rr_status == IPL_STATUS_SUCCESS && radeon_rays_device_) {
+                            scene_type_ = IPL_SCENETYPE_RADEONRAYS;
+                            UtilityFunctions::print_rich("[color=cyan]Nexus Resonance:[/color] Using Radeon Rays (GPU) for ray tracing.");
+                        } else {
+                            iplOpenCLDeviceRelease(&opencl_device_);
+                            opencl_device_ = nullptr;
+                        }
+                    }
+                    if (config.reflection_type == resonance::kReflectionTan && opencl_device_) {
+                        IPLTrueAudioNextDeviceSettings tanSettings{};
+                        tanSettings.frameSize = config.frame_size;
+                        tanSettings.irSize = (IPLint32)(config.max_reverb_duration * (float)config.sample_rate);
+                        tanSettings.order = config.ambisonic_order;
+                        tanSettings.maxSources = resonance::kMaxSimulationSources;
+                        IPLerror tan_status = iplTrueAudioNextDeviceCreate(opencl_device_, &tanSettings, &tan_device_);
+                        if (tan_status != IPL_STATUS_SUCCESS || !tan_device_) {
+                            tan_device_ = nullptr;
+                            config.reflection_type = resonance::kReflectionConvolution;
+                            UtilityFunctions::push_warning("Nexus Resonance: TrueAudio Next (TAN) init failed. Falling back to Convolution. TAN requires AMD GPU with TrueAudio Next support.");
+                        } else {
+                            UtilityFunctions::print_rich("[color=cyan]Nexus Resonance:[/color] Using TrueAudio Next (AMD GPU) for reverb convolution.");
+                        }
                     }
                 }
-                if (config.reflection_type == resonance::kReflectionTan && opencl_device_) {
-                    IPLTrueAudioNextDeviceSettings tanSettings{};
-                    tanSettings.frameSize = config.frame_size;
-                    tanSettings.irSize = (IPLint32)(config.max_reverb_duration * (float)config.sample_rate);
-                    tanSettings.order = config.ambisonic_order;
-                    tanSettings.maxSources = resonance::kMaxSimulationSources;
-                    IPLerror tan_status = iplTrueAudioNextDeviceCreate(opencl_device_, &tanSettings, &tan_device_);
-                    if (tan_status != IPL_STATUS_SUCCESS || !tan_device_) {
-                        tan_device_ = nullptr;
-                        config.reflection_type = resonance::kReflectionConvolution;
-                        UtilityFunctions::push_warning("Nexus Resonance: TrueAudio Next (TAN) init failed. Falling back to Convolution. TAN requires AMD GPU with TrueAudio Next support.");
-                    } else {
-                        UtilityFunctions::print_rich("[color=cyan]Nexus Resonance:[/color] Using TrueAudio Next (AMD GPU) for reverb convolution.");
-                    }
+                if (opencl_device_list_)
+                    iplOpenCLDeviceListRelease(&opencl_device_list_);
+                opencl_device_list_ = nullptr;
+            }
+            if (!opencl_device_ && opencl_device_list_) {
+                iplOpenCLDeviceListRelease(&opencl_device_list_);
+                opencl_device_list_ = nullptr;
+            }
+            if (config.reflection_type == resonance::kReflectionTan && !tan_device_) {
+                if (opencl_device_) {
+                    iplOpenCLDeviceRelease(&opencl_device_);
+                    opencl_device_ = nullptr;
                 }
             }
-            if (opencl_device_list_) iplOpenCLDeviceListRelease(&opencl_device_list_);
-            opencl_device_list_ = nullptr;
-        }
-        if (!opencl_device_ && opencl_device_list_) {
-            iplOpenCLDeviceListRelease(&opencl_device_list_);
-            opencl_device_list_ = nullptr;
-        }
-        if (config.reflection_type == resonance::kReflectionTan && !tan_device_) {
-            if (opencl_device_) { iplOpenCLDeviceRelease(&opencl_device_); opencl_device_ = nullptr; }
-        }
 #if defined(_WIN32) && defined(_MSC_VER)
-        }
-        __except (EXCEPTION_EXECUTE_HANDLER) {
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
             opencl_device_list_ = nullptr;
             opencl_device_ = nullptr;
             tan_device_ = nullptr;
@@ -175,7 +181,10 @@ bool ResonanceSteamAudioContext::init(ResonanceSteamAudioContextConfig& config) 
 
 IPLHRTF ResonanceSteamAudioContext::get_hrtf() const {
     if (new_hrtf_written_.exchange(false, std::memory_order_acq_rel)) {
-        if (hrtf_[0]) { iplHRTFRelease(&hrtf_[0]); hrtf_[0] = nullptr; }
+        if (hrtf_[0]) {
+            iplHRTFRelease(&hrtf_[0]);
+            hrtf_[0] = nullptr;
+        }
         if (hrtf_[1]) {
             hrtf_[0] = iplHRTFRetain(hrtf_[1]);
         }
@@ -184,15 +193,37 @@ IPLHRTF ResonanceSteamAudioContext::get_hrtf() const {
 }
 
 void ResonanceSteamAudioContext::shutdown() {
-    if (!context_) return;
+    if (!context_)
+        return;
     new_hrtf_written_.store(false);
-    if (hrtf_[0]) { iplHRTFRelease(&hrtf_[0]); hrtf_[0] = nullptr; }
-    if (hrtf_[1]) { iplHRTFRelease(&hrtf_[1]); hrtf_[1] = nullptr; }
-    if (radeon_rays_device_) { iplRadeonRaysDeviceRelease(&radeon_rays_device_); radeon_rays_device_ = nullptr; }
-    if (tan_device_) { iplTrueAudioNextDeviceRelease(&tan_device_); tan_device_ = nullptr; }
-    if (opencl_device_) { iplOpenCLDeviceRelease(&opencl_device_); opencl_device_ = nullptr; }
-    if (opencl_device_list_) { iplOpenCLDeviceListRelease(&opencl_device_list_); opencl_device_list_ = nullptr; }
-    if (embree_device_) { iplEmbreeDeviceRelease(&embree_device_); embree_device_ = nullptr; }
+    if (hrtf_[0]) {
+        iplHRTFRelease(&hrtf_[0]);
+        hrtf_[0] = nullptr;
+    }
+    if (hrtf_[1]) {
+        iplHRTFRelease(&hrtf_[1]);
+        hrtf_[1] = nullptr;
+    }
+    if (radeon_rays_device_) {
+        iplRadeonRaysDeviceRelease(&radeon_rays_device_);
+        radeon_rays_device_ = nullptr;
+    }
+    if (tan_device_) {
+        iplTrueAudioNextDeviceRelease(&tan_device_);
+        tan_device_ = nullptr;
+    }
+    if (opencl_device_) {
+        iplOpenCLDeviceRelease(&opencl_device_);
+        opencl_device_ = nullptr;
+    }
+    if (opencl_device_list_) {
+        iplOpenCLDeviceListRelease(&opencl_device_list_);
+        opencl_device_list_ = nullptr;
+    }
+    if (embree_device_) {
+        iplEmbreeDeviceRelease(&embree_device_);
+        embree_device_ = nullptr;
+    }
     if (context_) {
         iplContextRelease(&context_);
         context_ = nullptr;
