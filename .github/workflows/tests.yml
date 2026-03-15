@@ -166,7 +166,7 @@ jobs:
 
       - name: Install GUT test framework
         run: |
-          GUT_VERSION="9.3.0"
+          GUT_VERSION="9.6.0"
           curl -fsSL -o /tmp/gut.zip "https://github.com/bitwes/Gut/archive/refs/tags/v${GUT_VERSION}.zip"
           unzip -qo /tmp/gut.zip -d /tmp/gut
           mkdir -p audio_resonance_tool/addons/gut
