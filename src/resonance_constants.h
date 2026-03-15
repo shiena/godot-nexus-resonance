@@ -8,7 +8,7 @@ namespace resonance {
 
 /// Version string (centralized; override via NEXUS_RESONANCE_VERSION when building)
 #ifndef NEXUS_RESONANCE_VERSION
-#define NEXUS_RESONANCE_VERSION "0.8.7"
+#define NEXUS_RESONANCE_VERSION "0.9.1"
 #endif
 constexpr const char* kVersion = NEXUS_RESONANCE_VERSION;
 
@@ -163,8 +163,9 @@ constexpr float kProbeVizColorGrayR = 0.5f;
 constexpr float kProbeVizColorGrayG = 0.5f;
 constexpr float kProbeVizColorGrayB = 0.5f;
 constexpr float kProbeVizColorGrayA = 0.8f;
-/// ResonanceProbeVolume: bake influence radius min, spacing min/max, viz scale min/max
+/// ResonanceProbeVolume: bake influence radius min, spacing min/max, viz scale min/max, region size min
 constexpr float kProbeBakeInfluenceRadiusMin = 1.0f;
+constexpr float kProbeRegionSizeMin = 0.1f;
 constexpr float kProbeSpacingMin = 0.1f;
 constexpr float kProbeSpacingMax = 100.0f;
 constexpr float kProbeVizScaleMin = 0.1f;

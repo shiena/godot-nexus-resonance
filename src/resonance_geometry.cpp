@@ -31,6 +31,8 @@ static IPLMaterial get_default_ipl_material() {
 static bool parse_mesh_to_ipl(const Ref<Mesh>& mesh, const Transform3D& xform,
                               std::vector<IPLVector3>& out_vertices, std::vector<IPLTriangle>& out_triangles,
                               std::vector<IPLint32>& out_mat_indices) {
+    if (mesh.is_null())
+        return false;
     for (int i = 0; i < mesh->get_surface_count(); i++) {
         Array arrays = mesh->surface_get_arrays(i);
         if (arrays.size() != Mesh::ARRAY_MAX)
@@ -90,7 +92,7 @@ void ResonanceGeometry::_exit_tree() {
     viz_geometry_override = nullptr;
     // Skip clear in editor: modifying IPL scene during scene switch (after bake) can crash.
     // Destructor still runs _clear_meshes when node is freed.
-    if (Engine::get_singleton()->is_editor_hint()) {
+    if (Engine::get_singleton() && Engine::get_singleton()->is_editor_hint()) {
         return;
     }
     _clear_meshes();
@@ -162,7 +164,7 @@ bool ResonanceGeometry::get_export_all_children() const {
 }
 
 void ResonanceGeometry::_update_viz_geometry_override() {
-    if (!Engine::get_singleton()->is_editor_hint())
+    if (!Engine::get_singleton() || !Engine::get_singleton()->is_editor_hint())
         return;
 
     if (!show_geometry_override_in_viewport || !geometry_override.is_valid()) {
@@ -263,7 +265,7 @@ void ResonanceGeometry::_create_meshes() {
         return;
 
     // static geometry is in the exported scene; skip when ResonanceStaticScene provides it
-    if (!dynamic_object && !Engine::get_singleton()->is_editor_hint()) {
+    if (!dynamic_object && (!Engine::get_singleton() || !Engine::get_singleton()->is_editor_hint())) {
         Node* root = this;
         while (root->get_parent())
             root = root->get_parent();
@@ -617,10 +619,44 @@ void ResonanceGeometry::discard_meshes_before_scene_release() {
         server->unregister_debug_mesh(debug_mesh_id);
         debug_mesh_id = -1;
     }
-    // Do not call iplStaticMeshRemove/Release - scene is about to be released
+
+    // Release IPL resources before scene teardown. Phonon uses refcounting; meshes must be
+    // explicitly removed and released. Static meshes are in global scene (static path) or sub_scene (dynamic path).
+    if (server && server->is_initialized()) {
+        auto lock = server->scoped_simulation_lock();
+        IPLScene scene_for_static = dynamic_object ? sub_scene : server->get_scene_handle();
+        for (auto& mesh : static_meshes) {
+            if (scene_for_static) {
+                iplStaticMeshRemove(mesh, scene_for_static);
+            }
+            iplStaticMeshRelease(&mesh);
+        }
+        if (instanced_mesh) {
+            iplInstancedMeshRemove(instanced_mesh, server->get_scene_handle());
+            iplInstancedMeshRelease(&instanced_mesh);
+        }
+        if (triangle_count > 0) {
+            server->notify_geometry_changed(-triangle_count);
+        }
+        if (sub_scene) {
+            iplSceneRelease(&sub_scene);
+            sub_scene = nullptr;
+        }
+    } else {
+        for (auto& mesh : static_meshes) {
+            iplStaticMeshRelease(&mesh);
+        }
+        if (instanced_mesh) {
+            iplInstancedMeshRelease(&instanced_mesh);
+        }
+        if (sub_scene) {
+            iplSceneRelease(&sub_scene);
+            sub_scene = nullptr;
+        }
+    }
+
     static_meshes.clear();
     instanced_mesh = nullptr;
-    sub_scene = nullptr;
     triangle_count = 0;
 }
 

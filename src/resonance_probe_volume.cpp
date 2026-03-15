@@ -111,7 +111,7 @@ void ResonanceProbeVolume::_clear_player_refs_to_this() {
 void ResonanceProbeVolume::_ready() {
     set_notify_transform(true);
     add_to_group("resonance_probe_volume");
-    if (Engine::get_singleton()->is_editor_hint()) {
+    if (Engine::get_singleton() && Engine::get_singleton()->is_editor_hint()) {
         // 1. Auto-Create Data
         if (probe_data.is_null()) {
             probe_data.instantiate();
@@ -180,7 +180,7 @@ void ResonanceProbeVolume::reload_probe_batch() {
         probe_batch_handle = -1;
     }
     probe_batch_handle = srv->load_probe_batch(probe_data);
-    if (Engine::get_singleton()->is_editor_hint() && viz_visible) {
+    if (Engine::get_singleton() && Engine::get_singleton()->is_editor_hint() && viz_visible) {
         _update_visuals();
     }
 }
@@ -201,7 +201,7 @@ void ResonanceProbeVolume::_exit_tree() {
 }
 
 void ResonanceProbeVolume::_process(double delta) {
-    if (!Engine::get_singleton()->is_editor_hint())
+    if (!Engine::get_singleton() || !Engine::get_singleton()->is_editor_hint())
         return;
 
     // Sync viz_instance visibility with viz_visible (handles editor property load order / setter not firing)
@@ -364,7 +364,7 @@ void ResonanceProbeVolume::_update_visuals() {
     if (!viz_multimesh.is_valid())
         return;
 
-    if (Engine::get_singleton()->is_editor_hint()) {
+    if (Engine::get_singleton() && Engine::get_singleton()->is_editor_hint()) {
         _ensure_viz_instance();
         // Update viz_color_state from probe dirty check when not overridden by runtime config mismatch (red).
         if (viz_color_state != 2) {
@@ -462,7 +462,7 @@ PackedVector3Array ResonanceProbeVolume::generate_probes_on_floor_raycast() cons
             }
         }
     }
-    if (Engine::get_singleton()->is_editor_hint() && hit_count > 0) {
+    if (Engine::get_singleton() && Engine::get_singleton()->is_editor_hint() && hit_count > 0) {
         UtilityFunctions::print_rich("[color=cyan]Nexus Resonance:[/color] Uniform Floor raycast placed " + String::num(hit_count) + "/" + String::num((int)points.size()) + " probes on collision geometry.");
     }
     return points;
@@ -484,7 +484,7 @@ void ResonanceProbeVolume::_prepare_and_execute_bake(const PackedVector3Array* p
         set_probe_data(probe_data);
     }
 
-    if (Engine::get_singleton()->is_editor_hint()) {
+    if (Engine::get_singleton() && Engine::get_singleton()->is_editor_hint()) {
         String scene_name = "unsaved";
         String node_name = get_name().to_lower().replace(" ", "_");
         SceneTree* tree = get_tree();
@@ -521,7 +521,7 @@ void ResonanceProbeVolume::_prepare_and_execute_bake(const PackedVector3Array* p
     bool success = false;
     if (p_precomputed_points && !p_precomputed_points->is_empty()) {
         success = srv->bake_manual_grid(*p_precomputed_points, probe_data);
-        if (success && Engine::get_singleton()->is_editor_hint()) {
+        if (success && Engine::get_singleton() && Engine::get_singleton()->is_editor_hint()) {
             UtilityFunctions::print_rich("[color=cyan]Nexus Resonance:[/color] Uniform Floor used geometry raycast. Probes placed on floor. (Requires CollisionShape3D on floor geometry.)");
         }
     }
@@ -586,7 +586,9 @@ void ResonanceProbeVolume::set_bake_config(const Ref<Resource>& p_config) {
 Ref<Resource> ResonanceProbeVolume::get_bake_config() const { return bake_config; }
 
 void ResonanceProbeVolume::set_region_size(Vector3 p_size) {
-    region_size = p_size;
+    region_size.x = MAX(p_size.x, resonance::kProbeRegionSizeMin);
+    region_size.y = MAX(p_size.y, resonance::kProbeRegionSizeMin);
+    region_size.z = MAX(p_size.z, resonance::kProbeRegionSizeMin);
     _queue_update();
 }
 Vector3 ResonanceProbeVolume::get_region_size() const { return region_size; }
@@ -623,7 +625,7 @@ void ResonanceProbeVolume::set_viz_color_state(int p_state) {
 int ResonanceProbeVolume::get_viz_color_state() const { return viz_color_state; }
 
 void ResonanceProbeVolume::notify_runtime_config_changed(int p_runtime_refl, bool p_runtime_pathing) {
-    if (!Engine::get_singleton()->is_editor_hint())
+    if (!Engine::get_singleton() || !Engine::get_singleton()->is_editor_hint())
         return;
 
     int baked_refl = probe_data.is_valid() ? probe_data->get_baked_reflection_type() : -1;

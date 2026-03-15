@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.1] - 2026-03-15
+
+**Stability improvements**
+
+### Fixed
+
+- **Memory leak on runtime reinit** - `discard_meshes_before_scene_release` now correctly calls `iplStaticMeshRemove`/`iplStaticMeshRelease` and `iplInstancedMeshRemove`/`iplInstancedMeshRelease` before clearing handles. Previously, IPL resources were leaked when changing reflection type or pathing (triggering `reinit_audio_engine`). Phonon uses refcounting; meshes must be explicitly released per Steam Audio API.
+
+### Changed
+
+- **Defensive null checks** - `ResonanceProbeBatchRegistry`: guards for `sim_mutex` before `std::lock_guard` to avoid crash when null. `parse_mesh_to_ipl`: early return when `mesh.is_null()`. `Engine::get_singleton()`: null checks in `ResonanceGeometry` and `ResonanceProbeVolume` before `is_editor_hint()`.
+- ** region_size validation** - `ResonanceProbeVolume.set_region_size` clamps each component to minimum `kProbeRegionSizeMin` (0.1) to prevent degenerate volumes.
+- **Empty asset guard** - `add_static_scene_from_asset` rejects assets with `get_size() == 0` before passing to Phonon.
+
 ## [0.9.0] - 2026-03-14
 
 ### Added

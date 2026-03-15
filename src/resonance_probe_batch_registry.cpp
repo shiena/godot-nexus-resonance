@@ -80,9 +80,14 @@ int32_t ResonanceProbeBatchRegistry::load_batch(IPLContext ctx, IPLSimulator sim
         handle_has_pathing_[handle] = (data->get_pathing_params_hash() > 0);
         handle_baked_refl_[handle] = data->get_baked_reflection_type();
         {
-            std::lock_guard<std::mutex> sim_lock(*sim_mutex);
-            iplSimulatorAddProbeBatch(sim, batch);
-            iplSimulatorCommit(sim);
+            if (sim_mutex) {
+                std::lock_guard<std::mutex> sim_lock(*sim_mutex);
+                iplSimulatorAddProbeBatch(sim, batch);
+                iplSimulatorCommit(sim);
+            } else {
+                iplSimulatorAddProbeBatch(sim, batch);
+                iplSimulatorCommit(sim);
+            }
         }
         if (Engine::get_singleton() && Engine::get_singleton()->is_editor_hint()) {
             UtilityFunctions::print_rich("[color=cyan]Nexus Resonance:[/color] Probe batch loaded successfully. Reverb simulation active.");
@@ -112,10 +117,16 @@ void ResonanceProbeBatchRegistry::remove_batch(int32_t handle, IPLSimulator sim,
         batch = probe_batch_manager_.take_batch(handle);
     }
     if (batch && sim) {
-        std::lock_guard<std::mutex> lock(*sim_mutex);
-        iplSimulatorRemoveProbeBatch(sim, batch);
-        iplSimulatorCommit(sim);
-        iplProbeBatchRelease(&batch);
+        if (sim_mutex) {
+            std::lock_guard<std::mutex> lock(*sim_mutex);
+            iplSimulatorRemoveProbeBatch(sim, batch);
+            iplSimulatorCommit(sim);
+            iplProbeBatchRelease(&batch);
+        } else {
+            iplSimulatorRemoveProbeBatch(sim, batch);
+            iplSimulatorCommit(sim);
+            iplProbeBatchRelease(&batch);
+        }
     }
 }
 
@@ -130,16 +141,30 @@ void ResonanceProbeBatchRegistry::clear_batches(IPLSimulator sim, std::mutex* si
         handle_baked_refl_.clear();
         probe_batch_manager_.get_all_batches(batches);
     }
-    if (batches.empty() || !sim)
+    if (batches.empty())
         return;
-    std::lock_guard<std::mutex> lock(*sim_mutex);
-    for (auto& batch : batches) {
-        if (batch) {
-            iplSimulatorRemoveProbeBatch(sim, batch);
-            iplProbeBatchRelease(&batch);
+    if (!sim) {
+        for (auto& batch : batches) {
+            if (batch)
+                iplProbeBatchRelease(&batch);
+        }
+        return;
+    }
+    if (sim_mutex) {
+        std::lock_guard<std::mutex> lock(*sim_mutex);
+        for (auto& batch : batches) {
+            if (batch) {
+                iplSimulatorRemoveProbeBatch(sim, batch);
+                iplProbeBatchRelease(&batch);
+            }
+        }
+        iplSimulatorCommit(sim);
+    } else {
+        for (auto& batch : batches) {
+            if (batch)
+                iplProbeBatchRelease(&batch);
         }
     }
-    iplSimulatorCommit(sim);
 }
 
 int ResonanceProbeBatchRegistry::revalidate_with_config(IPLSimulator sim, std::mutex* sim_mutex,

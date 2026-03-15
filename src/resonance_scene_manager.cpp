@@ -329,7 +329,7 @@ void ResonanceSceneManager::load_scene_data(IPLContext ctx, IPLScene* out_scene,
 void ResonanceSceneManager::add_static_scene_from_asset(IPLContext ctx, IPLScene scene, const Ref<ResonanceGeometryAsset>& asset,
                                                         RayTraceDebugContext* debug_ctx, bool wants_debug_viz, RuntimeSceneState& state,
                                                         const Transform3D& transform, IPLSceneType scene_type, IPLEmbreeDevice embree, IPLRadeonRaysDevice radeon) {
-    if (!asset.is_valid() || !asset->is_valid() || !scene)
+    if (!asset.is_valid() || !asset->is_valid() || !scene || asset->get_size() == 0)
         return;
 
     IPLSerializedObjectSettings serialSettings{};
