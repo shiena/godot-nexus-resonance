@@ -56,6 +56,9 @@ class ResonanceMixerProcessor {
     void initialize(IPLContext p_context, int p_sample_rate, int p_frame_size, int p_ambisonic_order);
     void cleanup();
 
+    /// True if initialization succeeded and decode path is usable (for AudioEffect to avoid processing with invalid state).
+    bool is_ready() const { return _can_decode(); }
+
     // Pulls audio from the provided mixer handle, decodes it using listener orientation, and writes to output.
     bool process_mixer_return(IPLReflectionMixer mixer_handle, const IPLCoordinateSpace3& listener_coords, AudioFrame* out_frames, int frame_count);
 

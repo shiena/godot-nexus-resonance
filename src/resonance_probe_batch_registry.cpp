@@ -33,6 +33,10 @@ int32_t ResonanceProbeBatchRegistry::load_batch(IPLContext ctx, IPLSimulator sim
     }
 
     PackedByteArray pba = data->get_data();
+    if (pba.is_empty()) {
+        ResonanceLog::error("ResonanceProbeBatchRegistry: Probe data is empty.");
+        return -1;
+    }
     IPLSerializedObjectSettings sSettings{};
     sSettings.data = (IPLbyte*)pba.ptr();
     sSettings.size = pba.size();

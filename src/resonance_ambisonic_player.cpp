@@ -92,7 +92,16 @@ void ResonanceAmbisonicInternalPlayback::_lazy_init_steam_audio() {
     processor.initialize(context, current_sample_rate, frame_size_, ambisonic_order, params_current.rotation_enabled);
 
     // Allocate Output Buffer (Stereo)
-    iplAudioBufferAllocate(context, 2, frame_size_, &sa_out_buffer);
+    if (iplAudioBufferAllocate(context, 2, frame_size_, &sa_out_buffer) != IPL_STATUS_SUCCESS) {
+        ResonanceLog::error("ResonanceAmbisonicPlayer: Buffer allocation failed (IPLerror).");
+        processor.cleanup();
+        return;
+    }
+    if (!sa_out_buffer.data) {
+        ResonanceLog::error("ResonanceAmbisonicPlayer: Buffer allocation returned null.");
+        processor.cleanup();
+        return;
+    }
 
     is_initialized = true;
     ResonanceLog::info("Nexus Resonance: Ambisonic DSP Initialized (Order: " + String::num(ambisonic_order) + ").");

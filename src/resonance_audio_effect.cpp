@@ -38,6 +38,10 @@ void ResonanceAudioEffectInstance::_process(const void* src_buffer, AudioFrame* 
             srv->get_sample_rate(),
             server_frame_size, // Must match ReflectionMixer / Steam Audio block size
             srv->get_ambisonic_order());
+        if (!processor.is_ready()) {
+            ResonanceLog::error("ResonanceAudioEffect: MixerProcessor initialization failed. Reverb will be silent until init succeeds.");
+            return;
+        }
         initialized_processor = true;
     }
 

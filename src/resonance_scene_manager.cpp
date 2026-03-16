@@ -226,6 +226,10 @@ int ResonanceSceneManager::register_asset_debug_geometry(const Ref<ResonanceGeom
 }
 
 void ResonanceSceneManager::save_scene_data(IPLContext ctx, IPLScene scene, const String& filename) {
+    if (!ctx) {
+        ResonanceLog::error("ResonanceSceneManager: Context is null (save_scene_data).");
+        return;
+    }
     if (!scene) {
         UtilityFunctions::push_warning("Nexus Resonance: No scene to save.");
         return;
@@ -263,6 +267,10 @@ void ResonanceSceneManager::save_scene_data(IPLContext ctx, IPLScene scene, cons
 void ResonanceSceneManager::load_scene_data(IPLContext ctx, IPLScene* out_scene, IPLSimulator sim,
                                             IPLSceneType scene_type, IPLEmbreeDevice embree, IPLRadeonRaysDevice radeon,
                                             const String& filename, int* out_global_triangle_count) {
+    if (!ctx) {
+        ResonanceLog::error("ResonanceSceneManager: Context is null (load_scene_data).");
+        return;
+    }
     if (!FileAccess::file_exists(filename)) {
         UtilityFunctions::push_error("Nexus Resonance: File not found: ", filename);
         return;

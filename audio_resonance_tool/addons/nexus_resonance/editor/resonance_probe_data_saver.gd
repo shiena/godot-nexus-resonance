@@ -24,11 +24,12 @@ func _save(resource: Resource, path: String, _flags: int) -> Error:
 	var pathing_params_hash: int = resource.get("pathing_params_hash") if "pathing_params_hash" in resource else 0
 	var static_source_params_hash: int = resource.get("static_source_params_hash") if "static_source_params_hash" in resource else 0
 	var static_listener_params_hash: int = resource.get("static_listener_params_hash") if "static_listener_params_hash" in resource else 0
+	var static_scene_params_hash: int = resource.get("static_scene_params_hash") if "static_scene_params_hash" in resource else 0
 	var target_path: String = path if (path.ends_with(".tres") or path.ends_with(".bak")) else path.get_basename() + ".tres"
 	var tmp_path := target_path + ".tmp"
 	var data_str := var_to_str(data)
 	var probe_pos_str := var_to_str(probe_positions)
-	var content := "[gd_resource type=\"ResonanceProbeData\" format=3]\n\n[resource]\ndata = %s\nprobe_positions = %s\nbake_params_hash = %d\nbaked_reflection_type = %d\npathing_params_hash = %d\nstatic_source_params_hash = %d\nstatic_listener_params_hash = %d\n" % [data_str, probe_pos_str, bake_params_hash, baked_reflection_type, pathing_params_hash, static_source_params_hash, static_listener_params_hash]
+	var content := "[gd_resource type=\"ResonanceProbeData\" format=3]\n\n[resource]\ndata = %s\nprobe_positions = %s\nbake_params_hash = %d\nbaked_reflection_type = %d\npathing_params_hash = %d\nstatic_source_params_hash = %d\nstatic_listener_params_hash = %d\nstatic_scene_params_hash = %d\n" % [data_str, probe_pos_str, bake_params_hash, baked_reflection_type, pathing_params_hash, static_source_params_hash, static_listener_params_hash, static_scene_params_hash]
 	var f := FileAccess.open(tmp_path, FileAccess.WRITE)
 	if f == null:
 		return FileAccess.get_open_error()

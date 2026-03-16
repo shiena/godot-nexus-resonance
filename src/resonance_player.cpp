@@ -179,12 +179,14 @@ void ResonanceInternalPlayback::_lazy_init_steam_audio(int ignored_rate) {
     mixer_processor.initialize(context, current_sample_rate, frame_size_, order);
 
     // 5. Allocate Buffers
-    iplAudioBufferAllocate(context, 2, frame_size_, &sa_in_buffer);
-    iplAudioBufferAllocate(context, 2, frame_size_, &sa_direct_out_buffer);
-    iplAudioBufferAllocate(context, 2, frame_size_, &sa_path_out_buffer);
-    iplAudioBufferAllocate(context, 2, frame_size_, &sa_final_mix_buffer);
-
-    // Safety check allocations
+    if (iplAudioBufferAllocate(context, 2, frame_size_, &sa_in_buffer) != IPL_STATUS_SUCCESS ||
+            iplAudioBufferAllocate(context, 2, frame_size_, &sa_direct_out_buffer) != IPL_STATUS_SUCCESS ||
+            iplAudioBufferAllocate(context, 2, frame_size_, &sa_path_out_buffer) != IPL_STATUS_SUCCESS ||
+            iplAudioBufferAllocate(context, 2, frame_size_, &sa_final_mix_buffer) != IPL_STATUS_SUCCESS) {
+        ResonanceLog::error("ResonancePlayer: Playback Init Failed: Buffer allocation failed (IPLerror).");
+        _cleanup_steam_audio();
+        return;
+    }
     if (!sa_in_buffer.data || !sa_direct_out_buffer.data || !sa_path_out_buffer.data || !sa_final_mix_buffer.data) {
         ResonanceLog::error("ResonancePlayer: Playback Init Failed: Buffer allocation returned null.");
         _cleanup_steam_audio();

@@ -485,12 +485,19 @@ func _run_bake_pipeline_main_thread(volumes: Array[Node]) -> void:
 	_progress_ui.set_stage(0, volumes.size())
 	if not await _wait_before_bake():
 		return
+	if not Engine.has_singleton("ResonanceServer"):
+		_log_and_show_error("GDExtension unloaded", "ResonanceServer is no longer available. Bake aborted.")
+		_finish_pipeline(false, null, volumes)
+		return
+	var srv = Engine.get_singleton("ResonanceServer")
+	if not srv:
+		_finish_pipeline(false, null, volumes)
+		return
 	var root = _get_edited_scene_root(volumes)
 	if not root:
 		_log_and_show_error("No scene open", "Open a scene before baking.")
 		_finish_pipeline(false, null, volumes)
 		return
-	var srv = Engine.get_singleton("ResonanceServer")
 	var static_scene_node = _find_resonance_static_scene_for_bake(volumes)
 	var static_asset = static_scene_node.get("static_scene_asset") if static_scene_node else null
 	var baked_probe_datas: Array = []

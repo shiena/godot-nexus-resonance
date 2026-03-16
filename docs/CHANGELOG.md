@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.2] - 2026-03-16
+
+**Stability improvements**
+
+### Fixed
+
+- **ProbeData serialization** – `static_scene_params_hash` is now saved and loaded by the custom ProbeData Saver/Loader. Previously it was lost on save, causing unnecessary re-bakes and wrong "outdated" status.
+- **iplAudioBufferAllocate** – Return value checked in `ResonancePlayer` and `ResonanceAmbisonicPlayer`; on failure, cleanup and log instead of using uninitialized buffers.
+- **Scene save/load ctx** – Null checks for `ctx` in `save_scene_data` and `load_scene_data` (ResonanceSceneManager) to avoid crashes when server is shutting down.
+- **Empty probe data** – ResonanceProbeBatchRegistry rejects empty `PackedByteArray` before `iplSerializedObjectCreate`.
+- **MixerProcessor init** – ResonanceAudioEffect now checks `processor.is_ready()` after init; reverb stays silent until init succeeds instead of running with invalid state.
+
+### Changed
+
+- **OpenCL / TAN / RadeonRays** – Error status codes logged on init failure for easier debugging (ResonanceSteamAudioContext).
+- **Bake pipeline** – Defensive `Engine.has_singleton("ResonanceServer")` and `srv` null check at start of `_run_bake_pipeline_main_thread`; aborts cleanly if GDExtension is unloaded during bake (e.g. editor close).
+
 ## [0.9.1] - 2026-03-15
 
 **Stability improvements**

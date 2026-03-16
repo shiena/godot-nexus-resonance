@@ -1,5 +1,6 @@
 #include "resonance_steam_audio_context.h"
 #include "resonance_constants.h"
+#include "resonance_log.h"
 #include <climits>
 #include <godot_cpp/variant/utility_functions.hpp>
 #if defined(_WIN32) && defined(_MSC_VER)
@@ -91,10 +92,16 @@ bool ResonanceSteamAudioContext::init(ResonanceSteamAudioContextConfig& config) 
             openclSettings.fractionCUsForIRUpdate = 0.5f;
             openclSettings.requiresTAN = (config.reflection_type == resonance::kReflectionTan) ? IPL_TRUE : IPL_FALSE;
             IPLerror opencl_list_status = iplOpenCLDeviceListCreate(context_, &openclSettings, &opencl_device_list_);
+            if (opencl_list_status != IPL_STATUS_SUCCESS) {
+                ResonanceLog::error("ResonanceSteamAudioContext: iplOpenCLDeviceListCreate failed (status=" + String::num(opencl_list_status) + ").");
+            }
             if (opencl_list_status == IPL_STATUS_SUCCESS && opencl_device_list_ && iplOpenCLDeviceListGetNumDevices(opencl_device_list_) > 0) {
                 int num_devs = iplOpenCLDeviceListGetNumDevices(opencl_device_list_);
                 int dev_idx = (config.opencl_device_index >= 0 && config.opencl_device_index < num_devs) ? config.opencl_device_index : 0;
                 IPLerror opencl_dev_status = iplOpenCLDeviceCreate(context_, opencl_device_list_, dev_idx, &opencl_device_);
+                if (opencl_dev_status != IPL_STATUS_SUCCESS) {
+                    ResonanceLog::error("ResonanceSteamAudioContext: iplOpenCLDeviceCreate failed (status=" + String::num(opencl_dev_status) + ").");
+                }
                 if (opencl_dev_status == IPL_STATUS_SUCCESS && opencl_device_) {
                     if (config.scene_type == 2) {
                         IPLRadeonRaysDeviceSettings rrSettings{};
@@ -103,6 +110,7 @@ bool ResonanceSteamAudioContext::init(ResonanceSteamAudioContextConfig& config) 
                             scene_type_ = IPL_SCENETYPE_RADEONRAYS;
                             UtilityFunctions::print_rich("[color=cyan]Nexus Resonance:[/color] Using Radeon Rays (GPU) for ray tracing.");
                         } else {
+                            ResonanceLog::error("ResonanceSteamAudioContext: iplRadeonRaysDeviceCreate failed (status=" + String::num(rr_status) + ").");
                             iplOpenCLDeviceRelease(&opencl_device_);
                             opencl_device_ = nullptr;
                         }
@@ -115,6 +123,7 @@ bool ResonanceSteamAudioContext::init(ResonanceSteamAudioContextConfig& config) 
                         tanSettings.maxSources = resonance::kMaxSimulationSources;
                         IPLerror tan_status = iplTrueAudioNextDeviceCreate(opencl_device_, &tanSettings, &tan_device_);
                         if (tan_status != IPL_STATUS_SUCCESS || !tan_device_) {
+                            ResonanceLog::error("ResonanceSteamAudioContext: iplTrueAudioNextDeviceCreate failed (status=" + String::num(tan_status) + ").");
                             tan_device_ = nullptr;
                             config.reflection_type = resonance::kReflectionConvolution;
                             UtilityFunctions::push_warning("Nexus Resonance: TrueAudio Next (TAN) init failed. Falling back to Convolution. TAN requires AMD GPU with TrueAudio Next support.");

@@ -63,6 +63,7 @@ func _load_tres(path: String) -> Variant:
 	res.set("pathing_params_hash", parsed.pathing_params_hash)
 	res.set("static_source_params_hash", parsed.static_source_params_hash)
 	res.set("static_listener_params_hash", parsed.static_listener_params_hash)
+	res.set("static_scene_params_hash", parsed.static_scene_params_hash)
 	res.take_over_path(path)
 	return res
 
@@ -76,6 +77,7 @@ func _parse_tres_data(content: String) -> Variant:
 	var pathing_params_hash := 0
 	var static_source_params_hash := 0
 	var static_listener_params_hash := 0
+	var static_scene_params_hash := 0
 	for line in content.split("\n"):
 		var stripped := line.strip_edges()
 		if stripped == "[resource]":
@@ -99,6 +101,8 @@ func _parse_tres_data(content: String) -> Variant:
 			static_source_params_hash = int(stripped.substr(29))
 		elif stripped.begins_with("static_listener_params_hash = "):
 			static_listener_params_hash = int(stripped.substr(31))
+		elif stripped.begins_with("static_scene_params_hash = "):
+			static_scene_params_hash = int(stripped.substr(27))
 	var data_result = PackedByteArray()
 	if not data_expr.is_empty() and data_expr.length() < 256 * 1024 * 1024:
 		var r = str_to_var(data_expr)
@@ -120,5 +124,6 @@ func _parse_tres_data(content: String) -> Variant:
 		"baked_reflection_type": baked_reflection_type,
 		"pathing_params_hash": pathing_params_hash,
 		"static_source_params_hash": static_source_params_hash,
-		"static_listener_params_hash": static_listener_params_hash
+		"static_listener_params_hash": static_listener_params_hash,
+		"static_scene_params_hash": static_scene_params_hash
 	}
