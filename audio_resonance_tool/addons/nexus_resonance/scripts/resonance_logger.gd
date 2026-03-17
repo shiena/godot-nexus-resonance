@@ -154,6 +154,7 @@ func _write_to_file(entry: Dictionary) -> void:
 	}
 	var line := JSON.stringify(dict) + "\n"
 	var f: FileAccess = null
+	# READ_WRITE appends; multiple processes (e.g. editor + game) may conflict. Recommended: single writer.
 	if FileAccess.file_exists(path):
 		f = FileAccess.open(path, FileAccess.READ_WRITE)
 	if f == null:

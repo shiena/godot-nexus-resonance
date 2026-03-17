@@ -337,7 +337,9 @@ class ResonanceServer : public Object {
     bool _with_bake_scene(std::function<bool(IPLScene bake_scene)> bake_fn);
     /// Returns true when throttled logic should run (counter incremented). When throttle<=1 always returns true.
     bool _should_run_throttled(std::atomic<uint32_t>& counter, int throttle);
-    /// Returns probe batch for pathing: preferred_handle if valid and has pathing, else first with pathing. Caller must iplProbeBatchRelease.
+    /// Returns probe batch for pathing: preferred_handle if valid and has pathing, else first with pathing.
+    /// IMPORTANT: Return value is retained (iplProbeBatchRetain). Caller MUST call iplProbeBatchRelease when done;
+    /// failure to release causes IPL handle leaks.
     IPLProbeBatch _get_pathing_batch_for_source(int32_t preferred_handle);
     /// Clears reverb, reflection, and pathing param caches (call after probe batch changes).
     void _clear_all_param_caches();

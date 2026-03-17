@@ -260,6 +260,13 @@ func _register_logger_project_settings() -> void:
 		ProjectSettings.set_setting(PREFIX + "output_to_file", false)
 	if not ProjectSettings.has_setting(PREFIX + "file_path"):
 		ProjectSettings.set_setting(PREFIX + "file_path", "user://nexus_resonance_log.ndjson")
+	if not ProjectSettings.has_setting(PREFIX + "steam_audio_verbose"):
+		ProjectSettings.set_setting(PREFIX + "steam_audio_verbose", false)
+		ProjectSettings.add_property_info({
+			"name": PREFIX + "steam_audio_verbose",
+			"type": TYPE_BOOL,
+			"hint": PROPERTY_HINT_NONE,
+		})
 
 func _register_bake_project_settings() -> void:
 	const BAKE_PREFIX := "audio/nexus_resonance/bake/"

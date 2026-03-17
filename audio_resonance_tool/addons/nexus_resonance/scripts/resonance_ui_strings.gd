@@ -150,6 +150,8 @@ const ICON_CLEAR := "res://addons/nexus_resonance/ui/icons/icon_clear.svg"
 const ICON_HELP := "res://addons/nexus_resonance/ui/icons/icon_help.svg"
 
 # --- Docs ---
+## Base URL for documentation. Anchors (#bake-workflow, #probe-volume, #export) must match
+## the target docs structure. Update when docs are relocated.
 const DOC_BASE_URL := "https://github.com/nexus-resonance/docs"
 const DOC_BAKE_WORKFLOW := DOC_BASE_URL + "#bake-workflow"
 const DOC_PROBE_VOLUME := DOC_BASE_URL + "#probe-volume"

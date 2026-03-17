@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.3] - 2026-03-17
+
+### Added
+
+- **Steam Audio verbose logging** – Project Setting `audio/nexus_resonance/logger/steam_audio_verbose` forwards IPL_LOGLEVEL_INFO and IPL_LOGLEVEL_DEBUG to Godot output when enabled (for debugging).
+- **Unit test for pathing_params_hash** – `test_pathing_hash_bake_runner_matches_cpp_format` ensures GDScript and C++ use identical dict format for hash consistency.
+
+### Changed
+
+- **TAN/OpenCL init** – Documented that SEH crash handling is Windows/MSVC-only; TAN init considered Windows-only stable on other platforms.
+- **ProbeData loader** – Class doc now documents size limits (data: 256 MiB, probe_positions: 1 MiB) and str_to_var memory considerations.
+- **ProbeData saver** – Class doc now documents concurrency: avoid simultaneous saves on the same .tres path to prevent race conditions.
+- **iplProbeBatchRetain/Release** – API comments in ResonanceServer and ResonanceProbeBatchRegistry explicitly state that every Retain return value must be released by the caller.
+- **resonance_config_constants** – Added `REFLECTION_DISPLAY_NAMES` for debug overlay; documented that BakeConfig supports 0/1/2 only (no TAN).
+- **debug_overlay** – Uses `Constants.REFLECTION_DISPLAY_NAMES` instead of local array; TAN (Index 3) now shown correctly; DRY for reverb bus section.
+- **performance_overlay** – Connects to `get_viewport().size_changed` so overlay position updates on window resize.
+- **resonance_fmod_event_emitter** – Consolidated Limitation docs to single block; `_is_fmod_emitter` uses exact class check (`FmodEventEmitter3D`) instead of substring.
+- **resonance_logger** – Comment documenting READ_WRITE concurrency and recommended single-writer usage when multiple processes access log file.
+- **resonance_ui_strings** – Documented `DOC_BASE_URL` and anchors.
+- **resonance_runtime** – Comment clarifying `load_static_scene_from_asset` as legacy single-scene API.
+- **resonance_scene_utils** – `export_type` parameter as `StringName` for consistency.
+
 ## [0.9.2] - 2026-03-16
 
 **Stability improvements**

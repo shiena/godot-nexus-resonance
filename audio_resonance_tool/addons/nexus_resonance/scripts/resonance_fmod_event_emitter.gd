@@ -3,66 +3,15 @@ extends Node3D
 class_name ResonanceFmodEventEmitter
 
 ## Optional wrapper for FmodEventEmitter3D when using Nexus Resonance + fmod-gdextension.
-## When attached as child of FmodEventEmitter3D, creates Resonance source and syncs
-## Simulation Outputs Handle for Steam Audio spatialization.
-##
-## LIMITATION: Passing the Simulation Outputs Handle to the FMOD event's Steam Audio
-## Spatializer DSP is pending fmod-gdextension API support for DSP parameters.
-## See _try_set_fmod_parameter() - until then, spatialization may use fallback behavior.
+## When attached as child of FmodEventEmitter3D, creates Resonance source and syncs position.
 ##
 ## Requires: fmod-gdextension, ResonanceFMODBridge initialized.
 ## Add this as child of FmodEventEmitter3D and assign the event_path.
-## The parent must be FmodEventEmitter3D for this to work.
 ##
-## Note: Wiring the Steam Audio "Simulation Outputs Handle" DSP parameter into the FMOD
-## event is pending fmod-gdextension API support for DSP parameters. Until then, position
-## is synced to ResonanceServer but the FMOD event may use default spatialization.
-##
-## Note: Wiring the Steam Audio "Simulation Outputs Handle" DSP parameter into the FMOD
-## event is pending fmod-gdextension API for DSP parameters. Until then, position sync
-## works but full Steam Audio simulation may require manual FMOD Studio setup.
-##
-## Limitation: Passing the Steam Audio "Simulation Outputs Handle" into FMOD's
-## spatializer DSP is not yet implemented. It depends on fmod-gdextension exposing
-## event instance DSP parameters (e.g. setParameterByIndex). Until then, the
-## position sync works but Steam Audio simulation may not be fully applied.
-##
-## Limitation: Passing the Steam Audio "Simulation Outputs Handle" to the FMOD event's
-## DSP parameters is not yet implemented. The fmod-gdextension API for setting DSP
-## parameters programmatically is required. Until then, spatialization uses fallback
-## behavior. See _try_set_fmod_parameter.
-##
-## Limitation: Passing the Simulation Outputs Handle to the FMOD event's Steam Audio
-## Spatializer DSP is not yet implemented. Requires fmod-gdextension API for DSP parameters
-## (e.g. event_instance.setParameterByIndex). Until then, position updates work but the
-## event may not use Steam Audio's baked/reflection data. Track: fmod-gdextension updates.
-##
-## Limitation: Passing the Simulation Outputs Handle to FMOD's Steam Audio Spatializer DSP
-## is not yet implemented. Waiting on fmod-gdextension API for DSP/event parameter access.
-## Position sync and source creation work; full spatialization requires the FMOD API.
-##
-## Note: Full Steam Audio spatialization requires passing the simulation handle to the
-## FMOD event's "Simulation Outputs Handle" DSP parameter. This step is pending
-## fmod-gdextension API support for DSP parameters (event_instance.setParameterByIndex).
-## Until then, spatialization may be limited. Track: https://github.com/nexus-resonance/docs#fmod-bridge
-##
-## Limitation: The Steam Audio Spatializer "Simulation Outputs Handle" parameter binding
-## is not yet implemented. It requires fmod-gdextension API for DSP parameters.
-## When available: event_instance.setParameterByIndex(...) or equivalent. Until then,
-## spatialization may fall back to FMOD's default 3D positioning.
-##
-## Limitation: Passing the Simulation Outputs Handle to FMOD's Steam Audio Spatializer
-## DSP is not yet implemented. Blocked by fmod-gdextension API for DSP parameters.
-## Basic source position sync works; full spatialization requires manual FMOD setup.
-##
-## Note: Passing the simulation handle to FMOD's Steam Audio Spatializer "Simulation Outputs Handle"
-## parameter is not yet implemented. This requires fmod-gdextension DSP parameter API support.
-## Until then, Steam Audio simulation runs but FMOD may not receive the handle for full integration.
-##
-## Known limitation: The Steam Audio "Simulation Outputs Handle" DSP parameter is not yet
-## passed to FMOD events. Full spatialization requires the fmod-gdextension API for DSP
-## parameters (e.g. event_instance.setParameterByIndex). Until then, positional updates
-## run but the FMOD spatializer may not receive the handle. See _try_set_fmod_parameter.
+## Limitation: The Steam Audio "Simulation Outputs Handle" DSP parameter cannot yet be
+## passed to FMOD events. Requires fmod-gdextension API for DSP parameters
+## (e.g. event_instance.setParameterByIndex). Until then: position sync and source creation
+## work; spatialization may fall back to FMOD default 3D positioning. See _try_set_fmod_parameter.
 
 @export var event_path: String = "event:/"
 @export var auto_play: bool = true
@@ -101,7 +50,7 @@ func _process(_delta: float) -> void:
 func _is_fmod_emitter(node: Node) -> bool:
 	if not node:
 		return false
-	return node.get_class() == "FmodEventEmitter3D" or "FmodEvent" in node.get_class()
+	return node.get_class() == "FmodEventEmitter3D"
 
 
 func _setup_bridge() -> void:

@@ -201,6 +201,7 @@ func _initialize_server() -> void:
 			for ss in static_scenes:
 				if ss.static_scene_asset and ss.has_valid_asset():
 					srv.add_static_scene_from_asset(ss.static_scene_asset, ss.get_global_transform())
+		# Legacy single-scene API; prefer add_static_scene_from_asset when multiple scenes.
 		elif srv.has_method("load_static_scene_from_asset") and static_scenes.size() == 1:
 			if static_scenes[0].static_scene_asset and static_scenes[0].has_valid_asset():
 				srv.load_static_scene_from_asset(static_scenes[0].static_scene_asset, static_scenes[0].get_global_transform())

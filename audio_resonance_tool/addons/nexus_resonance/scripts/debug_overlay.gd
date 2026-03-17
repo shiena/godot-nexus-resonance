@@ -7,6 +7,8 @@ extends CanvasLayer
 ##
 ## This overlay is intentionally runtime-only (game mode). It does not run in the editor.
 
+const Constants = preload("resonance_config_constants.gd")
+
 var _panel: PanelContainer
 var _vbox: VBoxContainer
 var _status_label: RichTextLabel
@@ -19,7 +21,6 @@ var _log_scroll: ScrollContainer
 var _log_label: RichTextLabel
 var _update_timer: float = 0.0
 const UPDATE_INTERVAL: float = 0.2
-const REFLECTION_NAMES: Array[String] = ["Convolution", "Parametric", "Hybrid"]
 const COLOR_OK := "#44ff44"
 const COLOR_WARNING := "#ffcc44"
 const COLOR_ERROR := "#ff6666"
@@ -167,7 +168,8 @@ func _refresh_status() -> void:
 	parts.append("[color=%s]Output Direct: %s | Reverb: %s[/color]" % [COLOR_NEUTRAL, _str_bool(out_direct), _str_bool(out_reverb)])
 
 	var refl_type = srv.get_reflection_type() if srv.has_method("get_reflection_type") else 0
-	var refl_name = REFLECTION_NAMES[refl_type] if refl_type >= 0 and refl_type < 3 else "?"
+	var names = Constants.REFLECTION_DISPLAY_NAMES
+	var refl_name = names[refl_type] if refl_type >= 0 and refl_type < names.size() else "?"
 	parts.append("[color=%s]Reflection Type: %s[/color]" % [COLOR_NEUTRAL, refl_name])
 
 	if srv.has_method("get_realtime_rays"):
@@ -252,8 +254,8 @@ func _refresh_reverb_bus() -> void:
 		return
 	var ri = srv.get_reverb_bus_instrumentation()
 	var refl_type = ri.get("reflection_type", -1)
-	var refl_names: Array[String] = ["Convolution", "Parametric", "Hybrid"]
-	var refl_name = refl_names[refl_type] if refl_type >= 0 and refl_type < 3 else "?"
+	var names = Constants.REFLECTION_DISPLAY_NAMES
+	var refl_name = names[refl_type] if refl_type >= 0 and refl_type < names.size() else "?"
 	var mixer_ok = ri.get("mixer_exists", false)
 	parts.append("[color=%s]Reflection Type: %s (Convolution=0 uses Reverb Bus)[/color]" % [COLOR_NEUTRAL, refl_name])
 	parts.append("[color=%s]Mixer: exists=%s | feeds=%d[/color]" % [COLOR_OK if mixer_ok else COLOR_WARNING, ri.get("mixer_exists", false), ri.get("mixer_feed_count", 0)])

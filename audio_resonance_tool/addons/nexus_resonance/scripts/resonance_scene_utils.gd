@@ -21,7 +21,7 @@ static func scene_has_resonance_runtime(node: Node) -> bool:
 ## Used to decide whether a scene should be included in static/dynamic export.
 ## export_type: "static" -> ResonanceRuntime OR ResonanceStaticGeometry OR ResonanceStaticScene with valid asset
 ## export_type: "dynamic" -> ResonanceDynamicGeometry
-static func scene_has_exportable_resonance_content(node: Node, export_type: String) -> bool:
+static func scene_has_exportable_resonance_content(node: Node, export_type: StringName) -> bool:
 	if not node:
 		return false
 	match export_type:

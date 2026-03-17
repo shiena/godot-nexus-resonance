@@ -14,6 +14,7 @@ func _ready() -> void:
 	if Engine.is_editor_hint():
 		return
 	_build_ui()
+	get_viewport().size_changed.connect(_update_position)
 
 
 func _build_ui() -> void:

@@ -29,7 +29,8 @@ class ResonanceProbeBatchRegistry {
     int revalidate_with_config(IPLSimulator sim, std::mutex* sim_mutex,
                                int reflection_type, bool pathing_enabled);
 
-    /// Returns pathing batch for preferred_handle if valid, else first with pathing. Caller must iplProbeBatchRelease.
+    /// Returns pathing batch for preferred_handle if valid, else first with pathing.
+    /// IMPORTANT: Return value is retained. Caller MUST call iplProbeBatchRelease when done; failure to release causes leaks.
     IPLProbeBatch get_pathing_batch(int32_t preferred_handle) const;
 
     bool is_compatible(int32_t handle, int reflection_type, bool pathing_enabled) const;

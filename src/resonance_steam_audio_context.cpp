@@ -2,6 +2,7 @@
 #include "resonance_constants.h"
 #include "resonance_log.h"
 #include <climits>
+#include <godot_cpp/classes/project_settings.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 #if defined(_WIN32) && defined(_MSC_VER)
 #include <excpt.h>
@@ -10,12 +11,20 @@
 namespace godot {
 
 namespace {
+constexpr const char* kSteamAudioLogVerboseSetting = "audio/nexus_resonance/logger/steam_audio_verbose";
+
 void IPLCALL log_callback(IPLLogLevel level, const char* message) {
     String msg = "SteamAudio: " + String(message);
     if (level == IPL_LOGLEVEL_ERROR)
         UtilityFunctions::push_error(msg);
     else if (level == IPL_LOGLEVEL_WARNING)
         UtilityFunctions::push_warning(msg);
+    else if (level == IPL_LOGLEVEL_INFO || level == IPL_LOGLEVEL_DEBUG) {
+        ProjectSettings* ps = ProjectSettings::get_singleton();
+        if (ps && ps->has_setting(kSteamAudioLogVerboseSetting) && ps->get_setting(kSteamAudioLogVerboseSetting)) {
+            UtilityFunctions::print(msg);
+        }
+    }
 }
 } // namespace
 
@@ -78,6 +87,9 @@ bool ResonanceSteamAudioContext::init(ResonanceSteamAudioContextConfig& config) 
         return false;
     }
 
+    // OpenCL/TAN init may crash on systems without AMD GPU (TAN) or compatible OpenCL. SEH (__try/__except)
+    // is used on Windows/MSVC to catch crashes and fall back to Convolution/Default. On Linux/macOS or other
+    // compilers, no SEH-like mechanism is used; TAN init is considered Windows-only stable.
     bool needs_opencl = (config.scene_type == 2) || (config.reflection_type == resonance::kReflectionTan);
     if (needs_opencl && context_) {
 #if defined(_WIN32) && defined(_MSC_VER)
