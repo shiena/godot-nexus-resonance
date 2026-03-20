@@ -66,7 +66,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: .scons-cache
-          key: scons-tests-Linux-v3-${{ hashFiles('src/lib/godot-cpp/SConstruct', 'SConstruct', 'src/register_types.cpp', 'src/resonance_server.cpp', 'src/test/test_main.cpp', 'src/test/test_ipl_guard.cpp') }}
+          key: scons-tests-Linux-v4-${{ hashFiles('src/lib/godot-cpp/SConstruct', 'SConstruct', 'src/register_types.cpp', 'src/resonance_server*.cpp', 'src/resonance_server.h', 'src/handle_manager.cpp', 'src/test/test_main.cpp', 'src/test/test_ipl_guard.cpp') }}
           restore-keys: |
             scons-tests-Linux-
 
@@ -135,7 +135,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: .scons-cache
-          key: scons-tests-Windows-v2-${{ hashFiles('src/lib/godot-cpp/SConstruct', 'SConstruct', 'src/register_types.cpp', 'src/resonance_server.cpp', 'src/test/test_main.cpp') }}
+          key: scons-tests-Windows-v3-${{ hashFiles('src/lib/godot-cpp/SConstruct', 'SConstruct', 'src/register_types.cpp', 'src/resonance_server*.cpp', 'src/resonance_server.h', 'src/handle_manager.cpp', 'src/test/test_main.cpp') }}
           restore-keys: |
             scons-tests-Windows-
 
