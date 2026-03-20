@@ -1,9 +1,9 @@
-#include "resonance_server.h"
 #include "resonance_constants.h"
 #include "resonance_debug_agent.h"
 #include "resonance_geometry_asset.h"
 #include "resonance_ipl_guard.h"
 #include "resonance_log.h"
+#include "resonance_server.h"
 #include "resonance_utils.h"
 #include <cstring>
 #include <godot_cpp/classes/engine.hpp>
@@ -17,7 +17,7 @@ namespace {
 void bake_progress_callback(float p, void* ud) {
     static_cast<godot::ResonanceServer*>(ud)->emit_bake_progress(p);
 }
-}
+} // namespace
 
 PackedVector3Array ResonanceServer::generate_manual_grid(const Transform3D& tr, Vector3 extents, float spacing,
                                                          int generation_type, float height_above_floor) {

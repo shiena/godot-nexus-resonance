@@ -1,7 +1,7 @@
-#include "resonance_server.h"
 #include "resonance_constants.h"
 #include "resonance_geometry.h"
 #include "resonance_log.h"
+#include "resonance_server.h"
 #include "resonance_utils.h"
 #if defined(_WIN32) && defined(_MSC_VER)
 #include <excpt.h>
@@ -45,11 +45,10 @@ String ambient_order_ordinal(int64_t n) {
         return String::num_int64(n) + "rd";
     return String::num_int64(n) + "th";
 }
-}
+} // namespace
 
 std::atomic<bool> ResonanceServer::is_shutting_down_flag{false};
 static ResonanceServer* _singleton = nullptr;
-
 
 ResonanceServer::ResonanceServer() {
     _singleton = this;

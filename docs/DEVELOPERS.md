@@ -80,7 +80,7 @@ Run via Godot with GUT addon or CLI.
 
 - **build.yml** - Builds all platforms on push/PR to main (Linux/Windows/Android on ubuntu, macOS/iOS on macos-latest)
 - **release.yml** - Full build + GitHub Release on version tags (`v`*)
-- **tests.yml** - C++ unit tests + GDScript GUT tests on push/PR
+- **tests.yml** - C++ unit tests + GDScript GUT tests on push/PR; **clang-format-14** on all `src/**/*.cpp` and `src/**/*.h` except `lib/` and `gen/` (must produce a clean `git diff` after format). Use the same binary locally (e.g. `clang-format-14` on Ubuntu 22.04, or LLVM 14’s `clang-format.exe`) so the Linux job’s format check matches your tree.
 - **codeql.yml** - CodeQL security analysis (manual trigger)
 
 ## Known Limits and Workarounds

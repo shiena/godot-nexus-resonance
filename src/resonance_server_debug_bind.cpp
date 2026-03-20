@@ -1,5 +1,5 @@
-#include "resonance_server.h"
 #include "resonance_constants.h"
+#include "resonance_server.h"
 #include "resonance_utils.h"
 #include <algorithm>
 #include <godot_cpp/core/class_db.hpp>

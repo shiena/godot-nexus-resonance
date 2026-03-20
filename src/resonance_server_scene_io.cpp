@@ -1,6 +1,6 @@
-#include "resonance_server.h"
 #include "resonance_constants.h"
 #include "resonance_geometry_asset.h"
+#include "resonance_server.h"
 #include "resonance_utils.h"
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/project_settings.hpp>

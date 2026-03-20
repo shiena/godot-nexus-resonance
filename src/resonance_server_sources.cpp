@@ -1,7 +1,7 @@
-#include "resonance_server.h"
 #include "resonance_constants.h"
 #include "resonance_log.h"
 #include "resonance_math.h"
+#include "resonance_server.h"
 #include "resonance_utils.h"
 #include <godot_cpp/variant/utility_functions.hpp>
 
