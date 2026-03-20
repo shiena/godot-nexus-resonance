@@ -283,7 +283,7 @@ class ResonanceServer : public Object {
     // Lock order (must be respected to avoid deadlock): simulation_mutex before pathing_vis_mutex;
     // simulation_mutex before _pathing_deviation_mutex; probe_batch_registry_.mutex_ before simulation_mutex.
     // Thread contexts: fetch_reverb_params/fetch_pathing_params = Audio-Thread; update_source, ProbeBatch APIs = Main-Thread;
-    // _pathing_vis_callback, _distance_attenuation_callback = Worker/simulation context.
+    // _pathing_vis_callback, distance_attenuation_callback = Worker/simulation context.
     std::mutex simulation_mutex;
     std::thread worker_thread;
     std::mutex worker_mutex;

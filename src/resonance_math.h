@@ -2,12 +2,26 @@
 #define RESONANCE_MATH_H
 
 #include <cmath>
+#include <cstdint>
 
 namespace resonance {
 
 /// Replace NaN/Inf with 0 to prevent Steam Audio "invalid IPLfloat32" warnings.
 inline float sanitize_audio_float(float v) {
     return std::isfinite(v) ? v : 0.0f;
+}
+
+/// Sanitize Steam Audio delay (IPLint32): finite float round-trip, NaN/Inf -> 0 samples.
+inline int32_t sanitize_delay_samples(int32_t v) {
+    float f = static_cast<float>(v);
+    f = sanitize_audio_float(f);
+    return static_cast<int32_t>(std::lroundf(f));
+}
+
+/// Impulse-response length in samples from sample rate and duration (seconds).
+inline int32_t reverb_ir_size_samples(int sample_rate, float duration_sec) {
+    float d = sanitize_audio_float(duration_sec);
+    return static_cast<int32_t>(std::lroundf(static_cast<float>(sample_rate) * d));
 }
 
 /// Clamp reverb time to valid range for Steam Audio (PARAMETRIC/HYBRID require > 0).

@@ -644,7 +644,8 @@ int32_t ResonanceInternalPlayback::_mix(AudioFrame* buffer, double rate_scale, i
     }
 
     for (int i = 0; i < valid_copy; i++) {
-        float l, r;
+        float l = 0.0f;
+        float r = 0.0f;
         output_ring_l.read(&l, 1);
         output_ring_r.read(&r, 1);
         buffer[i].left = l;
@@ -964,9 +965,7 @@ void ResonancePlayer::_compute_attenuation(float dist, const OcclusionData& occ_
     } else if (c.attenuation_mode == ATTENUATION_LINEAR) {
         if (dist <= c.min_distance)
             out_attenuation = 1.0f;
-        else if (c.max_distance <= c.min_distance)
-            out_attenuation = 0.0f;
-        else if (dist >= c.max_distance)
+        else if (c.max_distance <= c.min_distance || dist >= c.max_distance)
             out_attenuation = 0.0f;
         else
             out_attenuation = 1.0f - ((dist - c.min_distance) / (c.max_distance - c.min_distance));
@@ -1212,6 +1211,8 @@ void ResonancePlayer::_update_stream_setup() {
 
 void ResonancePlayer::play_stream(double from_pos) {
     _update_stream_setup();
+    // GDExtension may narrow to float internally; keep double at call site.
+    // NOLINTNEXTLINE(bugprone-narrowing-conversions)
     play(from_pos);
     Node* reverb_child = get_node_or_null(NodePath("ResonanceReverbOutput"));
     if (reverb_child && reverb_child->is_class("AudioStreamPlayer")) {

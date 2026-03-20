@@ -93,7 +93,7 @@ bool ResonanceServer::fetch_reverb_params(int32_t handle, IPLReflectionEffectPar
                 out_params.reverbTimes[i] = resonance::clamp_reverb_time(out_params.reverbTimes[i]);
                 out_params.eq[i] = resonance::sanitize_audio_float(out_params.eq[i]);
             }
-            out_params.delay = resonance::sanitize_audio_float(out_params.delay);
+            out_params.delay = resonance::sanitize_delay_samples(out_params.delay);
             // IR validation: reject convolution when ir metadata is invalid (avoids Steam Audio NaN warnings).
             if (has_convolution && out_params.ir != nullptr) {
                 const int max_ir_samples = 480000; // ~10 s at 48 kHz

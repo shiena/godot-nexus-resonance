@@ -1,6 +1,7 @@
 #include "resonance_scene_manager.h"
 #include "ray_trace_debug_context.h"
 #include "resonance_constants.h"
+#include <cstdint>
 #include "resonance_geometry.h"
 #include "resonance_geometry_asset.h"
 #include "resonance_ipl_guard.h"
@@ -209,7 +210,8 @@ int ResonanceSceneManager::register_asset_debug_geometry(const Ref<ResonanceGeom
         ipl_verts[i] = {v.x, v.y, v.z};
     }
     std::vector<IPLTriangle> ipl_tris;
-    int num_tris = pt.size() / 3;
+    const int64_t tri_index_count = pt.size();
+    int num_tris = static_cast<int>(tri_index_count / 3);
     ipl_tris.resize(num_tris);
     std::vector<IPLint32> ipl_mat_indices(num_tris, 0);
     for (int i = 0; i < num_tris && (i * 3 + 2) < pt.size(); i++) {
@@ -291,7 +293,8 @@ void ResonanceSceneManager::load_scene_data(IPLContext ctx, IPLScene* out_scene,
         return;
     }
 
-    PackedByteArray pba = file->get_buffer(file->get_length());
+    const int64_t file_len = static_cast<int64_t>(file->get_length());
+    PackedByteArray pba = file->get_buffer(file_len);
     file->close();
 
     if (pba.is_empty()) {

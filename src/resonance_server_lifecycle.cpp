@@ -1,8 +1,10 @@
 #include "resonance_constants.h"
 #include "resonance_geometry.h"
 #include "resonance_log.h"
+#include "resonance_math.h"
 #include "resonance_server.h"
 #include "resonance_utils.h"
+#include <cmath>
 #if defined(_WIN32) && defined(_MSC_VER)
 #include <excpt.h>
 #endif
@@ -48,21 +50,21 @@ String ambient_order_ordinal(int64_t n) {
 } // namespace
 
 std::atomic<bool> ResonanceServer::is_shutting_down_flag{false};
-static ResonanceServer* _singleton = nullptr;
+static ResonanceServer* g_resonance_server_singleton = nullptr;
 
 ResonanceServer::ResonanceServer() {
-    _singleton = this;
+    g_resonance_server_singleton = this;
     // No auto-init here!
 }
 
 ResonanceServer::~ResonanceServer() {
     is_shutting_down_flag.store(true, std::memory_order_release);
     _shutdown_steam_audio();
-    if (_singleton == this)
-        _singleton = nullptr;
+    if (g_resonance_server_singleton == this)
+        g_resonance_server_singleton = nullptr;
 }
 
-ResonanceServer* ResonanceServer::get_singleton() { return _singleton; }
+ResonanceServer* ResonanceServer::get_singleton() { return g_resonance_server_singleton; }
 
 void ResonanceServer::shutdown() {
     is_shutting_down_flag.store(true, std::memory_order_release);
@@ -256,7 +258,8 @@ bool ResonanceServer::_init_scene_and_simulator() {
         IPLReflectionEffectSettings rs{};
         rs.type = (reflection_type == resonance::kReflectionTan) ? IPL_REFLECTIONEFFECTTYPE_TAN : IPL_REFLECTIONEFFECTTYPE_CONVOLUTION;
         rs.numChannels = get_num_channels_for_order();
-        rs.irSize = (int)(max_reverb_duration * current_sample_rate);
+        rs.irSize = static_cast<IPLint32>(
+                std::lroundf(resonance::sanitize_audio_float(max_reverb_duration) * static_cast<float>(current_sample_rate)));
         IPLReflectionMixer tmp_mixer = nullptr;
         if (iplReflectionMixerCreate(_ctx(), &audioSettings, &rs, &tmp_mixer) != IPL_STATUS_SUCCESS) {
             ResonanceLog::error("ResonanceServer: iplReflectionMixerCreate failed.");

@@ -52,11 +52,13 @@ func test_audio_frame_size_manual_passthrough():
 	var config = rt.get_config()
 	assert_eq(config.get("audio_frame_size", -1), 1024, "manual audio_frame_size should pass through")
 
-# --- get_effective_realtime_rays (Android fallback) ---
+# --- get_effective_realtime_rays: pass-through on all platforms (v0.9.4+) ---
+# Android no longer forces baked-only (0); realtime rays follow project settings.
+# Do not reintroduce test_effective_realtime_rays_android_forces_zero — that was pre-0.9.4 behavior.
 
-func test_effective_realtime_rays_android_forces_zero():
-	assert_eq(ResonanceRuntimeConfig.get_effective_realtime_rays(2048, "Android"), 0, "Android should force 0")
-	assert_eq(ResonanceRuntimeConfig.get_effective_realtime_rays(512, "Android"), 0, "Android should force 0 even for low value")
+func test_effective_realtime_rays_android_passthrough():
+	assert_eq(ResonanceRuntimeConfig.get_effective_realtime_rays(2048, "Android"), 2048, "Android should pass through configured rays")
+	assert_eq(ResonanceRuntimeConfig.get_effective_realtime_rays(512, "Android"), 512, "Android should pass through low value unchanged")
 
 func test_effective_realtime_rays_android_zero_stays_zero():
 	assert_eq(ResonanceRuntimeConfig.get_effective_realtime_rays(0, "Android"), 0, "Android 0 stays 0")

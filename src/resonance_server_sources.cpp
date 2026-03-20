@@ -1,6 +1,7 @@
 #include "resonance_constants.h"
 #include "resonance_log.h"
 #include "resonance_math.h"
+#include <cstdint>
 #include "resonance_server.h"
 #include "resonance_utils.h"
 #include <godot_cpp/variant/utility_functions.hpp>
@@ -128,7 +129,9 @@ void ResonanceServer::set_source_attenuation_callback_data(int32_t handle, int a
     d.mode = attenuation_mode;
     d.min_distance = min_distance;
     d.max_distance = max_distance;
-    d.num_curve_samples = (!curve_samples.is_empty() && curve_samples.size() <= resonance::kAttenuationCurveSamples) ? curve_samples.size() : resonance::kAttenuationCurveSamples;
+    const int64_t curve_sz = curve_samples.size();
+    d.num_curve_samples = static_cast<int>((!curve_samples.is_empty() && curve_sz <= resonance::kAttenuationCurveSamples) ? curve_sz
+                                                                                                                         : static_cast<int64_t>(resonance::kAttenuationCurveSamples));
     for (int i = 0; i < d.num_curve_samples && i < curve_samples.size(); i++) {
         d.curve_samples[i] = curve_samples[i];
     }
@@ -156,7 +159,7 @@ void ResonanceServer::clear_source_attenuation_callback_data(int32_t handle) {
     iplSourceRelease(&src);
 }
 
-static float IPLCALL _distance_attenuation_callback(IPLfloat32 distance, void* userData) {
+static float IPLCALL distance_attenuation_callback(IPLfloat32 distance, void* userData) {
     const ResonanceServer::AttenuationCallbackContext* ctx = static_cast<const ResonanceServer::AttenuationCallbackContext*>(userData);
     if (!ctx || !ctx->mutex || !ctx->data)
         return 1.0f;
@@ -174,7 +177,7 @@ static float IPLCALL _distance_attenuation_callback(IPLfloat32 distance, void* u
     if (d->mode == 1)
         return 1.0f - t;
     if (d->mode == 2 && d->num_curve_samples > 1) {
-        float idx = t * (d->num_curve_samples - 1);
+        float idx = t * static_cast<float>(d->num_curve_samples - 1);
         int i0 = (int)idx;
         int i1 = (i0 + 1 < d->num_curve_samples) ? i0 + 1 : i0;
         float frac = idx - (float)i0;
@@ -263,7 +266,7 @@ void ResonanceServer::_update_source_internal(IPLSource src, int32_t handle, Vec
         if (use_callback && callback_ctx) {
             inputs.distanceAttenuationModel.type = IPL_DISTANCEATTENUATIONTYPE_CALLBACK;
             inputs.distanceAttenuationModel.minDistance = callback_ctx->data->min_distance;
-            inputs.distanceAttenuationModel.callback = _distance_attenuation_callback;
+            inputs.distanceAttenuationModel.callback = distance_attenuation_callback;
             inputs.distanceAttenuationModel.userData = callback_ctx;
             inputs.distanceAttenuationModel.dirty = IPL_FALSE;
         } else {

@@ -2,6 +2,7 @@
 #include "resonance_log.h"
 #include "resonance_server.h"
 #include "resonance_utils.h"
+#include <cmath>
 #include <cstring>
 
 namespace godot {
@@ -257,7 +258,7 @@ void ResonanceDirectProcessor::process(
     IPLVector3 local_dir = {x, y, z};
     float len_sq = x * x + y * y + z * z;
     if (len_sq > resonance::kDegenerateVectorEpsilonSq) {
-        float len = sqrt(len_sq);
+        float len = static_cast<float>(std::sqrt(static_cast<double>(len_sq)));
         local_dir.x /= len;
         local_dir.y /= len;
         local_dir.z /= len;

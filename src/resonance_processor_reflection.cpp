@@ -45,7 +45,9 @@ void ResonanceReflectionProcessor::initialize(IPLContext p_context, int p_sample
 
     IPLReflectionEffectSettings reflSettings{};
     reflSettings.type = effectType;
-    reflSettings.irSize = (reflection_type == resonance::kReflectionParametric) ? 1 : static_cast<int>(sample_rate * resonance::kDefaultReverbDurationSec); // TAN uses same as Convolution
+    reflSettings.irSize = (reflection_type == resonance::kReflectionParametric)
+            ? static_cast<IPLint32>(1)
+            : static_cast<IPLint32>(resonance::reverb_ir_size_samples(sample_rate, resonance::kDefaultReverbDurationSec)); // TAN uses same as Convolution
     reflSettings.numChannels = num_channels;
 
     if (iplReflectionEffectCreate(context, &audioSettings, &reflSettings, &reflection_effect) != IPL_STATUS_SUCCESS) {
@@ -118,14 +120,14 @@ void ResonanceReflectionProcessor::process_mix(const IPLAudioBuffer& in_buffer,
     // Ensure params have valid irSize/numChannels - simulation may leave them 0
     IPLReflectionEffectParams params = reverb_params;
     if (params.irSize <= 0)
-        params.irSize = static_cast<int>(sample_rate * resonance::kDefaultReverbDurationSec);
+        params.irSize = static_cast<IPLint32>(resonance::reverb_ir_size_samples(sample_rate, resonance::kDefaultReverbDurationSec));
     if (params.numChannels <= 0)
         params.numChannels = num_channels;
     for (int i = 0; i < IPL_NUM_BANDS; i++) {
         params.reverbTimes[i] = resonance::clamp_reverb_time(params.reverbTimes[i]);
         params.eq[i] = resonance::sanitize_audio_float(params.eq[i]);
     }
-    params.delay = resonance::sanitize_audio_float(params.delay);
+    params.delay = resonance::sanitize_delay_samples(params.delay);
 
     // Steam Audio validation requires ir non-null for CONVOLUTION/HYBRID. Skip apply if invalid.
     if ((params.type == IPL_REFLECTIONEFFECTTYPE_CONVOLUTION || params.type == IPL_REFLECTIONEFFECTTYPE_HYBRID) && !params.ir)
@@ -146,14 +148,14 @@ void ResonanceReflectionProcessor::process_mix_direct(const IPLAudioBuffer& in_b
 
     IPLReflectionEffectParams params = reverb_params;
     if (params.irSize <= 0)
-        params.irSize = static_cast<int>(sample_rate * resonance::kDefaultReverbDurationSec);
+        params.irSize = static_cast<IPLint32>(resonance::reverb_ir_size_samples(sample_rate, resonance::kDefaultReverbDurationSec));
     if (params.numChannels <= 0)
         params.numChannels = num_channels;
     for (int i = 0; i < IPL_NUM_BANDS; i++) {
         params.reverbTimes[i] = resonance::clamp_reverb_time(params.reverbTimes[i]);
         params.eq[i] = resonance::sanitize_audio_float(params.eq[i]);
     }
-    params.delay = resonance::sanitize_audio_float(params.delay);
+    params.delay = resonance::sanitize_delay_samples(params.delay);
     if (sa_mono_buffer.data && sa_mono_buffer.data[0]) {
         for (int i = 0; i < frame_size; i++) {
             sa_mono_buffer.data[0][i] = resonance::sanitize_audio_float(sa_mono_buffer.data[0][i]);

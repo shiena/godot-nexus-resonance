@@ -1,6 +1,7 @@
 #include "resonance_probe_volume.h"
 #include "resonance_constants.h"
 #include "resonance_log.h"
+#include <cstdint>
 #include "resonance_player.h"
 #include "resonance_server.h"
 #include <algorithm>
@@ -289,13 +290,13 @@ bool ResonanceProbeVolume::_compute_is_probe_dirty() const {
     return stored != _get_bake_params_hash();
 }
 
-static Node* _find_resonance_config_in_tree(Node* n) {
+static Node* find_resonance_config_in_tree(Node* n) {
     if (!n)
         return nullptr;
     if (n->has_method(StringName("get_config_dict")))
         return n;
     for (int i = 0; i < n->get_child_count(); i++) {
-        Node* found = _find_resonance_config_in_tree(n->get_child(i));
+        Node* found = find_resonance_config_in_tree(n->get_child(i));
         if (found)
             return found;
     }
@@ -324,7 +325,7 @@ bool ResonanceProbeVolume::_has_valid_resonance_config() const {
             root = n;
         }
         if (root)
-            config_node = _find_resonance_config_in_tree(root);
+            config_node = find_resonance_config_in_tree(root);
     }
     if (!config_node)
         return false;
@@ -392,7 +393,7 @@ void ResonanceProbeVolume::_update_visuals() {
         return;
     }
 
-    viz_multimesh->set_instance_count(points.size());
+    viz_multimesh->set_instance_count(static_cast<int32_t>(points.size()));
 
     Color probe_color;
     if (viz_color_state == 2)
@@ -447,7 +448,8 @@ PackedVector3Array ResonanceProbeVolume::generate_probes_on_floor_raycast() cons
     int hit_count = 0;
     for (int ix = 0; ix < count_x; ix++) {
         for (int iz = 0; iz < count_z; iz++) {
-            Vector3 local_pos(-extents.x + (ix * spacing) + offset_x, plane_y, -extents.z + (iz * spacing) + offset_z);
+            Vector3 local_pos(-extents.x + (static_cast<float>(ix) * spacing) + offset_x, plane_y,
+                              -extents.z + (static_cast<float>(iz) * spacing) + offset_z);
             Vector3 from = volume_transform.xform(local_pos);
             Vector3 to = from + Vector3(0, -ray_down, 0);
             Ref<PhysicsRayQueryParameters3D> query = PhysicsRayQueryParameters3D::create(from, to);
