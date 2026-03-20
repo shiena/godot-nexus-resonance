@@ -1,0 +1,250 @@
+#include "resonance_server.h"
+#include "resonance_constants.h"
+#include "resonance_utils.h"
+#include <algorithm>
+#include <godot_cpp/core/class_db.hpp>
+#include <godot_cpp/variant/utility_functions.hpp>
+
+using namespace godot;
+
+// --- SETTERS ---
+void ResonanceServer::set_debug_occlusion(bool p_enabled) { debug_occlusion.store(p_enabled, std::memory_order_release); }
+bool ResonanceServer::is_debug_occlusion_enabled() const { return debug_occlusion.load(std::memory_order_acquire); }
+void ResonanceServer::set_debug_reflections(bool p_enabled) { debug_reflections.store(p_enabled, std::memory_order_release); }
+bool ResonanceServer::is_debug_reflections_enabled() const { return debug_reflections.load(std::memory_order_acquire); }
+void ResonanceServer::set_debug_pathing(bool p_enabled) { debug_pathing.store(p_enabled, std::memory_order_release); }
+bool ResonanceServer::is_debug_pathing_enabled() const { return debug_pathing.load(std::memory_order_acquire); }
+
+Array ResonanceServer::get_pathing_visualization_segments() {
+    Array result;
+    std::lock_guard<std::mutex> lock(pathing_vis_mutex);
+    for (const PathVisSegment& seg : pathing_vis_segments) {
+        Dictionary d;
+        d["from"] = seg.from;
+        d["to"] = seg.to;
+        d["occluded"] = seg.occluded;
+        result.push_back(d);
+    }
+    return result;
+}
+
+Array ResonanceServer::get_ray_debug_segments() {
+    Array result;
+    if (!wants_debug_reflection_viz())
+        return result;
+    IPLCoordinateSpace3 listener = get_current_listener_coords();
+    IPLVector3 origin = listener.origin;
+    ray_trace_debug_context_.trace_reflection_rays_for_viz(origin, max_rays, resonance::kRayDebugMaxDistance, result);
+    return result;
+}
+
+Array ResonanceServer::get_ray_debug_segments_at(Vector3 origin) {
+    Array result;
+    if (!wants_debug_reflection_viz())
+        return result;
+    IPLVector3 o;
+    o.x = origin.x;
+    o.y = origin.y;
+    o.z = origin.z;
+    ray_trace_debug_context_.trace_reflection_rays_for_viz(o, max_rays, resonance::kRayDebugMaxDistance, result);
+    return result;
+}
+
+bool ResonanceServer::uses_custom_ray_tracer() const {
+    return _scene_type() == IPL_SCENETYPE_CUSTOM;
+}
+
+int ResonanceServer::register_debug_mesh(const std::vector<IPLVector3>& vertices,
+                                         const std::vector<IPLTriangle>& triangles,
+                                         const IPLint32* material_indices, const IPLMatrix4x4* transform, const IPLMaterial* material) {
+    return ray_trace_debug_context_.register_mesh(vertices, triangles, material_indices, transform, material);
+}
+
+void ResonanceServer::reset_reverb_bus_instrumentation() {
+    reverb_effect_process_calls.store(0, std::memory_order_relaxed);
+    reverb_effect_mixer_null.store(0, std::memory_order_relaxed);
+    reverb_effect_success.store(0, std::memory_order_relaxed);
+    reverb_effect_frames_written.store(0, std::memory_order_relaxed);
+    reverb_effect_output_peak.store(0.0f, std::memory_order_relaxed);
+    reverb_mixer_feed_count.store(0, std::memory_order_relaxed);
+    reverb_convolution_valid_fetches.store(0, std::memory_order_relaxed);
+    reverb_convolution_feed_ir_null.store(0, std::memory_order_relaxed);
+    reverb_convolution_gain_min.store(1.0f, std::memory_order_relaxed);
+    reverb_convolution_gain_max.store(0.0f, std::memory_order_relaxed);
+    reverb_convolution_input_rms_max.store(0.0f, std::memory_order_relaxed);
+    instrumentation_fetch_lock_ok.store(0, std::memory_order_relaxed);
+    instrumentation_fetch_cache_hit.store(0, std::memory_order_relaxed);
+    instrumentation_fetch_cache_miss.store(0, std::memory_order_relaxed);
+}
+
+Dictionary ResonanceServer::get_reverb_bus_instrumentation() const {
+    Dictionary d;
+    d["effect_process_calls"] = (int64_t)reverb_effect_process_calls.load(std::memory_order_relaxed);
+    d["effect_mixer_null"] = (int64_t)reverb_effect_mixer_null.load(std::memory_order_relaxed);
+    d["effect_success"] = (int64_t)reverb_effect_success.load(std::memory_order_relaxed);
+    d["effect_frames_written"] = (int64_t)reverb_effect_frames_written.load(std::memory_order_relaxed);
+    d["effect_output_peak"] = reverb_effect_output_peak.load(std::memory_order_relaxed);
+    d["mixer_feed_count"] = (int64_t)reverb_mixer_feed_count.load(std::memory_order_relaxed);
+    {
+        std::lock_guard<std::mutex> m_lock(mixer_access_mutex);
+        d["mixer_exists"] = (reflection_mixer_[0] != nullptr || reflection_mixer_[1] != nullptr);
+    }
+    d["reflection_type"] = reflection_type;
+    d["convolution_valid_fetches"] = (int64_t)reverb_convolution_valid_fetches.load(std::memory_order_relaxed);
+    d["convolution_feed_ir_null"] = (int64_t)reverb_convolution_feed_ir_null.load(std::memory_order_relaxed);
+    d["convolution_gain_min"] = reverb_convolution_gain_min.load(std::memory_order_relaxed);
+    d["convolution_gain_max"] = reverb_convolution_gain_max.load(std::memory_order_relaxed);
+    d["convolution_input_rms_max"] = reverb_convolution_input_rms_max.load(std::memory_order_relaxed);
+    d["fetch_lock_ok"] = (int64_t)instrumentation_fetch_lock_ok.load(std::memory_order_relaxed);
+    d["fetch_cache_hit"] = (int64_t)instrumentation_fetch_cache_hit.load(std::memory_order_relaxed);
+    d["fetch_cache_miss"] = (int64_t)instrumentation_fetch_cache_miss.load(std::memory_order_relaxed);
+    return d;
+}
+
+void ResonanceServer::record_convolution_feed(bool ir_non_null, float reverb_gain, float input_rms) {
+    if (!ir_non_null)
+        reverb_convolution_feed_ir_null.fetch_add(1, std::memory_order_relaxed);
+    float gmin = reverb_convolution_gain_min.load(std::memory_order_relaxed);
+    if (reverb_gain < gmin)
+        reverb_convolution_gain_min.store(reverb_gain, std::memory_order_relaxed);
+    float gmax = reverb_convolution_gain_max.load(std::memory_order_relaxed);
+    if (reverb_gain > gmax)
+        reverb_convolution_gain_max.store(reverb_gain, std::memory_order_relaxed);
+    float rmax = reverb_convolution_input_rms_max.load(std::memory_order_relaxed);
+    if (input_rms > rmax)
+        reverb_convolution_input_rms_max.store(input_rms, std::memory_order_relaxed);
+}
+
+void ResonanceServer::update_reverb_effect_instrumentation(bool mixer_null, bool success, int32_t frames_written, float output_peak) {
+    reverb_effect_process_calls.fetch_add(1, std::memory_order_relaxed);
+    if (mixer_null)
+        reverb_effect_mixer_null.fetch_add(1, std::memory_order_relaxed);
+    if (success) {
+        reverb_effect_success.fetch_add(1, std::memory_order_relaxed);
+        reverb_effect_frames_written.fetch_add(static_cast<uint64_t>(frames_written), std::memory_order_relaxed);
+        float prev = reverb_effect_output_peak.load(std::memory_order_relaxed);
+        if (output_peak > prev)
+            reverb_effect_output_peak.store(output_peak, std::memory_order_relaxed);
+    }
+}
+
+void ResonanceServer::unregister_debug_mesh(int mesh_id) {
+    ray_trace_debug_context_.unregister_mesh(mesh_id);
+}
+
+void ResonanceServer::set_output_direct_enabled(bool p_enabled) { output_direct_enabled.store(p_enabled, std::memory_order_release); }
+bool ResonanceServer::is_output_direct_enabled() const { return output_direct_enabled.load(std::memory_order_acquire); }
+void ResonanceServer::set_output_reverb_enabled(bool p_enabled) { output_reverb_enabled.store(p_enabled, std::memory_order_release); }
+bool ResonanceServer::is_output_reverb_enabled() const { return output_reverb_enabled.load(std::memory_order_acquire); }
+void ResonanceServer::set_reverb_influence_radius(float p_radius) { reverb_influence_radius = std::max(1.0f, p_radius); }
+float ResonanceServer::get_reverb_influence_radius() const { return reverb_influence_radius; }
+void ResonanceServer::set_reverb_max_distance(float p_dist) { reverb_max_distance = std::max(0.0f, p_dist); }
+float ResonanceServer::get_reverb_max_distance() const { return reverb_max_distance; }
+void ResonanceServer::set_reverb_transmission_amount(float p_amount) { reverb_transmission_amount = std::max(0.0f, std::min(1.0f, p_amount)); }
+float ResonanceServer::get_reverb_transmission_amount() const { return reverb_transmission_amount; }
+void ResonanceServer::set_perspective_correction_enabled(bool p_enabled) { perspective_correction_enabled.store(p_enabled, std::memory_order_release); }
+bool ResonanceServer::is_perspective_correction_enabled() const { return perspective_correction_enabled.load(std::memory_order_acquire); }
+void ResonanceServer::set_perspective_correction_factor(float p_factor) {
+    perspective_correction_factor.store(std::max(0.1f, std::min(3.0f, p_factor)), std::memory_order_release);
+}
+float ResonanceServer::get_perspective_correction_factor() const { return perspective_correction_factor.load(std::memory_order_acquire); }
+
+bool ResonanceServer::use_reverb_binaural() const {
+    return reverb_binaural && _hrtf() != nullptr;
+}
+void ResonanceServer::_bind_methods() {
+    ADD_SIGNAL(MethodInfo("bake_progress", PropertyInfo(Variant::FLOAT, "progress")));
+    ClassDB::bind_method(D_METHOD("init_audio_engine", "config"), &ResonanceServer::init_audio_engine);
+    ClassDB::bind_method(D_METHOD("reinit_audio_engine", "config"), &ResonanceServer::reinit_audio_engine);
+
+    ClassDB::bind_method(D_METHOD("get_version"), &ResonanceServer::get_version);
+    ClassDB::bind_method(D_METHOD("is_initialized"), &ResonanceServer::is_initialized);
+    ClassDB::bind_method(D_METHOD("is_simulating"), &ResonanceServer::is_simulating);
+    ClassDB::bind_method(D_METHOD("get_sample_rate"), &ResonanceServer::get_sample_rate);
+    ClassDB::bind_method(D_METHOD("get_audio_frame_size"), &ResonanceServer::get_audio_frame_size);
+    ClassDB::bind_method(D_METHOD("get_audio_frame_size_was_auto"), &ResonanceServer::get_audio_frame_size_was_auto);
+    ClassDB::bind_method(D_METHOD("consume_pending_reinit_frame_size"), &ResonanceServer::consume_pending_reinit_frame_size);
+    ClassDB::bind_method(D_METHOD("update_listener", "pos", "dir", "up"), &ResonanceServer::update_listener);
+    ClassDB::bind_method(D_METHOD("set_listener_valid", "valid"), &ResonanceServer::set_listener_valid);
+    ClassDB::bind_method(D_METHOD("notify_listener_changed"), &ResonanceServer::notify_listener_changed);
+    ClassDB::bind_method(D_METHOD("notify_listener_changed_to", "listener_node"), &ResonanceServer::notify_listener_changed_to);
+    ClassDB::bind_method(D_METHOD("tick", "delta"), &ResonanceServer::tick);
+
+    // Probes
+    ClassDB::bind_method(D_METHOD("generate_manual_grid", "tr", "ext", "sp", "generation_type", "height_above_floor"),
+                         &ResonanceServer::generate_manual_grid, DEFVAL(2), DEFVAL(1.5));
+    ClassDB::bind_method(D_METHOD("generate_probes_scene_aware", "volume_transform", "extents", "spacing", "generation_type", "height_above_floor"),
+                         &ResonanceServer::generate_probes_scene_aware, DEFVAL(1), DEFVAL(1.5));
+    ClassDB::bind_method(D_METHOD("bake_manual_grid", "pts", "dat"), &ResonanceServer::bake_manual_grid);
+    ClassDB::bind_method(D_METHOD("set_bake_params", "params"), &ResonanceServer::set_bake_params);
+    ClassDB::bind_method(D_METHOD("set_bake_static_scene_asset", "p_asset"), &ResonanceServer::set_bake_static_scene_asset);
+    ClassDB::bind_method(D_METHOD("load_static_scene_from_asset", "p_asset", "p_transform"), &ResonanceServer::load_static_scene_from_asset, DEFVAL(Transform3D()));
+    ClassDB::bind_method(D_METHOD("add_static_scene_from_asset", "p_asset", "p_transform"), &ResonanceServer::add_static_scene_from_asset, DEFVAL(Transform3D()));
+    ClassDB::bind_method(D_METHOD("clear_static_scenes"), &ResonanceServer::clear_static_scenes);
+    ClassDB::bind_method(D_METHOD("set_bake_pipeline_pathing", "pathing"), &ResonanceServer::set_bake_pipeline_pathing);
+    ClassDB::bind_method(D_METHOD("bake_probes_for_volume", "volume_transform", "extents", "spacing", "generation_type", "height_above_floor", "probe_data"),
+                         &ResonanceServer::bake_probes_for_volume);
+    ClassDB::bind_method(D_METHOD("bake_pathing", "dat"), &ResonanceServer::bake_pathing);
+    ClassDB::bind_method(D_METHOD("bake_static_source", "dat", "endpoint_position", "influence_radius"), &ResonanceServer::bake_static_source);
+    ClassDB::bind_method(D_METHOD("bake_static_listener", "dat", "endpoint_position", "influence_radius"), &ResonanceServer::bake_static_listener);
+    ClassDB::bind_method(D_METHOD("save_scene_obj", "file_base_name"), &ResonanceServer::save_scene_obj);
+    ClassDB::bind_method(D_METHOD("export_static_scene_to_asset", "scene_root", "path"), &ResonanceServer::export_static_scene_to_asset);
+    ClassDB::bind_method(D_METHOD("export_static_scene_to_obj", "scene_root", "file_base_name"), &ResonanceServer::export_static_scene_to_obj);
+    ClassDB::bind_method(D_METHOD("get_static_scene_hash", "scene_root"), &ResonanceServer::get_static_scene_hash);
+    ClassDB::bind_method(D_METHOD("get_geometry_asset_hash", "asset"), &ResonanceServer::get_geometry_asset_hash);
+    ClassDB::bind_method(D_METHOD("cancel_reflections_bake"), &ResonanceServer::cancel_reflections_bake);
+    ClassDB::bind_method(D_METHOD("cancel_pathing_bake"), &ResonanceServer::cancel_pathing_bake);
+    ClassDB::bind_method(D_METHOD("load_probe_batch", "dat"), &ResonanceServer::load_probe_batch);
+    ClassDB::bind_method(D_METHOD("remove_probe_batch", "handle"), &ResonanceServer::remove_probe_batch);
+    ClassDB::bind_method(D_METHOD("clear_probe_batches"), &ResonanceServer::clear_probe_batches);
+    ClassDB::bind_method(D_METHOD("revalidate_probe_batches_with_config"), &ResonanceServer::revalidate_probe_batches_with_config);
+
+    // Bind Setter/Getters
+    ClassDB::bind_method(D_METHOD("set_debug_occlusion", "p_enabled"), &ResonanceServer::set_debug_occlusion);
+    ClassDB::bind_method(D_METHOD("is_debug_occlusion_enabled"), &ResonanceServer::is_debug_occlusion_enabled);
+
+    ClassDB::bind_method(D_METHOD("set_debug_reflections", "p_enabled"), &ResonanceServer::set_debug_reflections);
+    ClassDB::bind_method(D_METHOD("is_debug_reflections_enabled"), &ResonanceServer::is_debug_reflections_enabled);
+    ClassDB::bind_method(D_METHOD("set_debug_pathing", "p_enabled"), &ResonanceServer::set_debug_pathing);
+    ClassDB::bind_method(D_METHOD("is_debug_pathing_enabled"), &ResonanceServer::is_debug_pathing_enabled);
+    ClassDB::bind_method(D_METHOD("get_pathing_visualization_segments"), &ResonanceServer::get_pathing_visualization_segments);
+    ClassDB::bind_method(D_METHOD("get_ray_debug_segments"), &ResonanceServer::get_ray_debug_segments);
+    ClassDB::bind_method(D_METHOD("get_ray_debug_segments_at", "origin"), &ResonanceServer::get_ray_debug_segments_at);
+    ClassDB::bind_method(D_METHOD("uses_custom_ray_tracer"), &ResonanceServer::uses_custom_ray_tracer);
+    ClassDB::bind_method(D_METHOD("wants_debug_reflection_viz"), &ResonanceServer::wants_debug_reflection_viz);
+    ClassDB::bind_method(D_METHOD("is_pathing_enabled"), &ResonanceServer::is_pathing_enabled);
+    ClassDB::bind_method(D_METHOD("set_pathing_enabled", "p_enabled"), &ResonanceServer::set_pathing_enabled);
+
+    ClassDB::bind_method(D_METHOD("set_output_direct_enabled", "p_enabled"), &ResonanceServer::set_output_direct_enabled);
+    ClassDB::bind_method(D_METHOD("is_output_direct_enabled"), &ResonanceServer::is_output_direct_enabled);
+
+    ClassDB::bind_method(D_METHOD("set_output_reverb_enabled", "p_enabled"), &ResonanceServer::set_output_reverb_enabled);
+    ClassDB::bind_method(D_METHOD("is_output_reverb_enabled"), &ResonanceServer::is_output_reverb_enabled);
+
+    ClassDB::bind_method(D_METHOD("set_reverb_influence_radius", "p_radius"), &ResonanceServer::set_reverb_influence_radius);
+    ClassDB::bind_method(D_METHOD("get_reverb_influence_radius"), &ResonanceServer::get_reverb_influence_radius);
+    ClassDB::bind_method(D_METHOD("set_reverb_max_distance", "p_dist"), &ResonanceServer::set_reverb_max_distance);
+    ClassDB::bind_method(D_METHOD("get_reverb_max_distance"), &ResonanceServer::get_reverb_max_distance);
+    ClassDB::bind_method(D_METHOD("set_reverb_transmission_amount", "p_amount"), &ResonanceServer::set_reverb_transmission_amount);
+    ClassDB::bind_method(D_METHOD("get_reverb_transmission_amount"), &ResonanceServer::get_reverb_transmission_amount);
+    ClassDB::bind_method(D_METHOD("set_perspective_correction_enabled", "p_enabled"), &ResonanceServer::set_perspective_correction_enabled);
+    ClassDB::bind_method(D_METHOD("is_perspective_correction_enabled"), &ResonanceServer::is_perspective_correction_enabled);
+    ClassDB::bind_method(D_METHOD("set_perspective_correction_factor", "p_factor"), &ResonanceServer::set_perspective_correction_factor);
+    ClassDB::bind_method(D_METHOD("get_perspective_correction_factor"), &ResonanceServer::get_perspective_correction_factor);
+    ClassDB::bind_method(D_METHOD("get_reflection_type"), &ResonanceServer::get_reflection_type);
+    ClassDB::bind_method(D_METHOD("get_realtime_rays"), &ResonanceServer::get_realtime_rays);
+    ClassDB::bind_method(D_METHOD("get_reverb_bus_instrumentation"), &ResonanceServer::get_reverb_bus_instrumentation);
+    ClassDB::bind_method(D_METHOD("reset_reverb_bus_instrumentation"), &ResonanceServer::reset_reverb_bus_instrumentation);
+
+    // Properties
+    ADD_PROPERTY(PropertyInfo(Variant::BOOL, "debug_occlusion"), "set_debug_occlusion", "is_debug_occlusion_enabled");
+    ADD_PROPERTY(PropertyInfo(Variant::BOOL, "debug_reflections"), "set_debug_reflections", "is_debug_reflections_enabled");
+    ADD_PROPERTY(PropertyInfo(Variant::BOOL, "debug_pathing"), "set_debug_pathing", "is_debug_pathing_enabled");
+    ADD_PROPERTY(PropertyInfo(Variant::BOOL, "output_direct"), "set_output_direct_enabled", "is_output_direct_enabled");
+    ADD_PROPERTY(PropertyInfo(Variant::BOOL, "output_reverb"), "set_output_reverb_enabled", "is_output_reverb_enabled");
+    ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "reverb_influence_radius", PROPERTY_HINT_RANGE, "1,50000,1"), "set_reverb_influence_radius", "get_reverb_influence_radius");
+    ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "reverb_max_distance", PROPERTY_HINT_RANGE, "0,5000,1"), "set_reverb_max_distance", "get_reverb_max_distance");
+    ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "reverb_transmission_amount", PROPERTY_HINT_RANGE, "0,1,0.01"), "set_reverb_transmission_amount", "get_reverb_transmission_amount");
+    ADD_PROPERTY(PropertyInfo(Variant::BOOL, "perspective_correction_enabled"), "set_perspective_correction_enabled", "is_perspective_correction_enabled");
+    ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "perspective_correction_factor", PROPERTY_HINT_RANGE, "0.1,3.0,0.1"), "set_perspective_correction_factor", "get_perspective_correction_factor");
+}

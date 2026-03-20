@@ -39,7 +39,13 @@ func _build_ui() -> void:
 	_panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
 	_panel.custom_minimum_size = Vector2(160, 80)
 	_panel.size_flags_horizontal = Control.SIZE_SHRINK_END
+	visible = false
 	call_deferred("_update_position")
+
+
+func _exit_tree() -> void:
+	visible = false
+	process_mode = Node.PROCESS_MODE_DISABLED
 
 
 func _update_position() -> void:
@@ -69,8 +75,7 @@ func _refresh() -> void:
 	var fps := Performance.get_monitor(Performance.TIME_FPS)
 	var process_ms := Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
 	var physics_ms := Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0
-	_label.text = "[color=%s]FPS: %d[/color]\n[color=%s]Frame: %.2f ms[/color]\n[color=%s]Physics: %.2f ms[/color]" % [
-		COLOR_NEUTRAL, int(fps),
-		COLOR_NEUTRAL, process_ms,
-		COLOR_NEUTRAL, physics_ms
-	]
+	_label.text = (
+		"[color=%s]FPS: %d[/color]\n[color=%s]Frame: %.2f ms[/color]\n[color=%s]Physics: %.2f ms[/color]"
+		% [COLOR_NEUTRAL, int(fps), COLOR_NEUTRAL, process_ms, COLOR_NEUTRAL, physics_ms]
+	)

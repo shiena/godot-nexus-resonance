@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.4] - 2026-03-20
+
+### Changed
+
+- **ResonanceServer build layout** – Implementation split from monolithic `resonance_server.cpp` into focused translation units (`resonance_server_lifecycle.cpp`, `resonance_server_callbacks.cpp`, `resonance_server_listener.cpp`, `resonance_server_sources.cpp`, `resonance_server_fetch.cpp`, `resonance_server_scene_io.cpp`, `resonance_server_baking.cpp`, `resonance_server_debug_bind.cpp`). `SourceManager` / `ProbeBatchManager` moved to `handle_manager.cpp`. Public API and `resonance_server.h` unchanged.
+- **Android: realtime rays** – `ResonanceRuntimeConfig.get_effective_realtime_rays` no longer forces `0` on Android. Realtime simulation uses the configured `scene_type`; Embree/Radeon Rays fall back to Steam Audio’s built-in (Default) tracer on device, matching Steam Audio Unity behavior. **If your project assumed “no realtime on Android,”** set `realtime_rays` to **Baked Only (0)** or rely on baked probes to avoid extra CPU use.
+
+### Fixed
+
+- **Processor init / ambisonic input bounds** – `ResonanceAmbisonicProcessor::initialize` and `ResonanceReflectionProcessor::initialize` reject null `IPLContext`; `ResonanceAmbisonicProcessor::process` avoids out-of-bounds read when interleaved input is shorter than `frame_size * (order+1)^2` (clears stereo output instead of calling `iplAudioBufferDeinterleave` on undersized data).
+- **Ring buffer zero capacity** – `RingBuffer::write`/`read` return immediately when `capacity == 0`, avoiding undefined behavior from `% 0` and `capacity - pos` underflow.
+- **Bake progress thread safety** – `bake_progress` is emitted on the **Godot main thread** via `call_deferred` (Steam Audio `IPLProgressCallback` may run on worker threads).
+- **Reverb after reinit** – Convolution reverb bus (`ResonanceAudioEffect`) resets its `MixerProcessor` when the server’s Steam Audio generation changes, avoiding stale Phonon handles after `reinit_audio_engine`.
+- **Empty mesh / bake asset guards** – Dynamic geometry path rejects empty serialized mesh data; bake static-scene path requires non-zero asset size before passing buffers to Phonon.
+
 ## [0.9.3] - 2026-03-17
 
 ### Added

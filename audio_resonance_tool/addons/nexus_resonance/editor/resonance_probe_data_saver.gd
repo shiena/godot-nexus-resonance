@@ -4,12 +4,18 @@ class_name ResonanceProbeDataSaver
 
 ## Custom ResourceFormatSaver for ResonanceProbeData (GDExtension class).
 ## Always saves as .tres (text format) for version control / diffing.
+##
+## Concurrency: Atomic save via tmp file + DirAccess.rename_absolute. Avoid simultaneous saves
+## on the same .tres path (e.g. Bake pipeline + manual ResourceSaver.save) to prevent race conditions.
+
 
 func _recognize(resource: Resource) -> bool:
 	return resource != null and resource.get_class() == "ResonanceProbeData"
 
+
 func _get_recognized_extensions(resource: Resource) -> PackedStringArray:
 	return PackedStringArray(["tres"])
+
 
 func _save(resource: Resource, path: String, _flags: int) -> Error:
 	if resource.get_class() != "ResonanceProbeData":
@@ -17,19 +23,49 @@ func _save(resource: Resource, path: String, _flags: int) -> Error:
 	var data: PackedByteArray = resource.get("data")
 	if data == null:
 		data = PackedByteArray()
-	var probe_positions_raw = resource.get("probe_positions") if "probe_positions" in resource else null
-	var probe_positions: PackedVector3Array = probe_positions_raw if probe_positions_raw is PackedVector3Array else PackedVector3Array()
+	var probe_positions_raw = (
+		resource.get("probe_positions") if "probe_positions" in resource else null
+	)
+	var probe_positions: PackedVector3Array = (
+		probe_positions_raw if probe_positions_raw is PackedVector3Array else PackedVector3Array()
+	)
 	var bake_params_hash: int = resource.get("bake_params_hash")
 	var baked_reflection_type: int = resource.get("baked_reflection_type")
-	var pathing_params_hash: int = resource.get("pathing_params_hash") if "pathing_params_hash" in resource else 0
-	var static_source_params_hash: int = resource.get("static_source_params_hash") if "static_source_params_hash" in resource else 0
-	var static_listener_params_hash: int = resource.get("static_listener_params_hash") if "static_listener_params_hash" in resource else 0
-	var static_scene_params_hash: int = resource.get("static_scene_params_hash") if "static_scene_params_hash" in resource else 0
-	var target_path: String = path if (path.ends_with(".tres") or path.ends_with(".bak")) else path.get_basename() + ".tres"
+	var pathing_params_hash: int = (
+		resource.get("pathing_params_hash") if "pathing_params_hash" in resource else 0
+	)
+	var static_source_params_hash: int = (
+		resource.get("static_source_params_hash") if "static_source_params_hash" in resource else 0
+	)
+	var static_listener_params_hash: int = (
+		resource.get("static_listener_params_hash")
+		if "static_listener_params_hash" in resource
+		else 0
+	)
+	var static_scene_params_hash: int = (
+		resource.get("static_scene_params_hash") if "static_scene_params_hash" in resource else 0
+	)
+	var target_path: String = (
+		path
+		if (path.ends_with(".tres") or path.ends_with(".bak"))
+		else path.get_basename() + ".tres"
+	)
 	var tmp_path := target_path + ".tmp"
 	var data_str := var_to_str(data)
 	var probe_pos_str := var_to_str(probe_positions)
-	var content := "[gd_resource type=\"ResonanceProbeData\" format=3]\n\n[resource]\ndata = %s\nprobe_positions = %s\nbake_params_hash = %d\nbaked_reflection_type = %d\npathing_params_hash = %d\nstatic_source_params_hash = %d\nstatic_listener_params_hash = %d\nstatic_scene_params_hash = %d\n" % [data_str, probe_pos_str, bake_params_hash, baked_reflection_type, pathing_params_hash, static_source_params_hash, static_listener_params_hash, static_scene_params_hash]
+	var content := (
+		'[gd_resource type="ResonanceProbeData" format=3]\n\n[resource]\ndata = %s\nprobe_positions = %s\nbake_params_hash = %d\nbaked_reflection_type = %d\npathing_params_hash = %d\nstatic_source_params_hash = %d\nstatic_listener_params_hash = %d\nstatic_scene_params_hash = %d\n'
+		% [
+			data_str,
+			probe_pos_str,
+			bake_params_hash,
+			baked_reflection_type,
+			pathing_params_hash,
+			static_source_params_hash,
+			static_listener_params_hash,
+			static_scene_params_hash
+		]
+	)
 	var f := FileAccess.open(tmp_path, FileAccess.WRITE)
 	if f == null:
 		return FileAccess.get_open_error()
@@ -39,7 +75,12 @@ func _save(resource: Resource, path: String, _flags: int) -> Error:
 	if rename_err != OK:
 		if FileAccess.file_exists(tmp_path):
 			DirAccess.remove_absolute(tmp_path)
-		push_warning("Nexus Resonance: Atomic save failed (rename), error %d. Temp file removed." % rename_err)
+		push_warning(
+			(
+				"Nexus Resonance: Atomic save failed (rename), error %d. Temp file removed."
+				% rename_err
+			)
+		)
 		return rename_err
 	resource.take_over_path(target_path)
 	return OK

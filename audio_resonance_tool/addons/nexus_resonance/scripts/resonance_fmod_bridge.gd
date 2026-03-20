@@ -18,10 +18,16 @@ var _bridge: Object = null
 ## Initialize the FMOD bridge. Call after ResonanceServer and FMOD are ready.
 ## Returns true on success. Creates C++ bridge instance on first call (lazy init).
 func init_bridge() -> bool:
-	if _bridge == null and Engine.has_singleton("ResonanceServer") and ClassDB.class_exists("ResonanceFMODBridge"):
+	if (
+		_bridge == null
+		and Engine.has_singleton("ResonanceServer")
+		and ClassDB.class_exists("ResonanceFMODBridge")
+	):
 		_bridge = ClassDB.instantiate("ResonanceFMODBridge")
 	if not _bridge:
-		push_warning("ResonanceFMODBridgeScript: ResonanceFMODBridge not available. Ensure Nexus Resonance GDExtension is loaded.")
+		push_warning(
+			"ResonanceFMODBridgeScript: ResonanceFMODBridge not available. Ensure Nexus Resonance GDExtension is loaded."
+		)
 		return false
 	if _bridge.init_bridge():
 		return true

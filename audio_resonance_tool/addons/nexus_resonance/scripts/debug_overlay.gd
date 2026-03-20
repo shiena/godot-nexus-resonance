@@ -26,10 +26,12 @@ const COLOR_WARNING := "#ffcc44"
 const COLOR_ERROR := "#ff6666"
 const COLOR_NEUTRAL := "#dddddd"
 
+
 func _ready() -> void:
 	if Engine.is_editor_hint():
 		return
 	_build_ui()
+
 
 func _build_ui() -> void:
 	layer = 100
@@ -124,6 +126,7 @@ func _build_ui() -> void:
 	_panel.custom_minimum_size = Vector2(380, 0)
 	_panel.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 
+
 func _on_reverb_reset_pressed() -> void:
 	if Engine.has_singleton("ResonanceServer"):
 		var srv = Engine.get_singleton("ResonanceServer")
@@ -135,9 +138,11 @@ func _on_reverb_reset_pressed() -> void:
 			if p.has_method("reset_audio_instrumentation"):
 				p.reset_audio_instrumentation()
 
+
 func _on_category_toggled(pressed: bool, category: StringName) -> void:
 	if Engine.has_singleton("ResonanceLogger"):
 		Engine.get_singleton("ResonanceLogger").set_category_enabled(category, pressed)
+
 
 func _process(delta: float) -> void:
 	if Engine.is_editor_hint():
@@ -155,6 +160,7 @@ func _process(delta: float) -> void:
 		_refresh_reverb_bus()
 		_refresh_log()
 
+
 func _refresh_status() -> void:
 	if not Engine.has_singleton("ResonanceServer"):
 		_status_label.text = "[color=%s]ResonanceServer not loaded[/color]" % COLOR_ERROR
@@ -165,7 +171,12 @@ func _refresh_status() -> void:
 
 	var out_direct = srv.is_output_direct_enabled()
 	var out_reverb = srv.is_output_reverb_enabled()
-	parts.append("[color=%s]Output Direct: %s | Reverb: %s[/color]" % [COLOR_NEUTRAL, _str_bool(out_direct), _str_bool(out_reverb)])
+	parts.append(
+		(
+			"[color=%s]Output Direct: %s | Reverb: %s[/color]"
+			% [COLOR_NEUTRAL, _str_bool(out_direct), _str_bool(out_reverb)]
+		)
+	)
 
 	var refl_type = srv.get_reflection_type() if srv.has_method("get_reflection_type") else 0
 	var names = Constants.REFLECTION_DISPLAY_NAMES
@@ -174,20 +185,41 @@ func _refresh_status() -> void:
 
 	if srv.has_method("get_realtime_rays"):
 		var rays = srv.get_realtime_rays()
-		parts.append("[color=%s]Realtime Rays: %s[/color]" % [COLOR_NEUTRAL, rays if rays > 0 else "Baked Only (0)"])
+		parts.append(
+			(
+				"[color=%s]Realtime Rays: %s[/color]"
+				% [COLOR_NEUTRAL, rays if rays > 0 else "Baked Only (0)"]
+			)
+		)
 	if refl_type == 1 or refl_type == 2:
-		parts.append("[color=%s]  [Parametric/Hybrid: Reverb in Player output][/color]" % COLOR_WARNING)
+		parts.append(
+			"[color=%s]  [Parametric/Hybrid: Reverb in Player output][/color]" % COLOR_WARNING
+		)
 
 	var init_ok = srv.is_initialized()
 	var sim_ok = srv.is_simulating() if init_ok else false
 	var server_color := COLOR_ERROR
 	if init_ok:
 		server_color = COLOR_OK if sim_ok else COLOR_WARNING
-	parts.append("[color=%s]Server: %s[/color]" % [server_color, "initialized" if init_ok else "not initialized"])
+	parts.append(
+		(
+			"[color=%s]Server: %s[/color]"
+			% [server_color, "initialized" if init_ok else "not initialized"]
+		)
+	)
 	if init_ok:
-		parts.append("[color=%s]Simulation: %s[/color]" % [COLOR_OK if sim_ok else COLOR_WARNING, "running" if sim_ok else "waiting for geometry"])
+		parts.append(
+			(
+				"[color=%s]Simulation: %s[/color]"
+				% [
+					COLOR_OK if sim_ok else COLOR_WARNING,
+					"running" if sim_ok else "waiting for geometry"
+				]
+			)
+		)
 
 	_status_label.text = "\n".join(parts)
+
 
 func _refresh_audio_instrumentation() -> void:
 	if not _audio_instrumentation_label:
@@ -197,7 +229,9 @@ func _refresh_audio_instrumentation() -> void:
 		return
 	var players = tree.get_nodes_in_group("resonance_player")
 	if players.is_empty():
-		_audio_instrumentation_label.text = "[color=%s]No ResonancePlayer nodes[/color]" % COLOR_WARNING
+		_audio_instrumentation_label.text = (
+			"[color=%s]No ResonancePlayer nodes[/color]" % COLOR_WARNING
+		)
 		return
 	var block_size := -1
 	if Engine.has_singleton("ResonanceServer"):
@@ -228,10 +262,14 @@ func _refresh_audio_instrumentation() -> void:
 		var zero_input = inst.get("zero_input_count", 0)
 		var silent = inst.get("silent_output_blocks", 0)
 		var last_rms = inst.get("last_output_rms", 0.0)
-		var buf_ok = (input_dropped == 0 and output_underrun == 0 and output_blocked == 0)
-		var timing_ok = (late_mix == 0)
+		var buf_ok = input_dropped == 0 and output_underrun == 0 and output_blocked == 0
+		var timing_ok = late_mix == 0
 		var status_ok = buf_ok and timing_ok
-		var status_color := COLOR_OK if status_ok else (COLOR_WARNING if not buf_ok or late_mix < 3 else COLOR_ERROR)
+		var status_color := (
+			COLOR_OK
+			if status_ok
+			else (COLOR_WARNING if not buf_ok or late_mix < 3 else COLOR_ERROR)
+		)
 		var max_ms = "%.1f" % (max_block_us / 1000.0)
 		var proc_parts: PackedStringArray = []
 		if block_size > 0:
@@ -240,14 +278,34 @@ func _refresh_audio_instrumentation() -> void:
 		var proc_extras = " ".join(proc_parts)
 		var idle_suffix = " (idle)" if not currently_playing else ""
 		parts.append("[color=%s]%s%s:[/color]" % [COLOR_NEUTRAL, p.name, idle_suffix])
-		parts.append("  buf: drop=%d underrun=%d blocked=%d | late=%d max_block=%sms psync=%d" % [input_dropped, output_underrun, output_blocked, late_mix, max_ms, param_syncs])
-		parts.append("  proc: pass=%d rmiss=%d silent=%d | %s [color=%s][%s][/color]" % [passthrough, reverb_miss, silent, proc_extras, status_color, "OK" if status_ok else "CHECK"])
+		parts.append(
+			(
+				"  buf: drop=%d underrun=%d blocked=%d | late=%d max_block=%sms psync=%d"
+				% [input_dropped, output_underrun, output_blocked, late_mix, max_ms, param_syncs]
+			)
+		)
+		parts.append(
+			(
+				"  proc: pass=%d rmiss=%d silent=%d | %s [color=%s][%s][/color]"
+				% [
+					passthrough,
+					reverb_miss,
+					silent,
+					proc_extras,
+					status_color,
+					"OK" if status_ok else "CHECK"
+				]
+			)
+		)
 	_audio_instrumentation_label.text = "\n".join(parts)
+
 
 func _refresh_reverb_bus() -> void:
 	if not _reverb_bus_label:
 		return
-	var srv = Engine.get_singleton("ResonanceServer") if Engine.has_singleton("ResonanceServer") else null
+	var srv = (
+		Engine.get_singleton("ResonanceServer") if Engine.has_singleton("ResonanceServer") else null
+	)
 	var parts: PackedStringArray = []
 	if not srv or not srv.has_method("get_reverb_bus_instrumentation"):
 		_reverb_bus_label.text = "[color=%s]ResonanceServer not available[/color]" % COLOR_ERROR
@@ -257,49 +315,105 @@ func _refresh_reverb_bus() -> void:
 	var names = Constants.REFLECTION_DISPLAY_NAMES
 	var refl_name = names[refl_type] if refl_type >= 0 and refl_type < names.size() else "?"
 	var mixer_ok = ri.get("mixer_exists", false)
-	parts.append("[color=%s]Reflection Type: %s (Convolution=0 uses Reverb Bus)[/color]" % [COLOR_NEUTRAL, refl_name])
-	parts.append("[color=%s]Mixer: exists=%s | feeds=%d[/color]" % [COLOR_OK if mixer_ok else COLOR_WARNING, ri.get("mixer_exists", false), ri.get("mixer_feed_count", 0)])
+	parts.append(
+		(
+			"[color=%s]Reflection Type: %s (Convolution=0 uses Reverb Bus)[/color]"
+			% [COLOR_NEUTRAL, refl_name]
+		)
+	)
+	parts.append(
+		(
+			"[color=%s]Mixer: exists=%s | feeds=%d[/color]"
+			% [
+				COLOR_OK if mixer_ok else COLOR_WARNING,
+				ri.get("mixer_exists", false),
+				ri.get("mixer_feed_count", 0)
+			]
+		)
+	)
 	if refl_type == 0:
-		parts.append("Convolution: valid_fetches=%d feed_ir_null=%d" % [
-			ri.get("convolution_valid_fetches", 0),
-			ri.get("convolution_feed_ir_null", 0),
-		])
-		parts.append("  gain_min=%.6f gain_max=%.6f input_rms_max=%.6f" % [
-			ri.get("convolution_gain_min", 1.0),
-			ri.get("convolution_gain_max", 0.0),
-			ri.get("convolution_input_rms_max", 0.0),
-		])
+		(
+			parts
+			. append(
+				(
+					"Convolution: valid_fetches=%d feed_ir_null=%d"
+					% [
+						ri.get("convolution_valid_fetches", 0),
+						ri.get("convolution_feed_ir_null", 0),
+					]
+				)
+			)
+		)
+		(
+			parts
+			. append(
+				(
+					"  gain_min=%.6f gain_max=%.6f input_rms_max=%.6f"
+					% [
+						ri.get("convolution_gain_min", 1.0),
+						ri.get("convolution_gain_max", 0.0),
+						ri.get("convolution_input_rms_max", 0.0),
+					]
+				)
+			)
+		)
 	var eff_success = ri.get("effect_success", 0)
 	var eff_color := COLOR_OK if eff_success > 0 else COLOR_WARNING
-	parts.append("[color=%s]Effect: process=%d mixer_null=%d success=%d frames=%d peak=%.6f[/color]" % [
-		eff_color,
-		ri.get("effect_process_calls", 0),
-		ri.get("effect_mixer_null", 0),
-		eff_success,
-		ri.get("effect_frames_written", 0),
-		ri.get("effect_output_peak", 0.0),
-	])
+	(
+		parts
+		. append(
+			(
+				"[color=%s]Effect: process=%d mixer_null=%d success=%d frames=%d peak=%.6f[/color]"
+				% [
+					eff_color,
+					ri.get("effect_process_calls", 0),
+					ri.get("effect_mixer_null", 0),
+					eff_success,
+					ri.get("effect_frames_written", 0),
+					ri.get("effect_output_peak", 0.0),
+				]
+			)
+		)
+	)
 	var fetch_lock = ri.get("fetch_lock_ok", 0)
 	var fetch_cache = ri.get("fetch_cache_hit", 0)
 	var fetch_miss = ri.get("fetch_cache_miss", 0)
 	var fetch_total = fetch_lock + fetch_cache + fetch_miss
 	var fetch_miss_pct = (100.0 * fetch_miss / fetch_total) if fetch_total > 0 else 0.0
-	var fetch_miss_color := COLOR_OK if fetch_miss == 0 else (COLOR_WARNING if fetch_miss_pct < 10.0 else COLOR_ERROR)
-	parts.append("[color=%s]fetch_reverb: lock_ok=%d cache_hit=%d cache_miss=%d (%.1f%%)[/color]" % [
-		fetch_miss_color,
-		fetch_lock,
-		fetch_cache,
-		fetch_miss,
-		fetch_miss_pct,
-	])
+	var fetch_miss_color := (
+		COLOR_OK if fetch_miss == 0 else (COLOR_WARNING if fetch_miss_pct < 10.0 else COLOR_ERROR)
+	)
+	(
+		parts
+		. append(
+			(
+				"[color=%s]fetch_reverb: lock_ok=%d cache_hit=%d cache_miss=%d (%.1f%%)[/color]"
+				% [
+					fetch_miss_color,
+					fetch_lock,
+					fetch_cache,
+					fetch_miss,
+					fetch_miss_pct,
+				]
+			)
+		)
+	)
 	var runtimes = get_tree().get_nodes_in_group("resonance_runtime")
 	if not runtimes.is_empty():
 		var rt = runtimes[0]
 		if rt.has_method("get_bus_effective"):
-			parts.append("[color=%s]Output: bus=%s (direct+reverb)[/color]" % [
-				COLOR_NEUTRAL,
-				rt.get_bus_effective(),
-			])
+			(
+				parts
+				. append(
+					(
+						"[color=%s]Output: bus=%s (direct+reverb)[/color]"
+						% [
+							COLOR_NEUTRAL,
+							rt.get_bus_effective(),
+						]
+					)
+				)
+			)
 		var ai = rt.get("activator_instrumentation")
 		if ai != null:
 			if ai.is_empty():
@@ -308,17 +422,26 @@ func _refresh_reverb_bus() -> void:
 				var act = ai.get("active", false)
 				var reason = ai.get("reason", "")
 				if act:
-					parts.append("Activator: active | frames=%d calls=%d bus_idx=%d muted=%s send=%s skips=%s" % [
-						ai.get("frames_pushed_total", 0),
-						ai.get("fill_calls", 0),
-						ai.get("bus_index", -1),
-						ai.get("bus_muted", true),
-						ai.get("bus_send", ""),
-						ai.get("skips", "?"),
-					])
+					(
+						parts
+						. append(
+							(
+								"Activator: active | frames=%d calls=%d bus_idx=%d muted=%s send=%s skips=%s"
+								% [
+									ai.get("frames_pushed_total", 0),
+									ai.get("fill_calls", 0),
+									ai.get("bus_index", -1),
+									ai.get("bus_muted", true),
+									ai.get("bus_send", ""),
+									ai.get("skips", "?"),
+								]
+							)
+						)
+					)
 				else:
 					parts.append("Activator: inactive | reason=%s" % reason)
 	_reverb_bus_label.text = "Reverb Bus (Convolution):\n" + "\n".join(parts)
+
 
 func _refresh_log() -> void:
 	if not _log_label or not Engine.has_singleton("ResonanceLogger"):
@@ -326,7 +449,10 @@ func _refresh_log() -> void:
 	var logger = Engine.get_singleton("ResonanceLogger")
 	var entries = logger.get_recent_entries(32)
 	if entries.is_empty():
-		_log_label.text = "[color=%s](No log entries yet. Enable categories above; logs come from init, bake, validation, etc.)[/color]" % COLOR_NEUTRAL
+		_log_label.text = (
+			"[color=%s](No log entries yet. Enable categories above; logs come from init, bake, validation, etc.)[/color]"
+			% COLOR_NEUTRAL
+		)
 		return
 	var parts: PackedStringArray = []
 	for i in range(entries.size() - 1, -1, -1):
@@ -335,12 +461,21 @@ func _refresh_log() -> void:
 		var cat = e.get("category", "")
 		var msg = e.get("message", "")
 		var data = e.get("data", {})
-		var is_error = data.get("error", false) or msg.to_lower().contains("error") or msg.to_lower().contains("failed")
-		var line_color := COLOR_ERROR if is_error else (COLOR_WARNING if msg.to_lower().contains("warn") else COLOR_NEUTRAL)
+		var is_error = (
+			data.get("error", false)
+			or msg.to_lower().contains("error")
+			or msg.to_lower().contains("failed")
+		)
+		var line_color := (
+			COLOR_ERROR
+			if is_error
+			else (COLOR_WARNING if msg.to_lower().contains("warn") else COLOR_NEUTRAL)
+		)
 		parts.append("[color=%s][%s] %s: %s[/color]" % [line_color, ts, cat, msg])
 	_log_label.text = "\n".join(parts)
 	if _log_scroll and _log_label:
 		_log_scroll.scroll_vertical = int(_log_label.size.y)
+
 
 func _str_bool(b: bool) -> String:
 	return "ON" if b else "OFF"

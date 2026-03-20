@@ -79,15 +79,15 @@ Run via Godot with GUT addon or CLI.
 ## CI/CD
 
 - **build.yml** - Builds all platforms on push/PR to main (Linux/Windows/Android on ubuntu, macOS/iOS on macos-latest)
-- **release.yml** - Full build + GitHub Release on version tags (`v*`)
+- **release.yml** - Full build + GitHub Release on version tags (`v`*)
 - **tests.yml** - C++ unit tests + GDScript GUT tests on push/PR
 - **codeql.yml** - CodeQL security analysis (manual trigger)
 
 ## Known Limits and Workarounds
 
 - **Editor shutdown**: Do not call `ResourceSaver.remove_resource_format_saver` / `ResourceLoader.remove_resource_format_loader` in plugin `_exit_tree`; Godot may tear these down before the plugin, causing SIGSEGV.
-- **GDExtension unload**: `clear_probe_batches` is now called in `_disable_plugin` only when `Engine.has_singleton("ResonanceServer")` is true (Phase 5.2). On editor close the GDExtension may be unloaded first—then the singleton is gone and we skip safely. When the user disables the plugin from project settings, we clean up.
-- **Probe volume deletion** (Phase 5.3): Probe Volume clears refs on EXIT_TREE; ResonancePlayer auto-clears `pathing_probe_volume` when the target node is gone. If the error still occurs, use Tools > Unlink Probe Volume References before deleting.
+- **GDExtension unload**: `clear_probe_batches` is now called in `_disable_plugin` only when `Engine.has_singleton("ResonanceServer")` is true. On editor close the GDExtension may be unloaded first—then the singleton is gone and we skip safely. When the user disables the plugin from project settings, we clean up.
+- **Probe volume deletion**: Probe Volume clears refs on EXIT_TREE; ResonancePlayer auto-clears `pathing_probe_volume` when the target node is gone. If the error still occurs, use Tools > Unlink Probe Volume References before deleting.
 
 ## Coding Conventions
 
@@ -137,9 +137,12 @@ In `references/steam-audio-4.8.1/unity/src/native/mix_return_effect.cpp` (lines 
 
 ## Key Files for Common Tasks
 
-| Task | Files |
-|------|-------|
-| Add runtime config option | `resonance_runtime_config.gd`, `resonance_server_config.cpp/h` |
-| Add Steam Audio feature | `resonance_server.cpp`, `resonance_player.cpp`, processors |
-| Editor UI | `plugin.gd`, `editor/resonance_*.gd` |
-| Bake pipeline | `resonance_baker.cpp`, `editor/resonance_bake_runner.gd` |
+
+| Task                      | Files                                                                             |
+| ------------------------- | --------------------------------------------------------------------------------- |
+| Add runtime config option | `resonance_runtime_config.gd`, `resonance_server_config.cpp/h`                    |
+| Add Steam Audio feature   | `resonance_server*.cpp`, `resonance_server.h`, `resonance_player.cpp`, processors |
+| Editor UI                 | `plugin.gd`, `editor/resonance_*.gd`                                              |
+| Bake pipeline             | `resonance_baker.cpp`, `editor/resonance_bake_runner.gd`                          |
+
+

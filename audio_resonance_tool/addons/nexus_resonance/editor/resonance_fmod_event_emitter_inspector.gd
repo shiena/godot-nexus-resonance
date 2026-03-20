@@ -6,8 +6,10 @@ extends EditorInspectorPlugin
 
 const DSP_LIMITATION_NOTE := "Steam Audio DSP parameter binding is pending fmod-gdextension API support. Position sync works; full spatialization may be limited until then."
 
+
 func _can_handle(object: Object) -> bool:
 	return object != null and object.get_class() == "ResonanceFmodEventEmitter"
+
 
 func _parse_begin(object: Object) -> void:
 	var lbl := Label.new()

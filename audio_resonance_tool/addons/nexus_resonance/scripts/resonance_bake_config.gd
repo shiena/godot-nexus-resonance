@@ -11,7 +11,8 @@ const Constants = preload("resonance_config_constants.gd")
 @export_group("Reflection")
 ## Reverb algorithm for bake: Convolution (full IR), Parametric (quick), Hybrid (balanced).
 ## Should match ResonanceRuntimeConfig.reflection_type for consistent playback (BakeConfig has no TAN).
-@export_enum("Convolution:0", "Parametric:1", "Hybrid:2") var reflection_type: int = Constants.REFLECTION_TYPE_HYBRID
+@export_enum("Convolution:0", "Parametric:1", "Hybrid:2")
+var reflection_type: int = Constants.REFLECTION_TYPE_HYBRID
 
 # --- Pathing ---
 @export_group("Pathing")
@@ -51,10 +52,21 @@ var _pathing_enabled: bool = false
 ## Parallel bake threads. More = faster bake, more CPU.
 @export_range(1, 64, 1) var bake_num_threads: int = 2
 
+
 func _validate_property(property: Dictionary) -> void:
-	if property.name in ["bake_pathing_vis_range", "bake_pathing_path_range", "bake_pathing_num_samples", "bake_pathing_radius", "bake_pathing_threshold"]:
+	if (
+		property.name
+		in [
+			"bake_pathing_vis_range",
+			"bake_pathing_path_range",
+			"bake_pathing_num_samples",
+			"bake_pathing_radius",
+			"bake_pathing_threshold"
+		]
+	):
 		if not pathing_enabled:
 			property["usage"] = property["usage"] | PROPERTY_USAGE_READ_ONLY
+
 
 ## Returns bake params dictionary for C++ set_bake_params.
 func get_bake_params() -> Dictionary:
@@ -69,6 +81,7 @@ func get_bake_params() -> Dictionary:
 		"bake_pathing_radius": bake_pathing_radius,
 		"bake_pathing_threshold": bake_pathing_threshold
 	}
+
 
 ## Creates default bake config for volumes without one assigned.
 static func create_default() -> ResonanceBakeConfig:

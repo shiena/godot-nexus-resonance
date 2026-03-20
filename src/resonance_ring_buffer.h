@@ -9,6 +9,7 @@ namespace godot {
 
 /// Single-producer single-consumer (SPSC) ring buffer for audio streaming (ResonancePlayer, ResonanceAmbisonicPlayer).
 /// Intended for audio-thread use only; not thread-safe for concurrent access from multiple threads.
+/// When capacity is 0 (e.g. after resize(0)), write/read are no-ops — avoids modulo-by-zero and size_t underflow in chunk math.
 template <typename T>
 class RingBuffer {
   private:
@@ -32,6 +33,9 @@ class RingBuffer {
     size_t get_available_write() const { return capacity - count; }
 
     void write(const T* data, size_t n) {
+        if (capacity == 0 || n == 0) {
+            return;
+        }
         if (n > get_available_write())
             n = get_available_write();
 
@@ -48,6 +52,9 @@ class RingBuffer {
     }
 
     void read(T* out_data, size_t n) {
+        if (capacity == 0 || n == 0) {
+            return;
+        }
         if (n > count)
             n = count;
 

@@ -113,8 +113,9 @@ void ResonanceServerConfig::apply(const Dictionary& config,
     if (max_bounces > 64)
         max_bounces = 64;
     reverb_influence_radius = config_float(config, "reverb_influence_radius", reverb_influence_radius);
-    if (reverb_influence_radius < 0.0f)
-        reverb_influence_radius = 0.0f;
+    // Match ResonanceServer property setter / Steam Audio expectations (min 1 m).
+    if (reverb_influence_radius < 1.0f)
+        reverb_influence_radius = 1.0f;
     reverb_max_distance = config_float(config, "reverb_max_distance", reverb_max_distance);
     if (reverb_max_distance < 0.0f)
         reverb_max_distance = 0.0f;
@@ -141,7 +142,15 @@ void ResonanceServerConfig::apply(const Dictionary& config,
     float overlap_pct = config_float(config, "hybrid_reverb_overlap_percent", hybrid_reverb_overlap_percent * 100.0f);
     hybrid_reverb_overlap_percent = (overlap_pct >= 0.0f && overlap_pct <= 100.0f) ? (overlap_pct / 100.0f) : 0.25f;
     transmission_type = config_int(config, "transmission_type", transmission_type);
+    if (transmission_type < 0)
+        transmission_type = 0;
+    if (transmission_type > 1)
+        transmission_type = 1;
     occlusion_type = config_int(config, "occlusion_type", occlusion_type);
+    if (occlusion_type < 0)
+        occlusion_type = 0;
+    if (occlusion_type > 1)
+        occlusion_type = 1;
     config_sofa_asset(config, "hrtf_sofa_asset", hrtf_sofa_asset);
     reverb_binaural = config_bool(config, "reverb_binaural", reverb_binaural);
     use_virtual_surround = config_bool(config, "use_virtual_surround", use_virtual_surround);

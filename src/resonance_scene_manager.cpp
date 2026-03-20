@@ -38,6 +38,8 @@ static void collect_mesh_instances_from_children(Node* from, std::vector<MeshIns
         return;
     for (int i = 0; i < from->get_child_count(); i++) {
         Node* child = from->get_child(i);
+        if (!child)
+            continue;
         if (child->is_class("ResonanceGeometry"))
             continue; // Don't recurse; that geometry handles itself
         if (child->is_class("MeshInstance3D")) {
@@ -267,6 +269,14 @@ void ResonanceSceneManager::save_scene_data(IPLContext ctx, IPLScene scene, cons
 void ResonanceSceneManager::load_scene_data(IPLContext ctx, IPLScene* out_scene, IPLSimulator sim,
                                             IPLSceneType scene_type, IPLEmbreeDevice embree, IPLRadeonRaysDevice radeon,
                                             const String& filename, int* out_global_triangle_count) {
+    if (!out_scene) {
+        ResonanceLog::error("ResonanceSceneManager: out_scene is null (load_scene_data).");
+        return;
+    }
+    if (!sim) {
+        ResonanceLog::error("ResonanceSceneManager: Simulator is null (load_scene_data).");
+        return;
+    }
     if (!ctx) {
         ResonanceLog::error("ResonanceSceneManager: Context is null (load_scene_data).");
         return;
@@ -337,6 +347,10 @@ void ResonanceSceneManager::load_scene_data(IPLContext ctx, IPLScene* out_scene,
 void ResonanceSceneManager::add_static_scene_from_asset(IPLContext ctx, IPLScene scene, const Ref<ResonanceGeometryAsset>& asset,
                                                         RayTraceDebugContext* debug_ctx, bool wants_debug_viz, RuntimeSceneState& state,
                                                         const Transform3D& transform, IPLSceneType scene_type, IPLEmbreeDevice embree, IPLRadeonRaysDevice radeon) {
+    if (!ctx) {
+        ResonanceLog::error("ResonanceSceneManager: null context (add_static_scene_from_asset).");
+        return;
+    }
     if (!asset.is_valid() || !asset->is_valid() || !scene || asset->get_size() == 0)
         return;
 
@@ -438,7 +452,7 @@ void ResonanceSceneManager::clear_static_scenes(IPLScene scene, RayTraceDebugCon
             debug_ctx->unregister_mesh(id);
     }
     state.debug_ids.clear();
-    for (IPLStaticMesh m : state.meshes) {
+    for (IPLStaticMesh& m : state.meshes) {
         if (m) {
             iplStaticMeshRemove(m, scene);
             iplStaticMeshRelease(&m);
@@ -457,8 +471,11 @@ void ResonanceSceneManager::clear_static_scenes(IPLScene scene, RayTraceDebugCon
             iplSceneRelease(&sub);
     }
     state.sub_scenes.clear();
-    if (state.tri_count > 0 && state.global_triangle_count)
+    if (state.tri_count > 0 && state.global_triangle_count) {
         *state.global_triangle_count -= state.tri_count;
+        if (*state.global_triangle_count < 0)
+            *state.global_triangle_count = 0;
+    }
     state.tri_count = 0;
     if (state.scene_dirty)
         state.scene_dirty->store(true);
@@ -544,8 +561,14 @@ Error ResonanceSceneManager::export_static_scene_to_asset(Node* scene_root, cons
     // Use .tres temp file so ResourceSaver recognizes the format (ERR_FILE_UNRECOGNIZED with .tmp)
     int64_t ext_pos = path.rfind(".");
     String tmp_path = (ext_pos >= 0) ? (path.substr(0, ext_pos) + "_tmp.tres") : (path + "_tmp.tres");
-    Error save_err = ResourceSaver::get_singleton()->save(asset, tmp_path, ResourceSaver::FLAG_CHANGE_PATH);
+    ResourceSaver* saver = ResourceSaver::get_singleton();
+    if (!saver) {
+        ResonanceLog::error("ResonanceSceneManager: ResourceSaver singleton is null (export_static_scene_to_asset).");
+        return ERR_UNAVAILABLE;
+    }
+    Error save_err = saver->save(asset, tmp_path, ResourceSaver::FLAG_CHANGE_PATH);
     if (save_err != OK) {
+        DirAccess::remove_absolute(tmp_path);
         return save_err;
     }
     Error rename_err = DirAccess::rename_absolute(tmp_path, path);
@@ -608,7 +631,7 @@ Error ResonanceSceneManager::export_static_scene_to_obj(Node* scene_root, const 
 }
 
 int64_t ResonanceSceneManager::get_static_scene_hash(Node* scene_root, std::function<uint64_t(const PackedByteArray&)> hash_fn) {
-    if (!scene_root)
+    if (!scene_root || !hash_fn)
         return 0;
     std::vector<IPLVector3> ipl_vertices;
     std::vector<IPLTriangle> ipl_triangles;

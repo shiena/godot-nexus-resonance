@@ -12,7 +12,9 @@ const REFLECTION_TYPE_HYBRID := 2
 const REFLECTION_TYPE_TAN := 3
 
 # Display names for debug overlay and tooltips. BakeConfig only supports 0/1/2 (no TAN).
-const REFLECTION_DISPLAY_NAMES: Array[String] = ["Convolution", "Parametric", "Hybrid", "TrueAudio Next"]
+const REFLECTION_DISPLAY_NAMES: Array[String] = [
+	"Convolution", "Parametric", "Hybrid", "TrueAudio Next"
+]
 
 # Export enum hints. Bake has no TAN (TrueAudio Next).
 const REFLECTION_CONVOLUTION := "Convolution:0"

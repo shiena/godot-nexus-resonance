@@ -53,7 +53,7 @@ class ResonanceServer : public Object {
     GDCLASS(ResonanceServer, Object)
 
   public:
-    /// Used by distance attenuation callback; layout must match usage in resonance_server.cpp
+    /// Used by distance attenuation callback; layout must match usage in resonance_server_sources.cpp
     struct AttenuationCallbackData {
         int mode = 0; // 0=inverse (unused), 1=linear, 2=curve
         float min_distance = 1.0f;
@@ -64,11 +64,40 @@ class ResonanceServer : public Object {
 
     /// Thread-safe context for attenuation callback: mutex + data pointer for worker thread access
     struct AttenuationCallbackContext {
-        std::mutex* mutex = nullptr;
+        std::recursive_mutex* mutex = nullptr;
         const AttenuationCallbackData* data = nullptr;
     };
 
   private:
+    /// Last parameters passed to _update_source_internal (for clear_source_attenuation_callback_data refresh).
+    struct SourceUpdateSnapshot {
+        Vector3 position{};
+        float radius = 1.0f;
+        Vector3 source_forward{0, 0, -1};
+        Vector3 source_up{0, 1, 0};
+        float directivity_weight = 0.0f;
+        float directivity_power = 1.0f;
+        bool air_absorption_enabled = true;
+        bool use_sim_distance_attenuation = false;
+        float min_distance = 1.0f;
+        bool path_validation_enabled = true;
+        bool find_alternate_paths = true;
+        int occlusion_samples = 64;
+        int num_transmission_rays = 32;
+        int baked_data_variation = 0;
+        Vector3 baked_endpoint_center{};
+        float baked_endpoint_radius = 0.0f;
+        int32_t pathing_probe_batch_handle = -1;
+        int reflections_enabled_override = -1;
+        int pathing_enabled_override = -1;
+        bool valid = false;
+    };
+
+    struct AttenuationEntry {
+        std::unique_ptr<AttenuationCallbackData> data;
+        AttenuationCallbackContext ctx{};
+    };
+
     // Steam Audio Context (owns context, embree, opencl, radeon rays, TAN, HRTF)
     std::unique_ptr<ResonanceSteamAudioContext> steam_audio_context_;
     IPLScene scene = nullptr;
@@ -77,9 +106,9 @@ class ResonanceServer : public Object {
     std::vector<IPLInstancedMesh> _runtime_static_instanced_meshes;
     int _runtime_static_triangle_count = 0;          // Sum of triangles in _runtime_static_meshes
     std::vector<int> _runtime_static_debug_mesh_ids; // Debug viz mesh IDs for static scenes (unregister on clear)
-    std::unordered_map<int32_t, AttenuationCallbackData> _source_attenuation_callback_data;
-    std::unordered_map<int32_t, AttenuationCallbackContext> _source_attenuation_context;
-    std::mutex _attenuation_callback_mutex;
+    std::unordered_map<int32_t, std::unique_ptr<AttenuationEntry>> _source_attenuation_entries;
+    std::unordered_map<int32_t, SourceUpdateSnapshot> _source_update_snapshot_;
+    std::recursive_mutex _attenuation_callback_mutex;
     IPLSimulator simulator = nullptr;
 
     // Mixer (processing done in ResonanceMixerProcessor). Double-buffer: init/main writes [1], audio reads [0].
@@ -183,16 +212,16 @@ class ResonanceServer : public Object {
     float realtime_simulation_duration = 2.0f;
     int realtime_num_diffuse_samples = 32;
 
-    // Flags
-    bool output_direct_enabled = true;
-    bool output_reverb_enabled = true;
-    bool debug_occlusion = false;
-    bool debug_reflections = false;
-    bool debug_pathing = false;
+    // Flags (atomic: written from main/Godot, read from audio/worker threads)
+    std::atomic<bool> output_direct_enabled{true};
+    std::atomic<bool> output_reverb_enabled{true};
+    std::atomic<bool> debug_occlusion{false};
+    std::atomic<bool> debug_reflections{false};
+    std::atomic<bool> debug_pathing{false};
 
     // Perspective Correction (non-VR: spatialize from on-screen position for better localization)
-    bool perspective_correction_enabled = false;
-    float perspective_correction_factor = 1.0f;
+    std::atomic<bool> perspective_correction_enabled{false};
+    std::atomic<float> perspective_correction_factor{1.0f};
 
     // Pathing visualization (callback stores segments for debug drawing)
     struct PathVisSegment {
@@ -202,6 +231,7 @@ class ResonanceServer : public Object {
     };
     std::vector<PathVisSegment> pathing_vis_segments;
     std::mutex pathing_vis_mutex;
+    /// userData is this; must remain valid while pathingVisCallback is set on shared inputs (see shutdown order).
     static void IPLCALL _pathing_vis_callback(IPLVector3 from, IPLVector3 to, IPLbool occluded, void* userData);
     static void IPLCALL _custom_batched_closest_hit(IPLint32 numRays, const IPLRay* rays,
                                                     const IPLfloat32* minDistances, const IPLfloat32* maxDistances, IPLHit* hits, void* userData);
@@ -304,7 +334,10 @@ class ResonanceServer : public Object {
     ResonanceProbeBatchRegistry probe_batch_registry_;
     ResonanceSceneManager scene_manager_;
     static uint64_t _hash_probe_data(const PackedByteArray& pba);
-    static bool is_shutting_down_flag;
+    static std::atomic<bool> is_shutting_down_flag;
+
+    /// Requires simulation_mutex. Used during shutdown when is_shutting_down blocks destroy_source_handle.
+    void _destroy_source_handle_under_simulation_lock(int32_t handle);
 
     // Internal Methods
     void _apply_config(Dictionary config);
@@ -427,7 +460,7 @@ class ResonanceServer : public Object {
     void update_reverb_effect_instrumentation(bool mixer_null, bool success, int32_t frames_written, float output_peak);
     float get_max_reverb_duration() const { return max_reverb_duration; }
     int get_num_channels_for_order() const { return (ambisonic_order + 1) * (ambisonic_order + 1); }
-    static bool is_shutting_down() { return is_shutting_down_flag; }
+    static bool is_shutting_down() { return is_shutting_down_flag.load(std::memory_order_acquire); }
 
     // IO / Baking
     /// Set bake params from ResonanceRuntimeConfig.get_bake_params(). Call before baking when not using ProjectSettings.
@@ -496,7 +529,7 @@ class ResonanceServer : public Object {
     /// Same as get_ray_debug_segments but uses the given origin instead of listener_coords_. Use for viz to avoid 1-frame delay.
     Array get_ray_debug_segments_at(Vector3 origin);
     bool uses_custom_ray_tracer() const;
-    bool wants_debug_reflection_viz() const { return debug_reflections && max_rays > 0; }
+    bool wants_debug_reflection_viz() const { return debug_reflections.load(std::memory_order_relaxed) && max_rays > 0; }
     int register_debug_mesh(const std::vector<IPLVector3>& vertices, const std::vector<IPLTriangle>& triangles,
                             const IPLint32* material_indices, const IPLMatrix4x4* transform, const IPLMaterial* material);
     void unregister_debug_mesh(int mesh_id);

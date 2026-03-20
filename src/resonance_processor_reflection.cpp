@@ -15,6 +15,11 @@ void ResonanceReflectionProcessor::initialize(IPLContext p_context, int p_sample
     if (init_flags != ReflectionInitFlags::NONE)
         return;
 
+    if (!p_context) {
+        ResonanceLog::error("ResonanceReflectionProcessor: Context is null.");
+        return;
+    }
+
     context = p_context;
     frame_size = p_frame_size;
     sample_rate = p_sample_rate;

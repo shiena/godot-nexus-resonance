@@ -3,12 +3,16 @@ extends EditorInspectorPlugin
 
 const ResonancePaths = preload("res://addons/nexus_resonance/scripts/resonance_paths.gd")
 const UIStrings = preload("res://addons/nexus_resonance/scripts/resonance_ui_strings.gd")
-const ResonanceEditorDialogs = preload("res://addons/nexus_resonance/editor/resonance_editor_dialogs.gd")
+const ResonanceEditorDialogs = preload(
+	"res://addons/nexus_resonance/editor/resonance_editor_dialogs.gd"
+)
 
 var editor_interface: EditorInterface = null
 
+
 func _can_handle(object: Object) -> bool:
 	return object != null and object.is_class("ResonanceDynamicGeometry")
+
 
 func _parse_begin(object: Object) -> void:
 	var hbox = HBoxContainer.new()
@@ -43,11 +47,15 @@ func _on_export_pressed(obj: Object) -> void:
 			else:
 				push_error(UIStrings.PREFIX + UIStrings.ERR_MKDIR_RESONANCE_MESHES % err)
 			return
-	var save_path = ResonancePaths.PATH_RESONANCE_MESHES + str(parent_name).to_snake_case() + "_dynamic.tres"
+	var save_path = (
+		ResonancePaths.PATH_RESONANCE_MESHES + str(parent_name).to_snake_case() + "_dynamic.tres"
+	)
 	var err = geom.export_dynamic_mesh_to_asset(save_path)
 	if err == OK:
 		if editor_interface:
-			ResonanceEditorDialogs.show_success_toast(editor_interface, UIStrings.INFO_DYNAMIC_EXPORTED % save_path)
+			ResonanceEditorDialogs.show_success_toast(
+				editor_interface, UIStrings.INFO_DYNAMIC_EXPORTED % save_path
+			)
 			if editor_interface.get_resource_filesystem():
 				editor_interface.get_resource_filesystem().scan()
 		else:

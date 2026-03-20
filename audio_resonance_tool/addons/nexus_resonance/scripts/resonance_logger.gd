@@ -46,6 +46,7 @@ var _file_path: String = "user://nexus_resonance_log.ndjson"
 var _file_write_queue: Array = []
 var _file_write_mutex: Mutex = Mutex.new()
 
+
 ## Rejects absolute system paths and path traversal. Only user:// and res:// are allowed.
 static func _is_safe_log_path(path: String) -> bool:
 	if path.is_empty():
@@ -55,6 +56,7 @@ static func _is_safe_log_path(path: String) -> bool:
 	if ".." in path or "/../" in path or path.ends_with("/.."):
 		return false
 	return true
+
 
 func _init() -> void:
 	_load_category_defaults()
@@ -92,7 +94,9 @@ func _load_category_defaults() -> void:
 		if _is_safe_log_path(configured):
 			_file_path = configured
 		else:
-			push_warning("Nexus Resonance: Logger file_path must be user:// or res:// (no path traversal). Using default.")
+			push_warning(
+				"Nexus Resonance: Logger file_path must be user:// or res:// (no path traversal). Using default."
+			)
 
 
 ## Log a message. Category determines filtering. Data is optional extra context.
@@ -160,7 +164,12 @@ func _write_to_file(entry: Dictionary) -> void:
 	if f == null:
 		f = FileAccess.open(path, FileAccess.WRITE)
 	if f == null:
-		push_warning("Nexus Resonance: Cannot open log file for writing: %s (error %d)" % [path, FileAccess.get_open_error()])
+		push_warning(
+			(
+				"Nexus Resonance: Cannot open log file for writing: %s (error %d)"
+				% [path, FileAccess.get_open_error()]
+			)
+		)
 		return
 	f.seek_end()
 	f.store_string(line)
@@ -209,7 +218,9 @@ func set_file_path(path: String) -> void:
 	if _is_safe_log_path(path):
 		_file_path = path
 	else:
-		push_warning("Nexus Resonance: Logger file_path must be user:// or res:// (no path traversal). Ignored.")
+		push_warning(
+			"Nexus Resonance: Logger file_path must be user:// or res:// (no path traversal). Ignored."
+		)
 
 
 ## Returns all category StringNames for UI (e.g. filter checkboxes)

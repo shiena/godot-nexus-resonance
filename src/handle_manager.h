@@ -83,6 +83,8 @@ class SourceManager : public HandleManagerBase<IPLSource, _handle_release_source
     int32_t add_source(IPLSource source);
     void remove_source(int32_t handle);
     IPLSource get_source(int32_t handle);
+    /// True if handle is currently assigned (thread-safe).
+    bool has_handle(int32_t handle) const;
     void get_all_handles(std::vector<int32_t>& out);
 };
 

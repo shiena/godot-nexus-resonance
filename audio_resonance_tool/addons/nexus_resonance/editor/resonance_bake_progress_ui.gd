@@ -16,8 +16,10 @@ var _status_label: Label = null
 var _details_panel: TextEdit = null
 var _bake_start_time: float = 0.0
 
+
 func _init(p_editor_interface: EditorInterface) -> void:
 	editor_interface = p_editor_interface
+
 
 func show_ui() -> void:
 	if not editor_interface:
@@ -90,16 +92,28 @@ func show_ui() -> void:
 	_progress_dialog.popup_centered(Vector2i(440, 320))
 	Callable(cancel_btn, "grab_focus").call_deferred()
 
-	var srv: Variant = Engine.get_singleton("ResonanceServer") if Engine.has_singleton("ResonanceServer") else null
+	var srv: Variant = (
+		Engine.get_singleton("ResonanceServer") if Engine.has_singleton("ResonanceServer") else null
+	)
 	if srv and srv.has_signal("bake_progress") and _progress_bar:
 		srv.bake_progress.connect(_on_bake_progress)
 
+
 func hide_ui() -> void:
-	var srv: Variant = Engine.get_singleton("ResonanceServer") if Engine.has_singleton("ResonanceServer") else null
-	if srv and srv.has_signal("bake_progress") and srv.bake_progress.is_connected(_on_bake_progress):
+	var srv: Variant = (
+		Engine.get_singleton("ResonanceServer") if Engine.has_singleton("ResonanceServer") else null
+	)
+	if (
+		srv
+		and srv.has_signal("bake_progress")
+		and srv.bake_progress.is_connected(_on_bake_progress)
+	):
 		srv.bake_progress.disconnect(_on_bake_progress)
 	if _progress_dialog:
-		if _progress_dialog.is_inside_tree() and _progress_dialog.close_requested.is_connected(_on_cancel_pressed):
+		if (
+			_progress_dialog.is_inside_tree()
+			and _progress_dialog.close_requested.is_connected(_on_cancel_pressed)
+		):
 			_progress_dialog.close_requested.disconnect(_on_cancel_pressed)
 		_progress_dialog.queue_free()
 		_progress_dialog = null
@@ -108,11 +122,13 @@ func hide_ui() -> void:
 	_status_label = null
 	_details_panel = null
 
+
 func set_bake_status(text: String) -> void:
 	if _status_label:
 		_status_label.call_deferred("set_text", text)
 	if _details_panel:
 		_append_details(text)
+
 
 func set_stage(current: int, total: int, est_remaining: String = "") -> void:
 	if _stage_label:
@@ -121,22 +137,30 @@ func set_stage(current: int, total: int, est_remaining: String = "") -> void:
 			t += "  " + est_remaining
 		_stage_label.call_deferred("set_text", t)
 
+
 func clear_details() -> void:
 	if _details_panel:
 		_details_panel.call_deferred("set_text", "")
 
+
 func _append_details(line: String) -> void:
 	if _details_panel:
 		var elapsed = (Time.get_ticks_msec() / 1000.0) - _bake_start_time
-		_details_panel.call_deferred("set_text", _details_panel.text + "[%.1fs] %s\n" % [elapsed, line])
+		_details_panel.call_deferred(
+			"set_text", _details_panel.text + "[%.1fs] %s\n" % [elapsed, line]
+		)
+
 
 func _on_bake_progress(progress: float) -> void:
 	if _progress_bar:
 		_progress_bar.call_deferred("set_value", progress)
 
+
 func _on_cancel_pressed() -> void:
 	cancel_requested = true
-	var srv: Variant = Engine.get_singleton("ResonanceServer") if Engine.has_singleton("ResonanceServer") else null
+	var srv: Variant = (
+		Engine.get_singleton("ResonanceServer") if Engine.has_singleton("ResonanceServer") else null
+	)
 	if srv:
 		srv.cancel_reflections_bake()
 		srv.cancel_pathing_bake()

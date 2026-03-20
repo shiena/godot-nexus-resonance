@@ -5,13 +5,19 @@ class_name ResonanceBakeRunner
 ## Shared bake logic for ResonanceProbeVolume. Used by inspector plugin and Project menu.
 ## Run bake for selected volume(s) or all volumes in scene. Hash-based incremental baking.
 
-const ResonanceRuntimeConfig = preload("res://addons/nexus_resonance/scripts/resonance_runtime_config.gd")
+const ResonanceRuntimeConfig = preload(
+	"res://addons/nexus_resonance/scripts/resonance_runtime_config.gd"
+)
 const ResonanceBakeConfig = preload("res://addons/nexus_resonance/scripts/resonance_bake_config.gd")
 const ResonanceRuntimeScript = preload("res://addons/nexus_resonance/scripts/resonance_runtime.gd")
 const ResonancePaths = preload("res://addons/nexus_resonance/scripts/resonance_paths.gd")
 const ResonanceSceneUtils = preload("res://addons/nexus_resonance/scripts/resonance_scene_utils.gd")
-const ResonanceEditorDialogs = preload("res://addons/nexus_resonance/editor/resonance_editor_dialogs.gd")
-const ResonanceBakeProgressUI = preload("res://addons/nexus_resonance/editor/resonance_bake_progress_ui.gd")
+const ResonanceEditorDialogs = preload(
+	"res://addons/nexus_resonance/editor/resonance_editor_dialogs.gd"
+)
+const ResonanceBakeProgressUI = preload(
+	"res://addons/nexus_resonance/editor/resonance_bake_progress_ui.gd"
+)
 const ResonanceBakeBackup = preload("res://addons/nexus_resonance/editor/resonance_bake_backup.gd")
 const UIStrings = preload("res://addons/nexus_resonance/scripts/resonance_ui_strings.gd")
 
@@ -20,6 +26,7 @@ const BAKE_VOLUME_DELAY_SEC := 0.5
 const DEFAULT_BAKE_INFLUENCE_RADIUS := 10000.0
 const BAKE_RAY_BASE_SEC_PER_PROBE := 0.001
 const BAKE_RAY_BASE_COUNT := 4096
+
 
 class VolumeBakeContext:
 	var root: Node
@@ -38,6 +45,7 @@ class VolumeBakeContext:
 	var vol_info: String
 	var static_asset = null  # ResonanceGeometryAsset used for bake; for static_scene_params_hash
 
+
 var editor_interface: EditorInterface
 ## When set, used as quick link in validation dialog when static scene not exported.
 var export_static_callback: Callable = Callable()
@@ -46,10 +54,12 @@ var _bake_in_progress: bool = false
 var _progress_ui: ResonanceBakeProgressUI
 var _backup: ResonanceBakeBackup
 
+
 func _init(p_editor_interface: EditorInterface) -> void:
 	editor_interface = p_editor_interface
 	_progress_ui = ResonanceBakeProgressUI.new(p_editor_interface)
 	_backup = ResonanceBakeBackup.new()
+
 
 func run_bake(volumes: Array[Node]) -> void:
 	if volumes.is_empty() or _bake_in_progress:
@@ -62,6 +72,7 @@ func run_bake(volumes: Array[Node]) -> void:
 	var static_asset = static_scene_node.get("static_scene_asset") if static_scene_node else null
 	_do_run_bake_with_backup(volumes, root, static_scene_node, static_asset)
 
+
 ## Returns validation checklist for inspector display. Array of { "label": str, "ok": bool }.
 func get_validation_checklist_for_volume(vol: Node) -> Array:
 	var vols: Array[Node] = []
@@ -72,7 +83,10 @@ func get_validation_checklist_for_volume(vol: Node) -> Array:
 	var static_asset = static_scene_node.get("static_scene_asset") if static_scene_node else null
 	return _build_validation_checklist(vols, root, static_scene_node, static_asset)
 
-func _build_validation_checklist(volumes: Array[Node], root: Node, static_scene_node: Node, static_asset) -> Array:
+
+func _build_validation_checklist(
+	volumes: Array[Node], root: Node, static_scene_node: Node, static_asset
+) -> Array:
 	var gdext_ok = Engine.has_singleton("ResonanceServer")
 	var static_exported = static_scene_node != null and static_scene_node.has_valid_asset()
 	# has_valid_asset() already verifies the geometry asset; no separate GDScript check needed
@@ -89,16 +103,28 @@ func _build_validation_checklist(volumes: Array[Node], root: Node, static_scene_
 		{"label": "%d Probe Volume(s) to bake" % volumes.size(), "ok": volumes.size() > 0},
 	]
 
-func _do_run_bake_with_backup(volumes: Array[Node], root: Node, static_scene_node: Node, static_asset) -> void:
+
+func _do_run_bake_with_backup(
+	volumes: Array[Node], root: Node, static_scene_node: Node, static_asset
+) -> void:
 	_backup.create_backups(volumes)
 	_do_run_bake_after_validation(volumes, root, static_scene_node, static_asset, [])
 
-func _do_run_bake_after_validation(volumes: Array[Node], root: Node, static_scene_node: Node, static_asset, _checklist: Array) -> void:
+
+func _do_run_bake_after_validation(
+	volumes: Array[Node], root: Node, static_scene_node: Node, static_asset, _checklist: Array
+) -> void:
 	if not static_scene_node or not static_scene_node.has_valid_asset():
-		_log_and_show_error("Static scene not exported", "Use Tools > Nexus Resonance > Export Static Scene before baking.", "Scene must be exported first.")
+		_log_and_show_error(
+			"Static scene not exported",
+			"Use Tools > Nexus Resonance > Export Static Scene before baking.",
+			"Scene must be exported first."
+		)
 		return
 	if not Engine.has_singleton("ResonanceServer"):
-		_log_and_show_error("GDExtension not loaded", "The ResonanceServer GDExtension is not available.")
+		_log_and_show_error(
+			"GDExtension not loaded", "The ResonanceServer GDExtension is not available."
+		)
 		return
 	if not _ensure_resonance_server_initialized(volumes):
 		return
@@ -110,11 +136,11 @@ func _do_run_bake_after_validation(volumes: Array[Node], root: Node, static_scen
 	var base_ctrl = editor_interface.get_base_control() if editor_interface else null
 	var tree: SceneTree = base_ctrl.get_tree() if base_ctrl else null
 	if tree:
-		var cb = func() -> void:
-			_run_bake_pipeline_main_thread(volumes)
+		var cb = func() -> void: _run_bake_pipeline_main_thread(volumes)
 		tree.process_frame.connect(cb, CONNECT_ONE_SHOT)
 	else:
 		call_deferred("_run_bake_pipeline_main_thread", volumes)
+
 
 func _get_edited_scene_root(volumes: Array[Node]) -> Node:
 	if editor_interface:
@@ -128,6 +154,7 @@ func _get_edited_scene_root(volumes: Array[Node]) -> Node:
 		return n
 	return null
 
+
 ## Estimates probe count for a volume. Uses region_size, spacing, generation_type.
 func estimate_probe_count(vol: Node) -> int:
 	if not vol or not vol.has_method("get") or not ("region_size" in vol and "spacing" in vol):
@@ -140,7 +167,12 @@ func estimate_probe_count(vol: Node) -> int:
 	# 0=Octree, 1=Floor (default), 2=...
 	if gen_type == 1:
 		return int(ceil(extents.x * 2 / spacing)) * int(ceil(extents.z * 2 / spacing))
-	return int(ceil(extents.x * 2 / spacing)) * int(ceil(extents.y * 2 / spacing)) * int(ceil(extents.z * 2 / spacing))
+	return (
+		int(ceil(extents.x * 2 / spacing))
+		* int(ceil(extents.y * 2 / spacing))
+		* int(ceil(extents.z * 2 / spacing))
+	)
+
 
 ## Rough bake time estimate in seconds. Based on probe count and bake config.
 func estimate_bake_time(vol: Node) -> String:
@@ -152,7 +184,12 @@ func estimate_bake_time(vol: Node) -> String:
 	var bounces = bc.bake_num_bounces
 	var threads = bc.bake_num_threads
 	var pathing = bc.pathing_enabled
-	var sec_per_probe = BAKE_RAY_BASE_SEC_PER_PROBE * (rays / float(BAKE_RAY_BASE_COUNT)) * bounces / max(1, threads)
+	var sec_per_probe = (
+		BAKE_RAY_BASE_SEC_PER_PROBE
+		* (rays / float(BAKE_RAY_BASE_COUNT))
+		* bounces
+		/ max(1, threads)
+	)
 	var total = count * sec_per_probe
 	if pathing:
 		total *= 2.0
@@ -161,6 +198,7 @@ func estimate_bake_time(vol: Node) -> String:
 	if total < 3600:
 		return "~%d min" % int(ceil(total / 60))
 	return "~%.1f h" % (total / 3600)
+
 
 ## Returns "Probes baked", "Outdated", or "Not baked" for inspector status display.
 func get_volume_bake_status(vol: Node) -> String:
@@ -175,10 +213,22 @@ func get_volume_bake_status(vol: Node) -> String:
 	var bc = _get_bake_config_for_volume(vol)
 	var want_path = bc.pathing_enabled
 	var path_hash = _compute_pathing_hash(bc) if want_path else 0
-	var ph = probe_data.get_pathing_params_hash() if probe_data.has_method("get_pathing_params_hash") else 0
+	var ph = (
+		probe_data.get_pathing_params_hash()
+		if probe_data.has_method("get_pathing_params_hash")
+		else 0
+	)
 	var desired_refl = bc.reflection_type
-	var refl_matches = probe_data.get_baked_reflection_type() == desired_refl if probe_data.has_method("get_baked_reflection_type") else false
-	var hash_matches = probe_data.get_bake_params_hash() == vol.get_bake_params_hash() if vol.has_method("get_bake_params_hash") else false
+	var refl_matches = (
+		probe_data.get_baked_reflection_type() == desired_refl
+		if probe_data.has_method("get_baked_reflection_type")
+		else false
+	)
+	var hash_matches = (
+		probe_data.get_bake_params_hash() == vol.get_bake_params_hash()
+		if vol.has_method("get_bake_params_hash")
+		else false
+	)
 	if not want_path and ph > 0:
 		return "Outdated"
 	if not hash_matches or not refl_matches:
@@ -192,7 +242,10 @@ func get_volume_bake_status(vol: Node) -> String:
 	var static_asset = static_scene_node.get("static_scene_asset") if static_scene_node else null
 	if static_asset and Engine.has_singleton("ResonanceServer"):
 		var srv = Engine.get_singleton("ResonanceServer")
-		if srv.has_method("get_geometry_asset_hash") and probe_data.has_method("get_static_scene_params_hash"):
+		if (
+			srv.has_method("get_geometry_asset_hash")
+			and probe_data.has_method("get_static_scene_params_hash")
+		):
 			var current_hash = srv.get_geometry_asset_hash(static_asset)
 			var stored = probe_data.get_static_scene_params_hash()
 			if current_hash != 0 and (stored == 0 or stored != current_hash):
@@ -200,20 +253,37 @@ func get_volume_bake_status(vol: Node) -> String:
 	if bc.static_source_enabled and root:
 		var src = _resolve_bake_node_for_volume(vol, root, "bake_sources", "ResonancePlayer")
 		if src and src is Node3D:
-			var rad = vol.get("bake_influence_radius") if "bake_influence_radius" in vol else DEFAULT_BAKE_INFLUENCE_RADIUS
+			var rad = (
+				vol.get("bake_influence_radius")
+				if "bake_influence_radius" in vol
+				else DEFAULT_BAKE_INFLUENCE_RADIUS
+			)
 			var sh = _compute_position_radius_hash(src.global_position, rad)
-			var ssh = probe_data.get_static_source_params_hash() if probe_data.has_method("get_static_source_params_hash") else 0
+			var ssh = (
+				probe_data.get_static_source_params_hash()
+				if probe_data.has_method("get_static_source_params_hash")
+				else 0
+			)
 			if ssh == 0 or ssh != sh:
 				return "Outdated"
 	if bc.static_listener_enabled and root:
 		var lst = _resolve_bake_node_for_volume(vol, root, "bake_listeners", "ResonanceListener")
 		if lst and lst is Node3D:
-			var rad = vol.get("bake_influence_radius") if "bake_influence_radius" in vol else DEFAULT_BAKE_INFLUENCE_RADIUS
+			var rad = (
+				vol.get("bake_influence_radius")
+				if "bake_influence_radius" in vol
+				else DEFAULT_BAKE_INFLUENCE_RADIUS
+			)
 			var lh = _compute_position_radius_hash(lst.global_position, rad)
-			var lsh = probe_data.get_static_listener_params_hash() if probe_data.has_method("get_static_listener_params_hash") else 0
+			var lsh = (
+				probe_data.get_static_listener_params_hash()
+				if probe_data.has_method("get_static_listener_params_hash")
+				else 0
+			)
 			if lsh == 0 or lsh != lh:
 				return "Outdated"
 	return "Probes baked"
+
 
 ## Ensures ResonanceServer is initialized and refreshes probe visuals.
 ## Call when a volume is selected in the inspector (so show_probes works without baking first).
@@ -223,7 +293,14 @@ func ensure_resonance_server_for_volumes(volumes: Array[Node]) -> bool:
 	_notify_volumes_viz_updated(volumes)
 	return true
 
-func _log_and_show_error(message: String, solution: String = "", cause: String = "", volume_name: String = "", step: String = "") -> void:
+
+func _log_and_show_error(
+	message: String,
+	solution: String = "",
+	cause: String = "",
+	volume_name: String = "",
+	step: String = ""
+) -> void:
 	var data := {"error": true}
 	if not volume_name.is_empty():
 		data["volume"] = volume_name
@@ -232,16 +309,15 @@ func _log_and_show_error(message: String, solution: String = "", cause: String =
 	if Engine.has_singleton("ResonanceLogger"):
 		Engine.get_singleton("ResonanceLogger").log(&"bake", "Bake error: " + message, data)
 	ResonanceEditorDialogs.show_error_dialog(
-		editor_interface,
-		tr(UIStrings.DIALOG_BAKE_FAILED_TITLE),
-		message,
-		cause,
-		solution
+		editor_interface, tr(UIStrings.DIALOG_BAKE_FAILED_TITLE), message, cause, solution
 	)
+
 
 func _ensure_resonance_server_initialized(volumes: Array[Node]) -> bool:
 	if not Engine.has_singleton("ResonanceServer"):
-		_log_and_show_error("GDExtension not loaded.", "Ensure the Nexus Resonance GDExtension is installed.")
+		_log_and_show_error(
+			"GDExtension not loaded.", "Ensure the Nexus Resonance GDExtension is installed."
+		)
 		return false
 	var srv = Engine.get_singleton("ResonanceServer")
 	if srv.is_initialized():
@@ -259,7 +335,10 @@ func _ensure_resonance_server_initialized(volumes: Array[Node]) -> bool:
 				var src = cfg_node.get("debug_sources")
 				config["debug_occlusion"] = false if src == null else src
 	if config.is_empty():
-		_log_and_show_error("No ResonanceRuntime in scene.", "Add a ResonanceRuntime node with valid ResonanceRuntimeConfig to the scene.")
+		_log_and_show_error(
+			"No ResonanceRuntime in scene.",
+			"Add a ResonanceRuntime node with valid ResonanceRuntimeConfig to the scene."
+		)
 		return false
 	var bake_params := ResonanceBakeConfig.create_default().get_bake_params()
 	if volumes.size() > 0:
@@ -269,9 +348,13 @@ func _ensure_resonance_server_initialized(volumes: Array[Node]) -> bool:
 	srv.set_bake_params(bake_params)
 	srv.init_audio_engine(config)
 	if not srv.is_initialized():
-		_log_and_show_error("Server init failed.", "Check Editor output and ResonanceRuntime config. Ensure Steam Audio is properly configured.")
+		_log_and_show_error(
+			"Server init failed.",
+			"Check Editor output and ResonanceRuntime config. Ensure Steam Audio is properly configured."
+		)
 		return false
 	return true
+
 
 func _find_resonance_runtime(node: Node) -> Node:
 	if not node:
@@ -285,6 +368,7 @@ func _find_resonance_runtime(node: Node) -> Node:
 		if found:
 			return found
 	return null
+
 
 func _find_resonance_static_scene_for_bake(volumes: Array[Node]) -> Node:
 	var root = _get_edited_scene_root(volumes)
@@ -312,6 +396,7 @@ func _find_resonance_static_scene_for_bake(volumes: Array[Node]) -> Node:
 			return ResonanceSceneUtils.find_resonance_static_scene(scene_root)
 	return null
 
+
 func _get_bake_config_for_volume(vol) -> Resource:
 	if vol.has_method("get_bake_config"):
 		var bc = vol.get_bake_config()
@@ -319,9 +404,13 @@ func _get_bake_config_for_volume(vol) -> Resource:
 			return bc
 	return ResonanceBakeConfig.create_default()
 
+
 func _get_additional_flags_for_volume(vol) -> Dictionary:
 	var bc = _get_bake_config_for_volume(vol)
-	return {"static_source": bc.static_source_enabled, "static_listener": bc.static_listener_enabled}
+	return {
+		"static_source": bc.static_source_enabled, "static_listener": bc.static_listener_enabled
+	}
+
 
 func _check_audio_data_writable() -> bool:
 	var audio_dir: String = ResonancePaths.get_audio_data_dir()
@@ -329,7 +418,9 @@ func _check_audio_data_writable() -> bool:
 		var err: int = DirAccess.make_dir_recursive_absolute(audio_dir)
 		if err != OK:
 			return false
-	var test_path: String = audio_dir + ".write_test_" + str(Time.get_unix_time_from_system()) + ".tmp"
+	var test_path: String = (
+		audio_dir + ".write_test_" + str(Time.get_unix_time_from_system()) + ".tmp"
+	)
 	var f = FileAccess.open(test_path, FileAccess.WRITE)
 	if f == null:
 		return false
@@ -338,23 +429,31 @@ func _check_audio_data_writable() -> bool:
 	DirAccess.remove_absolute(test_path)
 	return true
 
+
 func _hash_dict(d: Dictionary) -> int:
 	return hash(var_to_str(d))
 
+
 func _compute_pathing_hash(bc: Resource) -> int:
 	var params = bc.get_bake_params()
-	return _hash_dict({
-		"vis_range": params.get("bake_pathing_vis_range", 500),
-		"path_range": params.get("bake_pathing_path_range", 100),
-		"num_samples": params.get("bake_pathing_num_samples", 16),
-		"radius": params.get("bake_pathing_radius", 0.5),
-		"threshold": params.get("bake_pathing_threshold", 0.1)
-	})
+	return _hash_dict(
+		{
+			"vis_range": params.get("bake_pathing_vis_range", 500),
+			"path_range": params.get("bake_pathing_path_range", 100),
+			"num_samples": params.get("bake_pathing_num_samples", 16),
+			"radius": params.get("bake_pathing_radius", 0.5),
+			"threshold": params.get("bake_pathing_threshold", 0.1)
+		}
+	)
+
 
 func _compute_position_radius_hash(pos: Vector3, radius: float) -> int:
 	return _hash_dict({"pos": pos, "radius": radius})
 
-func _resolve_bake_node_for_volume(vol: Node, root: Node, property: String, target_class: String) -> Node:
+
+func _resolve_bake_node_for_volume(
+	vol: Node, root: Node, property: String, target_class: String
+) -> Node:
 	var arr = vol.get(property) if property in vol else []
 	if arr is Array and arr.size() > 0:
 		var path_val = arr[0]
@@ -366,6 +465,7 @@ func _resolve_bake_node_for_volume(vol: Node, root: Node, property: String, targ
 			if n and n.is_class(target_class):
 				return n
 	return null
+
 
 ## Replicates the volume's probe_data path setup. Call on main thread before threaded bake.
 func _prepare_probe_data_for_bake(vol: Node, probe_data: Resource, root: Node) -> void:
@@ -382,13 +482,18 @@ func _prepare_probe_data_for_bake(vol: Node, probe_data: Resource, root: Node) -
 		var mkdir_err: int = DirAccess.make_dir_recursive_absolute(audio_dir)
 		if mkdir_err != OK or not DirAccess.dir_exists_absolute(audio_dir):
 			if Engine.has_singleton("ResonanceLogger"):
-				Engine.get_singleton("ResonanceLogger").log(&"bake", "Failed to create audio output directory: %s" % mkdir_err, {"step": "prepare", "error": mkdir_err})
+				Engine.get_singleton("ResonanceLogger").log(
+					&"bake",
+					"Failed to create audio output directory: %s" % mkdir_err,
+					{"step": "prepare", "error": mkdir_err}
+				)
 			return
 	if probe_data.has_method("take_over_path"):
 		probe_data.take_over_path(path)
 	probe_data.emit_changed()
 	if vol.has_method("get_bake_params_hash") and probe_data.has_method("set_bake_params_hash"):
 		probe_data.set_bake_params_hash(vol.get_bake_params_hash())
+
 
 ## Runs a callable in a thread while the main thread polls for _cancel_requested.
 ## When cancel is pressed, calls srv.cancel_reflections_bake and cancel_pathing_bake.
@@ -397,11 +502,11 @@ func _run_in_thread_with_cancel_poll(bake_callable: Callable) -> Variant:
 	var result: Variant = null
 	var err: Error = OK
 	var thread = Thread.new()
-	thread.start(func() -> void:
-		result = bake_callable.call()
-	)
+	thread.start(func() -> void: result = bake_callable.call())
 	var tree = editor_interface.get_base_control().get_tree() if editor_interface else null
-	var srv = Engine.get_singleton("ResonanceServer") if Engine.has_singleton("ResonanceServer") else null
+	var srv = (
+		Engine.get_singleton("ResonanceServer") if Engine.has_singleton("ResonanceServer") else null
+	)
 	while thread.is_alive():
 		if tree:
 			await tree.process_frame
@@ -411,8 +516,10 @@ func _run_in_thread_with_cancel_poll(bake_callable: Callable) -> Variant:
 	thread.wait_to_finish()
 	return result
 
+
 func _finish_pipeline(success: bool, probe_data_ref, volumes: Array[Node]) -> void:
 	call_deferred("_on_bake_pipeline_finished", success, probe_data_ref, volumes)
+
 
 func _wait_before_bake() -> bool:
 	var tree = editor_interface.get_base_control().get_tree() if editor_interface else null
@@ -421,7 +528,10 @@ func _wait_before_bake() -> bool:
 		await tree.create_timer(BAKE_INITIAL_DELAY_SEC).timeout
 	return not _progress_ui.cancel_requested
 
-func _build_volume_bake_context(vol: Node, root: Node, vol_index: int, total: int, static_asset = null) -> VolumeBakeContext:
+
+func _build_volume_bake_context(
+	vol: Node, root: Node, vol_index: int, total: int, static_asset = null
+) -> VolumeBakeContext:
 	var ctx = VolumeBakeContext.new()
 	ctx.root = root
 	ctx.vol = vol
@@ -430,9 +540,17 @@ func _build_volume_bake_context(vol: Node, root: Node, vol_index: int, total: in
 	ctx.bc = _get_bake_config_for_volume(vol)
 	ctx.add_flags = _get_additional_flags_for_volume(vol)
 	ctx.player_pos = Vector3.ZERO
-	ctx.player_radius = vol.get("bake_influence_radius") if "bake_influence_radius" in vol else DEFAULT_BAKE_INFLUENCE_RADIUS
+	ctx.player_radius = (
+		vol.get("bake_influence_radius")
+		if "bake_influence_radius" in vol
+		else DEFAULT_BAKE_INFLUENCE_RADIUS
+	)
 	ctx.listener_pos = Vector3.ZERO
-	ctx.listener_radius = vol.get("bake_influence_radius") if "bake_influence_radius" in vol else DEFAULT_BAKE_INFLUENCE_RADIUS
+	ctx.listener_radius = (
+		vol.get("bake_influence_radius")
+		if "bake_influence_radius" in vol
+		else DEFAULT_BAKE_INFLUENCE_RADIUS
+	)
 	if ctx.add_flags.static_source:
 		var src = _resolve_bake_node_for_volume(vol, root, "bake_sources", "ResonancePlayer")
 		if src and src is Node3D:
@@ -448,16 +566,31 @@ func _build_volume_bake_context(vol: Node, root: Node, vol_index: int, total: in
 		probe_data = ClassDB.instantiate("ResonanceProbeData")
 		vol.set_probe_data(probe_data)
 	ctx.probe_data = probe_data
-	var ph = probe_data.get_pathing_params_hash() if probe_data.has_method("get_pathing_params_hash") else 0
+	var ph = (
+		probe_data.get_pathing_params_hash()
+		if probe_data.has_method("get_pathing_params_hash")
+		else 0
+	)
 	var has_data = probe_data.get_data().size() > 0
 	var desired_refl = ctx.bc.reflection_type
-	var refl_matches = probe_data.get_baked_reflection_type() == desired_refl if probe_data.has_method("get_baked_reflection_type") else false
-	var hash_matches = probe_data.get_bake_params_hash() == vol.get_bake_params_hash() if vol.has_method("get_bake_params_hash") else false
+	var refl_matches = (
+		probe_data.get_baked_reflection_type() == desired_refl
+		if probe_data.has_method("get_baked_reflection_type")
+		else false
+	)
+	var hash_matches = (
+		probe_data.get_bake_params_hash() == vol.get_bake_params_hash()
+		if vol.has_method("get_bake_params_hash")
+		else false
+	)
 	ctx.need_reflections = not has_data or not hash_matches or not refl_matches
 	# Static scene changed: geometry asset hash differs from what was used at last bake
 	if static_asset and Engine.has_singleton("ResonanceServer"):
 		var srv = Engine.get_singleton("ResonanceServer")
-		if srv.has_method("get_geometry_asset_hash") and probe_data.has_method("get_static_scene_params_hash"):
+		if (
+			srv.has_method("get_geometry_asset_hash")
+			and probe_data.has_method("get_static_scene_params_hash")
+		):
 			var current_hash: int = srv.get_geometry_asset_hash(static_asset)
 			var stored: int = probe_data.get_static_scene_params_hash()
 			if stored == 0 or stored != current_hash:
@@ -471,13 +604,22 @@ func _build_volume_bake_context(vol: Node, root: Node, vol_index: int, total: in
 	ctx.need_static_listener = false
 	if ctx.add_flags.static_source:
 		var sh = _compute_position_radius_hash(ctx.player_pos, ctx.player_radius)
-		var ssh = probe_data.get_static_source_params_hash() if probe_data.has_method("get_static_source_params_hash") else 0
+		var ssh = (
+			probe_data.get_static_source_params_hash()
+			if probe_data.has_method("get_static_source_params_hash")
+			else 0
+		)
 		ctx.need_static_source = ssh == 0 or ssh != sh
 	if ctx.add_flags.static_listener:
 		var lh = _compute_position_radius_hash(ctx.listener_pos, ctx.listener_radius)
-		var lsh = probe_data.get_static_listener_params_hash() if probe_data.has_method("get_static_listener_params_hash") else 0
+		var lsh = (
+			probe_data.get_static_listener_params_hash()
+			if probe_data.has_method("get_static_listener_params_hash")
+			else 0
+		)
 		ctx.need_static_listener = lsh == 0 or lsh != lh
 	return ctx
+
 
 func _run_bake_pipeline_main_thread(volumes: Array[Node]) -> void:
 	_progress_ui.clear_details()
@@ -486,7 +628,9 @@ func _run_bake_pipeline_main_thread(volumes: Array[Node]) -> void:
 	if not await _wait_before_bake():
 		return
 	if not Engine.has_singleton("ResonanceServer"):
-		_log_and_show_error("GDExtension unloaded", "ResonanceServer is no longer available. Bake aborted.")
+		_log_and_show_error(
+			"GDExtension unloaded", "ResonanceServer is no longer available. Bake aborted."
+		)
 		_finish_pipeline(false, null, volumes)
 		return
 	var srv = Engine.get_singleton("ResonanceServer")
@@ -509,7 +653,9 @@ func _run_bake_pipeline_main_thread(volumes: Array[Node]) -> void:
 			return
 		vol_index += 1
 		var ctx = _build_volume_bake_context(vol, root, vol_index, volumes.size(), static_asset)
-		_progress_ui.set_stage(vol_index, volumes.size(), estimate_bake_time(vol) if vol_index == 1 else "")
+		_progress_ui.set_stage(
+			vol_index, volumes.size(), estimate_bake_time(vol) if vol_index == 1 else ""
+		)
 		_progress_ui.set_bake_status(tr(UIStrings.PROGRESS_PROCESSING) + ctx.vol_info)
 		if tree:
 			await tree.process_frame
@@ -517,7 +663,13 @@ func _run_bake_pipeline_main_thread(volumes: Array[Node]) -> void:
 		srv.set_bake_params(ctx.bc.get_bake_params())
 		var ok = await _run_bake_for_volume(ctx)
 		if not ok:
-			_log_and_show_error("Reflections bake failed for %s" % ctx.vol.name, "Check geometry and probe volume settings.", "bake_probes_for_volume returned false", ctx.vol.name, "reflections")
+			_log_and_show_error(
+				"Reflections bake failed for %s" % ctx.vol.name,
+				"Check geometry and probe volume settings.",
+				"bake_probes_for_volume returned false",
+				ctx.vol.name,
+				"reflections"
+			)
 			_finish_pipeline(false, null, volumes)
 			return
 		if _progress_ui.cancel_requested:
@@ -526,8 +678,15 @@ func _run_bake_pipeline_main_thread(volumes: Array[Node]) -> void:
 		baked_probe_datas.append(vol.get_probe_data())
 	_finish_pipeline(true, baked_probe_datas, volumes)
 
+
 func _skip_if_up_to_date(ctx: VolumeBakeContext) -> bool:
-	return not ctx.need_reflections and not ctx.need_pathing and not ctx.need_static_source and not ctx.need_static_listener
+	return (
+		not ctx.need_reflections
+		and not ctx.need_pathing
+		and not ctx.need_static_source
+		and not ctx.need_static_listener
+	)
+
 
 func _bake_reflections(ctx: VolumeBakeContext) -> bool:
 	var srv = Engine.get_singleton("ResonanceServer")
@@ -539,14 +698,20 @@ func _bake_reflections(ctx: VolumeBakeContext) -> bool:
 	var gen_type = ctx.vol.get("generation_type")
 	var height = ctx.vol.get("height_above_floor")
 	var do_bake = func() -> bool:
-		return srv.bake_probes_for_volume(volume_transform, extents, spacing, gen_type, height, ctx.probe_data)
+		return srv.bake_probes_for_volume(
+			volume_transform, extents, spacing, gen_type, height, ctx.probe_data
+		)
 	await _run_in_thread_with_cancel_poll(do_bake)
 	if _progress_ui.cancel_requested:
 		return false
 	ctx.probe_data = ctx.vol.get_probe_data()
 	if not ctx.probe_data or ctx.probe_data.get_data().is_empty():
 		if Engine.has_singleton("ResonanceLogger"):
-			Engine.get_singleton("ResonanceLogger").log(&"bake", "Reflections bake returned empty data for %s" % ctx.vol.name, {"volume": ctx.vol.name, "step": "reflections"})
+			Engine.get_singleton("ResonanceLogger").log(
+				&"bake",
+				"Reflections bake returned empty data for %s" % ctx.vol.name,
+				{"volume": ctx.vol.name, "step": "reflections"}
+			)
 		return false
 	if ctx.probe_data.has_method("set_pathing_params_hash"):
 		ctx.probe_data.set_pathing_params_hash(0)
@@ -556,36 +721,68 @@ func _bake_reflections(ctx: VolumeBakeContext) -> bool:
 		ctx.probe_data.set_static_listener_params_hash(0)
 	if ctx.bc.pathing_enabled:
 		ctx.need_pathing = true
-	if ctx.static_asset and ctx.probe_data.has_method("set_static_scene_params_hash") and srv.has_method("get_geometry_asset_hash"):
+	if (
+		ctx.static_asset
+		and ctx.probe_data.has_method("set_static_scene_params_hash")
+		and srv.has_method("get_geometry_asset_hash")
+	):
 		ctx.probe_data.set_static_scene_params_hash(srv.get_geometry_asset_hash(ctx.static_asset))
 	return true
 
-func _run_bake_step(ctx: VolumeBakeContext, status_key: String, bake_callable: Callable, hash_setter: String, hash_value: int) -> void:
+
+func _run_bake_step(
+	ctx: VolumeBakeContext,
+	status_key: String,
+	bake_callable: Callable,
+	hash_setter: String,
+	hash_value: int
+) -> void:
 	_progress_ui.set_bake_status(status_key + ctx.vol_info)
 	var ok = await _run_in_thread_with_cancel_poll(bake_callable)
 	if ok and ctx.probe_data.has_method(hash_setter):
 		ctx.probe_data.call(hash_setter, hash_value)
 	ctx.probe_data = ctx.vol.get_probe_data()
 
+
 func _bake_pathing(ctx: VolumeBakeContext) -> void:
 	if ctx.probe_data.get_data().is_empty():
 		return
 	var srv = Engine.get_singleton("ResonanceServer")
-	var do_pathing = func() -> bool:
-		return srv.bake_pathing(ctx.probe_data)
-	await _run_bake_step(ctx, tr(UIStrings.PROGRESS_BAKING_PATHING), do_pathing, "set_pathing_params_hash", _compute_pathing_hash(ctx.bc))
+	var do_pathing = func() -> bool: return srv.bake_pathing(ctx.probe_data)
+	await _run_bake_step(
+		ctx,
+		tr(UIStrings.PROGRESS_BAKING_PATHING),
+		do_pathing,
+		"set_pathing_params_hash",
+		_compute_pathing_hash(ctx.bc)
+	)
+
 
 func _bake_static_source(ctx: VolumeBakeContext) -> void:
 	var srv = Engine.get_singleton("ResonanceServer")
 	var do_static_source = func() -> bool:
 		return srv.bake_static_source(ctx.probe_data, ctx.player_pos, ctx.player_radius)
-	await _run_bake_step(ctx, tr(UIStrings.PROGRESS_BAKING_STATIC_SOURCE), do_static_source, "set_static_source_params_hash", _compute_position_radius_hash(ctx.player_pos, ctx.player_radius))
+	await _run_bake_step(
+		ctx,
+		tr(UIStrings.PROGRESS_BAKING_STATIC_SOURCE),
+		do_static_source,
+		"set_static_source_params_hash",
+		_compute_position_radius_hash(ctx.player_pos, ctx.player_radius)
+	)
+
 
 func _bake_static_listener(ctx: VolumeBakeContext) -> void:
 	var srv = Engine.get_singleton("ResonanceServer")
 	var do_static_listener = func() -> bool:
 		return srv.bake_static_listener(ctx.probe_data, ctx.listener_pos, ctx.listener_radius)
-	await _run_bake_step(ctx, tr(UIStrings.PROGRESS_BAKING_STATIC_LISTENER), do_static_listener, "set_static_listener_params_hash", _compute_position_radius_hash(ctx.listener_pos, ctx.listener_radius))
+	await _run_bake_step(
+		ctx,
+		tr(UIStrings.PROGRESS_BAKING_STATIC_LISTENER),
+		do_static_listener,
+		"set_static_listener_params_hash",
+		_compute_position_radius_hash(ctx.listener_pos, ctx.listener_radius)
+	)
+
 
 func _run_bake_for_volume(ctx: VolumeBakeContext) -> bool:
 	var srv = Engine.get_singleton("ResonanceServer")
@@ -604,9 +801,12 @@ func _run_bake_for_volume(ctx: VolumeBakeContext) -> bool:
 		await _bake_static_listener(ctx)
 	return true
 
+
 func _on_bake_pipeline_finished(success: bool, probe_data_ref, volumes: Array[Node]) -> void:
 	_bake_in_progress = false
-	var srv = Engine.get_singleton("ResonanceServer") if Engine.has_singleton("ResonanceServer") else null
+	var srv = (
+		Engine.get_singleton("ResonanceServer") if Engine.has_singleton("ResonanceServer") else null
+	)
 	if srv and srv.has_method("set_bake_pipeline_pathing"):
 		srv.set_bake_pipeline_pathing(false)
 	if success and probe_data_ref:
@@ -625,6 +825,7 @@ func _on_bake_pipeline_finished(success: bool, probe_data_ref, volumes: Array[No
 		editor_interface.mark_scene_as_unsaved()
 	_notify_volumes_viz_updated(volumes)
 
+
 func _save_and_reload_probe_data(probe_data_ref: Resource, volumes: Array[Node]) -> void:
 	var path = probe_data_ref.resource_path
 	if not path.is_empty():
@@ -632,9 +833,20 @@ func _save_and_reload_probe_data(probe_data_ref: Resource, volumes: Array[Node])
 		if err != OK:
 			var vol_name := volumes[0].name if volumes.size() > 0 else "?"
 			if Engine.has_singleton("ResonanceLogger"):
-				Engine.get_singleton("ResonanceLogger").log(&"bake", "Failed to save probe data: %s" % err, {"volume": vol_name, "step": "save", "error_code": err})
-			ResonanceEditorDialogs.show_error_dialog(editor_interface, tr(UIStrings.DIALOG_SAVE_FAILED_TITLE), tr(UIStrings.ERR_FAILED_TO_SAVE) % err, "ResourceSaver.save returned non-OK.", "Ensure res://audio_data/ is writable.")
+				Engine.get_singleton("ResonanceLogger").log(
+					&"bake",
+					"Failed to save probe data: %s" % err,
+					{"volume": vol_name, "step": "save", "error_code": err}
+				)
+			ResonanceEditorDialogs.show_error_dialog(
+				editor_interface,
+				tr(UIStrings.DIALOG_SAVE_FAILED_TITLE),
+				tr(UIStrings.ERR_FAILED_TO_SAVE) % err,
+				"ResourceSaver.save returned non-OK.",
+				"Ensure res://audio_data/ is writable."
+			)
 	_reload_volumes_using_probe_data(probe_data_ref, volumes)
+
 
 func _reload_volumes_using_probe_data(probe_data_ref: Resource, volumes: Array[Node]) -> void:
 	var root = _get_edited_scene_root(volumes)
@@ -651,6 +863,7 @@ func _reload_volumes_using_probe_data(probe_data_ref: Resource, volumes: Array[N
 				vol.reload_probe_batch()
 	_notify_volumes_viz_updated(all_volumes)
 
+
 func _notify_volumes_viz_updated(volumes: Array[Node]) -> void:
 	var root = _get_edited_scene_root(volumes)
 	if not root:
@@ -664,6 +877,7 @@ func _notify_volumes_viz_updated(volumes: Array[Node]) -> void:
 	for vol in volumes:
 		if vol.has_method("notify_runtime_config_changed"):
 			vol.notify_runtime_config_changed(refl, pathing)
+
 
 ## Bake complete dialog with Undo option when backup exists.
 func _show_bake_complete_dialog(volumes: Array) -> void:
@@ -684,12 +898,19 @@ func _show_bake_complete_dialog(volumes: Array) -> void:
 	dialog.close_requested.connect(dialog.queue_free)
 	if has_backups:
 		var undo_btn = dialog.add_button(tr(UIStrings.BTN_UNDO), false, "undo")
-		undo_btn.pressed.connect(func():
-			_backup.restore(volumes, editor_interface, _reload_volumes_using_probe_data, func(): _on_restore_complete(volumes))
-			dialog.queue_free()
+		undo_btn.pressed.connect(
+			func():
+				_backup.restore(
+					volumes,
+					editor_interface,
+					_reload_volumes_using_probe_data,
+					func(): _on_restore_complete(volumes)
+				)
+				dialog.queue_free()
 		)
 	base.add_child(dialog)
 	dialog.popup_centered()
+
 
 func _on_restore_complete(volumes: Array) -> void:
 	if editor_interface:

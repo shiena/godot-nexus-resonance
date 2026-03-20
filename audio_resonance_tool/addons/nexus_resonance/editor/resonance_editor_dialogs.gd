@@ -6,10 +6,13 @@ class_name ResonanceEditorDialogs
 
 const UIStrings = preload("res://addons/nexus_resonance/scripts/resonance_ui_strings.gd")
 
+
 ## Creates a checklist row with status icon and label. Used by validation dialogs and inspector.
 ## icon_size: pixel size for the status icon (default 16). Use 14 for compact inspector layout.
 ## row_separation: spacing between icon and label (default 8).
-static func create_checklist_row(base: Control, label: String, ok: bool, icon_size: int = 16, row_separation: int = 8) -> HBoxContainer:
+static func create_checklist_row(
+	base: Control, label: String, ok: bool, icon_size: int = 16, row_separation: int = 8
+) -> HBoxContainer:
 	var row = HBoxContainer.new()
 	row.add_theme_constant_override("separation", row_separation)
 	var icon_name := "StatusSuccess" if ok else "StatusError"
@@ -28,6 +31,7 @@ static func create_checklist_row(base: Control, label: String, ok: bool, icon_si
 	row.add_child(lbl)
 	return row
 
+
 ## Loads icon from path or falls back to EditorIcons. Returns null if base is null.
 static func get_icon(base: Control, icon_path: String, fallback_icon: String) -> Texture2D:
 	if not base:
@@ -37,10 +41,14 @@ static func get_icon(base: Control, icon_path: String, fallback_icon: String) ->
 		return icon
 	return base.get_theme_icon(fallback_icon, "EditorIcons")
 
+
 ## Critical errors -> modal dialog. Blocks until user acknowledges.
-static func show_critical(editor_interface: EditorInterface, message: String, title: String = "") -> void:
+static func show_critical(
+	editor_interface: EditorInterface, message: String, title: String = ""
+) -> void:
 	var t = title if not title.is_empty() else UIStrings.DIALOG_BAKE_FAILED_TITLE
 	show_error_dialog(editor_interface, t, message)
+
 
 ## Warnings -> EditorToaster notification (non-blocking).
 static func show_warning(editor_interface: EditorInterface, message: String) -> void:
@@ -54,9 +62,11 @@ static func show_warning(editor_interface: EditorInterface, message: String) -> 
 			return
 	push_warning(UIStrings.PREFIX + message)
 
+
 ## Info -> console only.
 static func show_info(message: String) -> void:
 	print_rich("[color=cyan]Nexus Resonance:[/color] " + message)
+
 
 ## Structured error dialog with optional cause, solution, doc link.
 static func show_error_dialog(
@@ -96,6 +106,7 @@ static func show_error_dialog(
 			vbox.add_child(link_btn)
 	dialog.popup_centered()
 
+
 ## Success toast (EditorToaster if available, else small AcceptDialog).
 static func show_success_toast(editor_interface: EditorInterface, message: String) -> void:
 	if not editor_interface:
@@ -107,6 +118,7 @@ static func show_success_toast(editor_interface: EditorInterface, message: Strin
 			toaster.push_toast(message, 0, "")  # EditorToaster.SEVERITY_INFO = 0
 			return
 	_fallback_success_dialog(editor_interface, message)
+
 
 static func _fallback_success_dialog(editor_interface: EditorInterface, message: String) -> void:
 	var base = editor_interface.get_base_control()
@@ -122,6 +134,7 @@ static func _fallback_success_dialog(editor_interface: EditorInterface, message:
 	base.add_child(dialog)
 	dialog.popup_centered()
 	dialog.get_ok_button().call_deferred("grab_focus")
+
 
 ## Confirmation dialog for bake validation. checklist: Array of { "label": str, "ok": bool }
 ## Returns true if user confirmed. Calls on_confirmed(all_ok) when confirmed.
@@ -155,9 +168,10 @@ static func show_validation_dialog(
 	if show_export_link and on_export_static.is_valid():
 		var link_btn = LinkButton.new()
 		link_btn.text = "Export Static Scene (Ctrl+Shift+E)"
-		link_btn.pressed.connect(func():
-			dialog.queue_free()
-			on_export_static.call()
+		link_btn.pressed.connect(
+			func():
+				dialog.queue_free()
+				on_export_static.call()
 		)
 		vbox.add_child(link_btn)
 	dialog.add_child(vbox)
@@ -175,6 +189,7 @@ static func show_validation_dialog(
 	base.add_child(dialog)
 	dialog.popup_centered()
 	dialog.get_ok_button().call_deferred("grab_focus")
+
 
 ## Generic confirmation dialog with title, message, and optional on_confirmed callback.
 static func show_confirm_dialog(
@@ -204,10 +219,10 @@ static func show_confirm_dialog(
 	dialog.popup_centered()
 	dialog.get_ok_button().call_deferred("grab_focus")
 
+
 ## Backup confirmation before bake. on_confirmed(cancel_requested: bool) when user chooses.
 static func show_backup_confirm_dialog(
-	editor_interface: EditorInterface,
-	on_confirmed: Callable
+	editor_interface: EditorInterface, on_confirmed: Callable
 ) -> void:
 	if not editor_interface:
 		on_confirmed.call(false)

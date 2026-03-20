@@ -5,6 +5,7 @@ class_name ResonanceSceneUtils
 ## Shared scene traversal utilities for Nexus Resonance.
 ## Centralizes _find_resonance_static_scene, _collect_resonance_probe_volumes, _collect_resonance_dynamic_geometry.
 
+
 ## Returns true if node or any descendant is ResonanceRuntime.
 static func scene_has_resonance_runtime(node: Node) -> bool:
 	if not node:

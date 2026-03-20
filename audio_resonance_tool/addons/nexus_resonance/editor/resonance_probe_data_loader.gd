@@ -3,6 +3,11 @@ extends ResourceFormatLoader
 class_name ResonanceProbeDataLoader
 
 ## Loads ResonanceProbeData from .tres (Godot resource text format, version-control friendly).
+##
+## Size limits (to avoid str_to_var memory/performance issues on huge payloads):
+## - data field: 256 MiB (256 * 1024 * 1024 chars). Larger files are rejected.
+## - probe_positions: 1 MiB. Larger arrays are rejected.
+
 
 func _read_tres_header(path: String) -> String:
 	var pf := FileAccess.open(path, FileAccess.READ)
@@ -12,31 +17,40 @@ func _read_tres_header(path: String) -> String:
 	pf.close()
 	return header
 
+
 func _is_tres_resonance_probe_data(path: String) -> bool:
 	if path.get_extension().to_lower() != "tres":
 		return false
 	return "ResonanceProbeData" in _read_tres_header(path)
 
+
 func _get_recognized_extensions() -> PackedStringArray:
 	return PackedStringArray(["tres"])
 
+
 func _handles_type(type: StringName) -> bool:
 	return type == &"ResonanceProbeData"
+
 
 func _recognize_path(path: String, type_hint: StringName) -> bool:
 	if not (type_hint.is_empty() or type_hint == &"ResonanceProbeData"):
 		return false
 	return _is_tres_resonance_probe_data(path)
 
+
 func _get_resource_type(path: String) -> String:
 	if _is_tres_resonance_probe_data(path):
 		return "ResonanceProbeData"
 	return ""
 
-func _load(path: String, _original_path: String, _use_sub_threads: bool, _cache_mode: int) -> Variant:
+
+func _load(
+	path: String, _original_path: String, _use_sub_threads: bool, _cache_mode: int
+) -> Variant:
 	if _is_tres_resonance_probe_data(path):
 		return _load_tres(path)
 	return ERR_FILE_UNRECOGNIZED
+
 
 func _load_tres(path: String) -> Variant:
 	var f := FileAccess.open(path, FileAccess.READ)
@@ -66,6 +80,7 @@ func _load_tres(path: String) -> Variant:
 	res.set("static_scene_params_hash", parsed.static_scene_params_hash)
 	res.take_over_path(path)
 	return res
+
 
 ## Parses .tres file; returns dict with data, probe_positions, bake_params_hash, etc. or null on error.
 func _parse_tres_data(content: String) -> Variant:
@@ -104,19 +119,36 @@ func _parse_tres_data(content: String) -> Variant:
 		elif stripped.begins_with("static_scene_params_hash = "):
 			static_scene_params_hash = int(stripped.substr(27))
 	var data_result = PackedByteArray()
-	if not data_expr.is_empty() and data_expr.length() < 256 * 1024 * 1024:
+	# Limit: 256 MiB to avoid str_to_var memory/performance issues. See class doc.
+	const MAX_DATA_EXPR_LEN := 256 * 1024 * 1024
+	if not data_expr.is_empty() and data_expr.length() < MAX_DATA_EXPR_LEN:
 		var r = str_to_var(data_expr)
 		if r is PackedByteArray:
 			data_result = r
 		elif r != null:
-			push_warning("ResonanceProbeDataLoader: Invalid data field (expected PackedByteArray), got %s" % typeof(r))
+			push_warning(
+				(
+					"ResonanceProbeDataLoader: Invalid data field (expected PackedByteArray), got %s"
+					% typeof(r)
+				)
+			)
 	var probe_positions_result = PackedVector3Array()
-	if not probe_positions_expr.is_empty() and probe_positions_expr.length() < 1024 * 1024:
+	# Limit: 1 MiB for probe_positions expression. See class doc.
+	const MAX_PROBE_POSITIONS_EXPR_LEN := 1024 * 1024
+	if (
+		not probe_positions_expr.is_empty()
+		and probe_positions_expr.length() < MAX_PROBE_POSITIONS_EXPR_LEN
+	):
 		var r = str_to_var(probe_positions_expr)
 		if r is PackedVector3Array:
 			probe_positions_result = r
 		elif r != null:
-			push_warning("ResonanceProbeDataLoader: Invalid probe_positions field (expected PackedVector3Array), got %s" % typeof(r))
+			push_warning(
+				(
+					"ResonanceProbeDataLoader: Invalid probe_positions field (expected PackedVector3Array), got %s"
+					% typeof(r)
+				)
+			)
 	return {
 		"data": data_result,
 		"probe_positions": probe_positions_result,

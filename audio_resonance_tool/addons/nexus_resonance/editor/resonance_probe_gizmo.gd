@@ -12,6 +12,7 @@ var undo_redo: EditorUndoRedoManager
 var fallback_icon: Texture2D = null
 var _icon_material_created: bool = false
 
+
 func _get_valid_region_size(node: Node) -> Vector3:
 	if "region_size" in node:
 		var size = node.region_size
@@ -19,18 +20,22 @@ func _get_valid_region_size(node: Node) -> Vector3:
 			return size
 	return Vector3.ONE
 
+
 func _get_gizmo_name() -> String:
 	return UIStrings.GIZMO_PROBE_VOLUME_CLASS
 
+
 func _has_gizmo(node: Node) -> bool:
 	return node.is_class(UIStrings.GIZMO_PROBE_VOLUME_CLASS)
+
 
 func _init():
 	# define materials
 	create_material("main", Color(0.1, 0.8, 1.0))
 	create_handle_material("handles")
-	
+
 	# Icon material is created lazily in _redraw to avoid EditorInterface in _init
+
 
 func _ensure_icon_material(gizmo: EditorNode3DGizmo) -> void:
 	if _icon_material_created:
@@ -48,6 +53,7 @@ func _ensure_icon_material(gizmo: EditorNode3DGizmo) -> void:
 		create_icon_material("probe_icon", icon_tex)
 		_icon_material_created = true
 
+
 func _redraw(gizmo: EditorNode3DGizmo):
 	gizmo.clear()
 	var node = gizmo.get_node_3d()
@@ -57,25 +63,29 @@ func _redraw(gizmo: EditorNode3DGizmo):
 	var icon_mat = get_material("probe_icon", gizmo)
 	if icon_mat:
 		gizmo.add_unscaled_billboard(icon_mat, 0.05)
-	
+
 	var size = _get_valid_region_size(node)
 	var lines = PackedVector3Array()
 	var half = size * 0.5
-	
+
 	var p = [
-		Vector3(-half.x, -half.y, -half.z), Vector3(half.x, -half.y, -half.z),
-		Vector3(half.x, half.y, -half.z), Vector3(-half.x, half.y, -half.z),
-		Vector3(-half.x, -half.y, half.z), Vector3(half.x, -half.y, half.z),
-		Vector3(half.x, half.y, half.z), Vector3(-half.x, half.y, half.z)
+		Vector3(-half.x, -half.y, -half.z),
+		Vector3(half.x, -half.y, -half.z),
+		Vector3(half.x, half.y, -half.z),
+		Vector3(-half.x, half.y, -half.z),
+		Vector3(-half.x, -half.y, half.z),
+		Vector3(half.x, -half.y, half.z),
+		Vector3(half.x, half.y, half.z),
+		Vector3(-half.x, half.y, half.z)
 	]
-	
+
 	lines.append_array([p[0], p[1], p[1], p[5], p[5], p[4], p[4], p[0]])
 	lines.append_array([p[3], p[2], p[2], p[6], p[6], p[7], p[7], p[3]])
 	lines.append_array([p[0], p[3], p[1], p[2], p[5], p[6], p[4], p[7]])
-	
+
 	gizmo.add_lines(lines, get_material("main", gizmo))
 	gizmo.add_collision_segments(lines)
-	
+
 	# Handles
 	var handles = PackedVector3Array()
 	handles.push_back(Vector3(half.x, 0, 0))
@@ -84,52 +94,69 @@ func _redraw(gizmo: EditorNode3DGizmo):
 	handles.push_back(Vector3(-half.x, 0, 0))
 	handles.push_back(Vector3(0, -half.y, 0))
 	handles.push_back(Vector3(0, 0, -half.z))
-	
+
 	gizmo.add_handles(handles, get_material("handles", gizmo), [])
+
 
 func _get_handle_name(gizmo: EditorNode3DGizmo, handle_id: int, secondary: bool) -> String:
 	var names: Array[String] = [
-		UIStrings.GIZMO_HANDLE_SIZE_PX, UIStrings.GIZMO_HANDLE_SIZE_PY, UIStrings.GIZMO_HANDLE_SIZE_PZ,
-		UIStrings.GIZMO_HANDLE_SIZE_MX, UIStrings.GIZMO_HANDLE_SIZE_MY, UIStrings.GIZMO_HANDLE_SIZE_MZ
+		UIStrings.GIZMO_HANDLE_SIZE_PX,
+		UIStrings.GIZMO_HANDLE_SIZE_PY,
+		UIStrings.GIZMO_HANDLE_SIZE_PZ,
+		UIStrings.GIZMO_HANDLE_SIZE_MX,
+		UIStrings.GIZMO_HANDLE_SIZE_MY,
+		UIStrings.GIZMO_HANDLE_SIZE_MZ
 	]
 	return names[handle_id] if handle_id < names.size() else ""
+
 
 func _get_handle_value(gizmo: EditorNode3DGizmo, handle_id: int, secondary: bool) -> Variant:
 	var node = gizmo.get_node_3d()
 	return {"region_size": _get_valid_region_size(node), "global_position": node.global_position}
 
+
 ## Applies handle drag immediately; Undo is registered in _commit_handle (standard Gizmo pattern).
 ## Alt: symmetric scaling (both sides from center, like original). Default: asymmetric (opposite face fixed, like CSGBox).
-func _set_handle(gizmo: EditorNode3DGizmo, handle_id: int, secondary: bool, camera: Camera3D, point: Vector2) -> void:
+func _set_handle(
+	gizmo: EditorNode3DGizmo, handle_id: int, secondary: bool, camera: Camera3D, point: Vector2
+) -> void:
 	var node = gizmo.get_node_3d()
 	var size = _get_valid_region_size(node)
 	var size_mut = Vector3(size)
-	
+
 	var transform = node.global_transform
 	var origin = transform.origin
 	var basis = transform.basis
-	
+
 	var axis_dir = Vector3.ZERO
-	if handle_id == 0: axis_dir = basis.x.normalized()
-	elif handle_id == 1: axis_dir = basis.y.normalized()
-	elif handle_id == 2: axis_dir = basis.z.normalized()
-	elif handle_id == 3: axis_dir = -basis.x.normalized()
-	elif handle_id == 4: axis_dir = -basis.y.normalized()
-	elif handle_id == 5: axis_dir = -basis.z.normalized()
-	
+	if handle_id == 0:
+		axis_dir = basis.x.normalized()
+	elif handle_id == 1:
+		axis_dir = basis.y.normalized()
+	elif handle_id == 2:
+		axis_dir = basis.z.normalized()
+	elif handle_id == 3:
+		axis_dir = -basis.x.normalized()
+	elif handle_id == 4:
+		axis_dir = -basis.y.normalized()
+	elif handle_id == 5:
+		axis_dir = -basis.z.normalized()
+
 	var ray_from = camera.project_ray_origin(point)
 	var ray_dir = camera.project_ray_normal(point)
-	
+
 	var axis_start = origin - axis_dir * GIZMO_RAY_LENGTH
 	var axis_end = origin + axis_dir * GIZMO_RAY_LENGTH
-	
-	var points = Geometry3D.get_closest_points_between_segments(ray_from, ray_from + ray_dir * GIZMO_RAY_LENGTH, axis_start, axis_end)
+
+	var points = Geometry3D.get_closest_points_between_segments(
+		ray_from, ray_from + ray_dir * GIZMO_RAY_LENGTH, axis_start, axis_end
+	)
 	var closest_point = points[1]
-	
+
 	var dist: float = (closest_point - origin).dot(axis_dir)
 	if Input.is_key_pressed(KEY_CTRL):  # Snap to 0.5 units
 		dist = round(dist * 2.0) / 2.0
-	
+
 	var axis_idx = handle_id % 3
 	var new_full_size: float
 	var symmetric := Input.is_key_pressed(KEY_ALT)
@@ -153,7 +180,10 @@ func _set_handle(gizmo: EditorNode3DGizmo, handle_id: int, secondary: bool, came
 		node.global_position = origin + offset
 	node.update_gizmos()
 
-func _commit_handle(gizmo: EditorNode3DGizmo, handle_id: int, secondary: bool, restore: Variant, cancel: bool) -> void:
+
+func _commit_handle(
+	gizmo: EditorNode3DGizmo, handle_id: int, secondary: bool, restore: Variant, cancel: bool
+) -> void:
 	var node: Node3D = gizmo.get_node_3d()
 	var restored := restore as Dictionary
 

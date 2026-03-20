@@ -15,11 +15,13 @@ func _supports_platform(platform: EditorExportPlatform) -> bool:
 
 
 func _export_begin(features: PackedStringArray, is_debug: bool, path: String, flags: int) -> void:
-	var dlls := PackedStringArray([
-		"res://addons/nexus_resonance/bin/phonon.dll",
-		"res://addons/nexus_resonance/bin/GPUUtilities.dll",
-		"res://addons/nexus_resonance/bin/TrueAudioNext.dll",
-	])
+	var dlls := PackedStringArray(
+		[
+			"res://addons/nexus_resonance/bin/phonon.dll",
+			"res://addons/nexus_resonance/bin/GPUUtilities.dll",
+			"res://addons/nexus_resonance/bin/TrueAudioNext.dll",
+		]
+	)
 	for dll_path in dlls:
 		if FileAccess.file_exists(dll_path):
 			add_shared_object(dll_path, PackedStringArray(), "")

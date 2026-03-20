@@ -18,7 +18,8 @@ class ResonanceGeometry;
 class ResonanceGeometryAsset;
 class RayTraceDebugContext;
 
-/// Bundles runtime static scene state for add/load/clear operations (reduces parameter duplication)
+/// Bundles runtime static scene state for add/load/clear operations (reduces parameter duplication).
+/// All mutations are serialized by the caller (typically ResonanceServer holding simulation_mutex).
 struct RuntimeSceneState {
     std::vector<IPLStaticMesh>& meshes;
     int& tri_count;

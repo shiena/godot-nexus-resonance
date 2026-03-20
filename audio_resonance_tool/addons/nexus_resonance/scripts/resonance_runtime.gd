@@ -6,10 +6,14 @@ class_name ResonanceRuntime
 ## Add via Add Child Node > ResonanceRuntime.
 ## Assign a ResonanceRuntimeConfig resource (create new or link existing) for runtime settings.
 
-const ResonanceRuntimeConfig = preload("res://addons/nexus_resonance/scripts/resonance_runtime_config.gd")
+const ResonanceRuntimeConfig = preload(
+	"res://addons/nexus_resonance/scripts/resonance_runtime_config.gd"
+)
 const ResonanceBakeConfig = preload("res://addons/nexus_resonance/scripts/resonance_bake_config.gd")
 const ResonanceSceneUtils = preload("res://addons/nexus_resonance/scripts/resonance_scene_utils.gd")
-const ResonanceFMODBridgeScript = preload("res://addons/nexus_resonance/scripts/resonance_fmod_bridge.gd")
+const ResonanceFMODBridgeScript = preload(
+	"res://addons/nexus_resonance/scripts/resonance_fmod_bridge.gd"
+)
 const EFFECT_CLASS := "ResonanceAudioEffect"
 
 var _runtime: ResonanceRuntimeConfig
@@ -31,6 +35,7 @@ var _runtime: ResonanceRuntimeConfig
 ## Key to toggle debug overlay at runtime (F3). When overlay is on: cursor visible, camera ignores mouse.
 @export var debug_overlay_toggle_key: Key = KEY_F3
 ## Enable optional performance overlay (FPS, frame time). Toggle with performance_overlay_toggle_key.
+## The overlay node is created lazily on first toggle (F4) so it does not flash when stopping the game.
 @export var performance_overlay_enabled: bool = false
 ## Key to toggle performance overlay at runtime (F4). Independent from debug overlay.
 @export var performance_overlay_toggle_key: Key = KEY_F4
@@ -50,6 +55,7 @@ var activator_instrumentation: Dictionary = {}
 var _activator_frames_pushed: int = 0
 var _activator_fill_calls: int = 0
 
+
 ## Returns bake params from first Probe Volume with bake_config, or default. Used before init so pathing visibility params are set.
 func _get_bake_params_for_runtime() -> Dictionary:
 	var tree = get_tree()
@@ -62,19 +68,23 @@ func _get_bake_params_for_runtime() -> Dictionary:
 			return bc.get_bake_params()
 	return ResonanceBakeConfig.create_default().get_bake_params()
 
+
 ## Returns effective bus for Direct + Pathing. Public API for debug overlay and external use.
 func get_bus_effective() -> StringName:
 	return _get_bus_effective()
 
+
 ## Returns the FMOD bridge when fmod_bridge_enabled. Used by ResonanceFmodEventEmitter.
 func get_fmod_bridge() -> RefCounted:
 	return _fmod_bridge
+
 
 ## Returns config dict for init_audio_engine. Merges runtime config with node's debug flags.
 func get_config_dict() -> Dictionary:
 	var cfg: Dictionary = _runtime.get_config() if _runtime else {}
 	cfg["debug_occlusion"] = debug_sources
 	return cfg
+
 
 func _ready() -> void:
 	if not _runtime:
@@ -89,12 +99,6 @@ func _ready() -> void:
 		var overlay = DebugOverlayScript.new()
 		overlay.name = "DebugOverlay"
 		add_child(overlay)
-	if not Engine.is_editor_hint() and performance_overlay_enabled and not get_node_or_null("PerformanceOverlay"):
-		const PerformanceOverlayScript = preload("res://addons/nexus_resonance/scripts/performance_overlay.gd")
-		var perf_overlay = PerformanceOverlayScript.new()
-		perf_overlay.name = "PerformanceOverlay"
-		perf_overlay.visible = false
-		add_child(perf_overlay)
 	_initialize_server()
 	if not Engine.is_editor_hint():
 		_setup_activator()
@@ -103,10 +107,16 @@ func _ready() -> void:
 	if not Engine.is_editor_hint() and _debug_overlay_visible:
 		call_deferred("_update_debug_overlay_mouse_mode")
 
+
 func _exit_tree() -> void:
+	var perf_overlay = get_node_or_null("PerformanceOverlay")
+	if perf_overlay:
+		perf_overlay.visible = false
+		perf_overlay.process_mode = Node.PROCESS_MODE_DISABLED
 	if _fmod_bridge:
 		_fmod_bridge.shutdown_bridge()
 		_fmod_bridge = null
+
 
 func _input(event: InputEvent) -> void:
 	if Engine.is_editor_hint():
@@ -119,23 +129,45 @@ func _input(event: InputEvent) -> void:
 			_toggle_performance_overlay()
 			get_viewport().set_input_as_handled()
 
+
 func _init_fmod_bridge() -> void:
 	_fmod_bridge = ResonanceFMODBridgeScript.new()
 	if _fmod_bridge.init_bridge():
 		pass  # Success; bridge is ready
 	else:
-		push_warning("Nexus Resonance: FMOD bridge init failed. Ensure phonon_fmod plugin is in FMOD path.")
+		push_warning(
+			"Nexus Resonance: FMOD bridge init failed. Ensure phonon_fmod plugin is in FMOD path."
+		)
+
 
 func _toggle_debug_overlay() -> void:
 	_debug_overlay_visible = not _debug_overlay_visible
 	_update_debug_overlay_visibility()
 
 
+func _create_performance_overlay() -> void:
+	if Engine.is_editor_hint() or get_node_or_null("PerformanceOverlay"):
+		return
+	const PerformanceOverlayScript = preload(
+		"res://addons/nexus_resonance/scripts/performance_overlay.gd"
+	)
+	var perf_overlay = PerformanceOverlayScript.new()
+	perf_overlay.name = "PerformanceOverlay"
+	perf_overlay.visible = false
+	add_child(perf_overlay)
+
+
 func _toggle_performance_overlay() -> void:
 	_performance_overlay_visible = not _performance_overlay_visible
 	var overlay = get_node_or_null("PerformanceOverlay")
+	if overlay == null and _performance_overlay_visible:
+		_create_performance_overlay()
+		overlay = get_node_or_null("PerformanceOverlay")
 	if overlay:
 		overlay.visible = _performance_overlay_visible
+		if _performance_overlay_visible:
+			overlay.process_mode = Node.PROCESS_MODE_INHERIT
+
 
 func _process(delta: float) -> void:
 	if Engine.is_editor_hint():
@@ -158,8 +190,13 @@ func _process(delta: float) -> void:
 				if cam:
 					var listeners = get_tree().get_nodes_in_group("resonance_listener")
 					if listeners.is_empty():
-						srv.update_listener(cam.global_position, -cam.global_transform.basis.z, cam.global_transform.basis.y)
+						srv.update_listener(
+							cam.global_position,
+							-cam.global_transform.basis.z,
+							cam.global_transform.basis.y
+						)
 			srv.tick(delta)
+
 
 func _initialize_server() -> void:
 	# In editor, probe_toolbar inits when needed for bake. Avoid Steam Audio init on scene load (can crash).
@@ -191,7 +228,9 @@ func _initialize_server() -> void:
 		_init_fmod_bridge()
 	# Trigger geometry refresh for debug reflection viz (ResonanceGeometry re-registers after init)
 	if srv.wants_debug_reflection_viz():
-		get_tree().call_group_flags(SceneTree.GROUP_CALL_DEFERRED, "resonance_geometry", "refresh_geometry")
+		get_tree().call_group_flags(
+			SceneTree.GROUP_CALL_DEFERRED, "resonance_geometry", "refresh_geometry"
+		)
 	# Unity-style: load static scene(s) from ResonanceStaticScene nodes. Additive: one per scene.
 	var static_scenes: Array[Node] = []
 	ResonanceSceneUtils.collect_resonance_static_scenes(get_tree().get_root(), static_scenes)
@@ -200,13 +239,18 @@ func _initialize_server() -> void:
 			srv.clear_static_scenes()
 			for ss in static_scenes:
 				if ss.static_scene_asset and ss.has_valid_asset():
-					srv.add_static_scene_from_asset(ss.static_scene_asset, ss.get_global_transform())
+					srv.add_static_scene_from_asset(
+						ss.static_scene_asset, ss.get_global_transform()
+					)
 		# Legacy single-scene API; prefer add_static_scene_from_asset when multiple scenes.
 		elif srv.has_method("load_static_scene_from_asset") and static_scenes.size() == 1:
 			if static_scenes[0].static_scene_asset and static_scenes[0].has_valid_asset():
-				srv.load_static_scene_from_asset(static_scenes[0].static_scene_asset, static_scenes[0].get_global_transform())
+				srv.load_static_scene_from_asset(
+					static_scenes[0].static_scene_asset, static_scenes[0].get_global_transform()
+				)
 	_apply_debug_flags()
 	_apply_perspective_correction()
+
 
 func _apply_debug_flags() -> void:
 	if not Engine.has_singleton("ResonanceServer"):
@@ -217,6 +261,7 @@ func _apply_debug_flags() -> void:
 		if srv.has_method("set_debug_reflections"):
 			srv.set_debug_reflections(debug_sources)
 
+
 func _apply_perspective_correction() -> void:
 	if not Engine.has_singleton("ResonanceServer"):
 		return
@@ -226,18 +271,22 @@ func _apply_perspective_correction() -> void:
 		srv.set_perspective_correction_factor(runtime.perspective_correction_factor)
 		srv.set_reverb_transmission_amount(runtime.reverb_transmission_amount)
 
+
 func _get_bus_effective() -> StringName:
 	if _runtime:
 		return _runtime.get_bus_effective()
 	var s: String = ProjectSettings.get_setting("audio/nexus_resonance/bus", "Master")
 	return StringName(s) if not s.is_empty() else &"Master"
 
+
 func _get_reverb_bus_name() -> StringName:
 	return _runtime.get_reverb_bus_name_effective() if _runtime else &"ResonanceReverb"
+
 
 func _get_reverb_bus_send() -> StringName:
 	## Reverb output goes to same bus as Direct+Pathing. No separate send bus.
 	return _get_bus_effective()
+
 
 func _ensure_reverb_bus_exists() -> bool:
 	var bus_name := _get_reverb_bus_name()
@@ -257,6 +306,7 @@ func _ensure_reverb_bus_exists() -> bool:
 	if idx >= 0:
 		AudioServer.set_bus_send(idx, send_name)
 	return idx >= 0
+
 
 func _apply_bus_to_players() -> void:
 	var tree = get_tree()
@@ -280,9 +330,12 @@ func _apply_bus_to_players() -> void:
 		if p.has_method("set_bus"):
 			p.set_bus(effective_bus)
 		# Parametric (1) / Hybrid (2): enable split when bus != reverb_bus
-		var reverb_split := (reflection_type == 1 or reflection_type == 2) and str(effective_bus) != str(reverb_bus)
+		var reverb_split := (
+			(reflection_type == 1 or reflection_type == 2) and str(effective_bus) != str(reverb_bus)
+		)
 		if p.has_method("set_reverb_split_output"):
 			p.set_reverb_split_output(reverb_split, reverb_bus)
+
 
 func _setup_activator() -> void:
 	if not _ensure_reverb_bus_exists():
@@ -315,7 +368,9 @@ func _fill_activator_buffer() -> void:
 	var avail = playback.get_frames_available()
 	if avail <= 0:
 		activator_instrumentation["active"] = true
-		activator_instrumentation["avail_zero_count"] = activator_instrumentation.get("avail_zero_count", 0) + 1
+		activator_instrumentation["avail_zero_count"] = (
+			activator_instrumentation.get("avail_zero_count", 0) + 1
+		)
 		return
 	const AMP := 1e-5
 	var to_push = min(avail, 512)
@@ -335,9 +390,11 @@ func _fill_activator_buffer() -> void:
 		"skips": skips,
 	}
 
+
 func _prepare_geometry_before_reinit() -> void:
 	if get_tree():
 		get_tree().call_group("resonance_geometry", "discard_meshes_before_scene_release")
+
 
 func _reload_after_reinit() -> void:
 	if get_tree():
@@ -345,25 +402,48 @@ func _reload_after_reinit() -> void:
 		if static_scene and static_scene.static_scene_asset and static_scene.has_valid_asset():
 			var srv = Engine.get_singleton("ResonanceServer")
 			if srv and srv.has_method("load_static_scene_from_asset"):
-				srv.load_static_scene_from_asset(static_scene.static_scene_asset, static_scene.get_global_transform())
-		get_tree().call_group_flags(SceneTree.GROUP_CALL_DEFERRED, "resonance_probe_volume", "_reload_probe_batch_after_reinit")
-		get_tree().call_group_flags(SceneTree.GROUP_CALL_DEFERRED, "resonance_geometry", "refresh_geometry")
+				srv.load_static_scene_from_asset(
+					static_scene.static_scene_asset, static_scene.get_global_transform()
+				)
+		get_tree().call_group_flags(
+			SceneTree.GROUP_CALL_DEFERRED,
+			"resonance_probe_volume",
+			"_reload_probe_batch_after_reinit"
+		)
+		get_tree().call_group_flags(
+			SceneTree.GROUP_CALL_DEFERRED, "resonance_geometry", "refresh_geometry"
+		)
+
 
 func _connect_runtime_signals() -> void:
 	if not Engine.is_editor_hint() or not _runtime:
 		return
-	if _runtime.has_signal("reflection_type_changed") and not _runtime.reflection_type_changed.is_connected(_on_reflection_type_changed):
+	if (
+		_runtime.has_signal("reflection_type_changed")
+		and not _runtime.reflection_type_changed.is_connected(_on_reflection_type_changed)
+	):
 		_runtime.reflection_type_changed.connect(_on_reflection_type_changed)
-	if _runtime.has_signal("pathing_enabled_changed") and not _runtime.pathing_enabled_changed.is_connected(_on_runtime_affecting_probes_changed):
+	if (
+		_runtime.has_signal("pathing_enabled_changed")
+		and not _runtime.pathing_enabled_changed.is_connected(_on_runtime_affecting_probes_changed)
+	):
 		_runtime.pathing_enabled_changed.connect(_on_runtime_affecting_probes_changed)
+
 
 func _disconnect_runtime_signals() -> void:
 	if not _runtime:
 		return
-	if _runtime.has_signal("reflection_type_changed") and _runtime.reflection_type_changed.is_connected(_on_reflection_type_changed):
+	if (
+		_runtime.has_signal("reflection_type_changed")
+		and _runtime.reflection_type_changed.is_connected(_on_reflection_type_changed)
+	):
 		_runtime.reflection_type_changed.disconnect(_on_reflection_type_changed)
-	if _runtime.has_signal("pathing_enabled_changed") and _runtime.pathing_enabled_changed.is_connected(_on_runtime_affecting_probes_changed):
+	if (
+		_runtime.has_signal("pathing_enabled_changed")
+		and _runtime.pathing_enabled_changed.is_connected(_on_runtime_affecting_probes_changed)
+	):
 		_runtime.pathing_enabled_changed.disconnect(_on_runtime_affecting_probes_changed)
+
 
 func _on_reflection_type_changed(_arg = null) -> void:
 	if not Engine.has_singleton("ResonanceServer"):
@@ -379,6 +459,7 @@ func _on_reflection_type_changed(_arg = null) -> void:
 	call_deferred("_reload_after_reinit")
 	_notify_volumes_runtime_config_changed()
 
+
 func _on_runtime_affecting_probes_changed(_arg = null) -> void:
 	if Engine.has_singleton("ResonanceServer"):
 		var srv = Engine.get_singleton("ResonanceServer")
@@ -386,27 +467,44 @@ func _on_runtime_affecting_probes_changed(_arg = null) -> void:
 			srv.set_pathing_enabled(_runtime.pathing_enabled)
 			var removed = srv.revalidate_probe_batches_with_config()
 			if removed > 0 and get_tree():
-				get_tree().call_group_flags(SceneTree.GROUP_CALL_DEFERRED, "resonance_probe_volume", "reload_probe_batch")
+				get_tree().call_group_flags(
+					SceneTree.GROUP_CALL_DEFERRED, "resonance_probe_volume", "reload_probe_batch"
+				)
 	_notify_volumes_runtime_config_changed()
+
 
 func _notify_volumes_runtime_config_changed() -> void:
 	if not get_tree() or not _runtime:
 		return
 	var refl: int = _runtime.reflection_type
 	var pathing: bool = _runtime.pathing_enabled
-	get_tree().call_group_flags(SceneTree.GROUP_CALL_DEFERRED, "resonance_probe_volume", "notify_runtime_config_changed", refl, pathing)
+	get_tree().call_group_flags(
+		SceneTree.GROUP_CALL_DEFERRED,
+		"resonance_probe_volume",
+		"notify_runtime_config_changed",
+		refl,
+		pathing
+	)
+
 
 func _warn_restart_if_needed() -> void:
 	if Engine.is_editor_hint():
 		return
-	if Engine.has_singleton("ResonanceServer") and Engine.get_singleton("ResonanceServer").is_initialized():
-		print_rich("[color=yellow][Nexus Resonance] Change requires game restart to take effect.[/color]")
+	if (
+		Engine.has_singleton("ResonanceServer")
+		and Engine.get_singleton("ResonanceServer").is_initialized()
+	):
+		print_rich(
+			"[color=yellow][Nexus Resonance] Change requires game restart to take effect.[/color]"
+		)
+
 
 func _update_debug_overlay_visibility() -> void:
 	var overlay = get_node_or_null("DebugOverlay")
 	if overlay:
 		overlay.visible = _debug_overlay_visible
 	_update_debug_overlay_mouse_mode()
+
 
 func _update_debug_overlay_mouse_mode() -> void:
 	## When overlay is visible: show cursor, camera does not use mouse.
@@ -418,4 +516,3 @@ func _update_debug_overlay_mouse_mode() -> void:
 		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	else:
 		Input.set_mouse_mode(_debug_overlay_mouse_mode_before)
-

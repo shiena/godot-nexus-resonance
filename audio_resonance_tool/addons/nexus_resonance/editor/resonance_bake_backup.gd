@@ -5,9 +5,12 @@ class_name ResonanceBakeBackup
 ## Backup and restore logic for probe data before bake. Extracted for SRP.
 
 const UIStrings = preload("res://addons/nexus_resonance/scripts/resonance_ui_strings.gd")
-const ResonanceEditorDialogs = preload("res://addons/nexus_resonance/editor/resonance_editor_dialogs.gd")
+const ResonanceEditorDialogs = preload(
+	"res://addons/nexus_resonance/editor/resonance_editor_dialogs.gd"
+)
 
 var _backup_paths: Dictionary = {}  # probe_data resource_path -> backup file path
+
 
 func create_backups(volumes: Array[Node]) -> void:
 	_backup_paths.clear()
@@ -19,10 +22,17 @@ func create_backups(volumes: Array[Node]) -> void:
 			if err == OK:
 				_backup_paths[pd.resource_path] = backup_path
 
+
 func has_backups() -> bool:
 	return not _backup_paths.is_empty()
 
-func restore(volumes: Array[Node], editor_interface: EditorInterface, on_reload: Callable, on_complete: Callable) -> void:
+
+func restore(
+	volumes: Array[Node],
+	editor_interface: EditorInterface,
+	on_reload: Callable,
+	on_complete: Callable
+) -> void:
 	for vol in volumes:
 		var pd = vol.get_probe_data() if vol.has_method("get_probe_data") else null
 		if not pd or not pd.resource_path:
@@ -42,10 +52,16 @@ func restore(volumes: Array[Node], editor_interface: EditorInterface, on_reload:
 	_backup_paths.clear()
 	on_complete.call()
 
+
 func _copy_probe_data_properties(dst: Resource, src: Resource) -> void:
 	if dst.has_method("set_data") and src.has_method("get_data"):
 		dst.set_data(src.get_data())
 	# Fallback when copy_from unavailable; extend list if ResonanceProbeData gains new hash properties
-	for prop in ["pathing_params_hash", "static_source_params_hash", "static_listener_params_hash", "bake_params_hash"]:
+	for prop in [
+		"pathing_params_hash",
+		"static_source_params_hash",
+		"static_listener_params_hash",
+		"bake_params_hash"
+	]:
 		if prop in src and prop in dst:
 			dst.set(prop, src.get(prop))

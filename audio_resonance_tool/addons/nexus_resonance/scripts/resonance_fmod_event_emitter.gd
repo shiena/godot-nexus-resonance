@@ -26,7 +26,12 @@ var _event_instance: Object = null  # FMOD EventInstance when available
 func _ready() -> void:
 	_fmod_emitter = get_parent()
 	if not _is_fmod_emitter(_fmod_emitter):
-		push_warning("ResonanceFmodEventEmitter: Parent must be FmodEventEmitter3D. Found: %s" % _fmod_emitter.get_class())
+		push_warning(
+			(
+				"ResonanceFmodEventEmitter: Parent must be FmodEventEmitter3D. Found: %s"
+				% _fmod_emitter.get_class()
+			)
+		)
 		return
 	call_deferred("_setup_bridge")
 	if Engine.is_editor_hint():
@@ -65,7 +70,9 @@ func _setup_bridge() -> void:
 				_bridge = candidate
 				return
 	if not _bridge:
-		push_warning("ResonanceFmodEventEmitter: No ResonanceRuntime with FMOD bridge. Enable fmod_bridge_enabled on ResonanceRuntime.")
+		push_warning(
+			"ResonanceFmodEventEmitter: No ResonanceRuntime with FMOD bridge. Enable fmod_bridge_enabled on ResonanceRuntime."
+		)
 
 
 func _on_play() -> void:

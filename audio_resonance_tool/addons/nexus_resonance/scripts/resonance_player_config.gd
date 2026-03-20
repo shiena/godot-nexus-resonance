@@ -137,7 +137,14 @@ var _transmission_input: int = 0
 @export_group("Reflections")
 var _reflections_type: int = -1
 ## Reflections simulation: Use Global = runtime's default_reflections_mode (Baked or Realtime). Realtime = raytracing (requires realtime_rays > 0). Baked Reverb/Static Source/Listener = use baked probe data.
-@export_enum("Use Global:-1", "Realtime:0", "Baked Reverb:1", "Baked Static Source:2", "Baked Static Listener:3") var reflections_type: int:
+@export_enum(
+	"Use Global:-1",
+	"Realtime:0",
+	"Baked Reverb:1",
+	"Baked Static Source:2",
+	"Baked Static Listener:3"
+)
+var reflections_type: int:
 	get:
 		return _reflections_type
 	set(v):
@@ -198,6 +205,7 @@ var _perspective_correction_override: int = -1
 ## Factor for on-screen position mapping (0.5–2.0). 1.0 = calibrated for 30–32 inch monitor. Used when Enabled; ignored when Use Global.
 @export_range(0.5, 2.0, 0.1) var perspective_factor: float = 1.0
 
+
 func _validate_property(property: Dictionary) -> void:
 	if property.name == "bus_name":
 		if bus_override == -1:  # Use Global
@@ -233,6 +241,7 @@ func _validate_property(property: Dictionary) -> void:
 		if not directivity_enabled or directivity_input != 1:
 			property["usage"] = property["usage"] | PROPERTY_USAGE_READ_ONLY
 
+
 ## Returns effective bus for Direct + Pathing. When bus_override is Use Global, returns global_fallback. When Custom, returns bus_name (or global_fallback if empty).
 func get_bus_name_effective(global_fallback: StringName) -> StringName:
 	if bus_override == -1:  # Use Global
@@ -240,12 +249,14 @@ func get_bus_name_effective(global_fallback: StringName) -> StringName:
 	var custom := bus_name
 	return custom if not str(custom).is_empty() else global_fallback
 
+
 ## Returns effective reverb bus name for this source. When reverb_bus_override is Use Global, returns global_fallback. When Custom, returns reverb_bus_name (or global_fallback if empty).
 func get_reverb_bus_name_effective(global_fallback: StringName) -> StringName:
 	if reverb_bus_override == -1:  # Use Global
 		return global_fallback
 	var custom := reverb_bus_name
 	return custom if not str(custom).is_empty() else global_fallback
+
 
 ## Creates default player config for sources without one assigned.
 static func create_default() -> ResonancePlayerConfig:

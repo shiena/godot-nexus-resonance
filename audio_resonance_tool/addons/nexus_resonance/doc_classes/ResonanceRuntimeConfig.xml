@@ -28,7 +28,7 @@
 			<param index="0" name="realtime_rays" type="int" />
 			<param index="1" name="os_name" type="String" />
 			<description>
-				Returns effective realtime_rays for the given OS. Android has no Embree, so always 0.
+				Returns [param realtime_rays] unchanged on all platforms. [param os_name] is reserved for future per-OS caps; pass [method OS.get_name] when calling.
 			</description>
 		</method>
 		<method name="get_bus_effective">
@@ -70,16 +70,16 @@
 			Max reverb tail duration in seconds.
 		</member>
 		<member name="realtime_rays" type="int" default="0">
-			Realtime raytracing rays: 0 (baked only), 64–8192. Requires Embree on host.
+			Realtime raytracing rays: 0 (baked only), 64–8192. Simulation uses [member scene_type]; on platforms without Embree or OpenCL the native layer falls back to the built-in (Default) tracer.
 		</member>
 		<member name="realtime_bounces" type="int" default="4">
 			Realtime reflection bounces (1–64).
 		</member>
 		<member name="scene_type" type="int" default="1">
-			Ray tracer backend: Default (0) = built-in Phonon; Embree (1) = Intel, faster CPU; Radeon Rays (2) = GPU. Embree provides better CPU performance than Default.
+			Ray tracer backend: Default (0) = built-in Phonon (all supported platforms); Embree (1) = Intel CPU tracer on Windows/Linux/macOS; Radeon Rays (2) = OpenCL (Windows 64-bit oriented). On Android/iOS, Embree and Radeon Rays are unavailable; init falls back to Default with a warning if Embree or OpenCL fails.
 		</member>
 		<member name="opencl_device_type" type="int" default="0">
-			OpenCL device type when scene_type is Radeon Rays: GPU (0), CPU (1), or Any (2). Helps when GPU has OpenCL issues.
+			OpenCL device type when scene_type is Radeon Rays or reflection_type is TrueAudio Next: GPU (0), CPU (1), or Any (2). Helps when GPU has OpenCL issues.
 		</member>
 		<member name="opencl_device_index" type="int" default="0">
 			OpenCL device index (0 = first matching device). Use when multiple GPUs present.

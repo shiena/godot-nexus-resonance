@@ -20,7 +20,9 @@ const RESONANCE_FMOD_EVENT_EMITTER_INSPECTOR_SCRIPT = "res://addons/nexus_resona
 
 const ResonanceSceneUtils = preload("res://addons/nexus_resonance/scripts/resonance_scene_utils.gd")
 const UIStrings = preload("res://addons/nexus_resonance/scripts/resonance_ui_strings.gd")
-const ResonanceEditorDialogs = preload("res://addons/nexus_resonance/editor/resonance_editor_dialogs.gd")
+const ResonanceEditorDialogs = preload(
+	"res://addons/nexus_resonance/editor/resonance_editor_dialogs.gd"
+)
 
 enum ToolMenuId {
 	EXPORT_ACTIVE_SCENE,
@@ -52,6 +54,7 @@ var _tool_submenu: PopupMenu = null
 
 const AUDIO_BUS_PREFIX := "audio/nexus_resonance/"
 
+
 func _enter_tree() -> void:
 	_register_logger_project_settings()
 	_register_audio_bus_project_settings()
@@ -75,7 +78,9 @@ func _enter_tree() -> void:
 	if export_handler_script:
 		export_handler = export_handler_script.new(get_editor_interface())
 	else:
-		push_warning("Nexus Resonance: Failed to load export handler. Export and bake features may be unavailable.")
+		push_warning(
+			"Nexus Resonance: Failed to load export handler. Export and bake features may be unavailable."
+		)
 	# bake_runner depends on export_handler for export_static_callback (pre-bake static scene export)
 	var runner_script: Script = load(RESONANCE_BAKE_RUNNER_SCRIPT) as Script
 	if runner_script and export_handler:
@@ -99,26 +104,64 @@ func _enter_tree() -> void:
 					gizmo_instance.undo_redo = get_undo_redo()
 				var base: Control = get_editor_interface().get_base_control()
 				if base and "fallback_icon" in gizmo_instance:
-					gizmo_instance.fallback_icon = ResonanceEditorDialogs.get_icon(base, UIStrings.ICON_PROBE_VOLUME_GIZMO, "ReflectionProbe")
+					gizmo_instance.fallback_icon = ResonanceEditorDialogs.get_icon(
+						base, UIStrings.ICON_PROBE_VOLUME_GIZMO, "ReflectionProbe"
+					)
 				add_node_3d_gizmo_plugin(gizmo_instance)
 
 	_tool_submenu = PopupMenu.new()
 	var base: Control = get_editor_interface().get_base_control()
-	var icon_export: Texture2D = ResonanceEditorDialogs.get_icon(base, UIStrings.ICON_EXPORT, "Export")
+	var icon_export: Texture2D = ResonanceEditorDialogs.get_icon(
+		base, UIStrings.ICON_EXPORT, "Export"
+	)
 	var icon_bake: Texture2D = ResonanceEditorDialogs.get_icon(base, UIStrings.ICON_BAKE, "Bake")
 	var icon_clear: Texture2D = ResonanceEditorDialogs.get_icon(base, UIStrings.ICON_CLEAR, "Clear")
-	_tool_submenu.add_icon_item(icon_export, tr(UIStrings.MENU_EXPORT_ACTIVE_SCENE), ToolMenuId.EXPORT_ACTIVE_SCENE)
-	_tool_submenu.add_icon_item(icon_export, tr(UIStrings.MENU_EXPORT_ALL_OPEN_SCENES), ToolMenuId.EXPORT_ALL_OPEN_SCENES)
-	_tool_submenu.add_icon_item(icon_export, tr(UIStrings.MENU_EXPORT_ALL_SCENES_IN_BUILD), ToolMenuId.EXPORT_ALL_SCENES_IN_BUILD)
-	_tool_submenu.add_icon_item(icon_export, tr(UIStrings.MENU_EXPORT_ACTIVE_SCENE_OBJ), ToolMenuId.EXPORT_ACTIVE_SCENE_OBJ)
-	_tool_submenu.add_icon_item(icon_export, tr(UIStrings.MENU_EXPORT_ALL_SCENES_OBJ), ToolMenuId.EXPORT_ALL_SCENES_OBJ)
-	_tool_submenu.add_icon_item(icon_export, tr(UIStrings.MENU_EXPORT_DYNAMIC_OBJECTS_ACTIVE), ToolMenuId.EXPORT_DYNAMIC_OBJECTS_ACTIVE)
-	_tool_submenu.add_icon_item(icon_export, tr(UIStrings.MENU_EXPORT_DYNAMIC_OBJECTS_IN_BUILD), ToolMenuId.EXPORT_DYNAMIC_OBJECTS_IN_BUILD)
-	_tool_submenu.add_icon_item(icon_export, tr(UIStrings.MENU_EXPORT_DYNAMIC_OBJECTS_IN_PROJECT), ToolMenuId.EXPORT_DYNAMIC_OBJECTS_IN_PROJECT)
-	_tool_submenu.add_icon_item(icon_bake, tr(UIStrings.MENU_BAKE_ALL_PROBE_VOLUMES), ToolMenuId.BAKE_ALL_PROBE_VOLUMES)
-	_tool_submenu.add_icon_item(icon_clear, tr(UIStrings.MENU_CLEAR_PROBE_BATCHES), ToolMenuId.CLEAR_PROBE_BATCHES)
-	_tool_submenu.add_icon_item(icon_clear, tr(UIStrings.MENU_CLEAR_UNREFERENCED_PROBE_DATA), ToolMenuId.CLEAR_UNREFERENCED_PROBE_DATA)
-	_tool_submenu.add_item(tr(UIStrings.MENU_UNLINK_PROBE_VOLUME_REFS), ToolMenuId.UNLINK_PROBE_VOLUME_REFS)
+	_tool_submenu.add_icon_item(
+		icon_export, tr(UIStrings.MENU_EXPORT_ACTIVE_SCENE), ToolMenuId.EXPORT_ACTIVE_SCENE
+	)
+	_tool_submenu.add_icon_item(
+		icon_export, tr(UIStrings.MENU_EXPORT_ALL_OPEN_SCENES), ToolMenuId.EXPORT_ALL_OPEN_SCENES
+	)
+	_tool_submenu.add_icon_item(
+		icon_export,
+		tr(UIStrings.MENU_EXPORT_ALL_SCENES_IN_BUILD),
+		ToolMenuId.EXPORT_ALL_SCENES_IN_BUILD
+	)
+	_tool_submenu.add_icon_item(
+		icon_export, tr(UIStrings.MENU_EXPORT_ACTIVE_SCENE_OBJ), ToolMenuId.EXPORT_ACTIVE_SCENE_OBJ
+	)
+	_tool_submenu.add_icon_item(
+		icon_export, tr(UIStrings.MENU_EXPORT_ALL_SCENES_OBJ), ToolMenuId.EXPORT_ALL_SCENES_OBJ
+	)
+	_tool_submenu.add_icon_item(
+		icon_export,
+		tr(UIStrings.MENU_EXPORT_DYNAMIC_OBJECTS_ACTIVE),
+		ToolMenuId.EXPORT_DYNAMIC_OBJECTS_ACTIVE
+	)
+	_tool_submenu.add_icon_item(
+		icon_export,
+		tr(UIStrings.MENU_EXPORT_DYNAMIC_OBJECTS_IN_BUILD),
+		ToolMenuId.EXPORT_DYNAMIC_OBJECTS_IN_BUILD
+	)
+	_tool_submenu.add_icon_item(
+		icon_export,
+		tr(UIStrings.MENU_EXPORT_DYNAMIC_OBJECTS_IN_PROJECT),
+		ToolMenuId.EXPORT_DYNAMIC_OBJECTS_IN_PROJECT
+	)
+	_tool_submenu.add_icon_item(
+		icon_bake, tr(UIStrings.MENU_BAKE_ALL_PROBE_VOLUMES), ToolMenuId.BAKE_ALL_PROBE_VOLUMES
+	)
+	_tool_submenu.add_icon_item(
+		icon_clear, tr(UIStrings.MENU_CLEAR_PROBE_BATCHES), ToolMenuId.CLEAR_PROBE_BATCHES
+	)
+	_tool_submenu.add_icon_item(
+		icon_clear,
+		tr(UIStrings.MENU_CLEAR_UNREFERENCED_PROBE_DATA),
+		ToolMenuId.CLEAR_UNREFERENCED_PROBE_DATA
+	)
+	_tool_submenu.add_item(
+		tr(UIStrings.MENU_UNLINK_PROBE_VOLUME_REFS), ToolMenuId.UNLINK_PROBE_VOLUME_REFS
+	)
 	_tool_submenu.id_pressed.connect(_on_tool_submenu_id_pressed)
 	_register_tool_shortcuts()
 	add_tool_submenu_item(_tool_submenu_name, _tool_submenu)
@@ -129,7 +172,12 @@ func _enter_tree() -> void:
 		if sofa_importer:
 			add_import_plugin(sofa_importer)
 
-	add_custom_type("ResonanceRuntime", "Node", load(RESONANCE_RUNTIME_SCRIPT) as Script, load(RESONANCE_CONFIG_ICON) as Texture2D)
+	add_custom_type(
+		"ResonanceRuntime",
+		"Node",
+		load(RESONANCE_RUNTIME_SCRIPT) as Script,
+		load(RESONANCE_CONFIG_ICON) as Texture2D
+	)
 
 	var inspector_script: Script = load(RESONANCE_GEOMETRY_INSPECTOR_SCRIPT) as Script
 	if inspector_script:
@@ -137,7 +185,9 @@ func _enter_tree() -> void:
 		resonance_geometry_inspector.editor_interface = get_editor_interface()
 		add_inspector_plugin(resonance_geometry_inspector)
 
-	var fmod_inspector_script: Script = load(RESONANCE_FMOD_EVENT_EMITTER_INSPECTOR_SCRIPT) as Script
+	var fmod_inspector_script: Script = (
+		load(RESONANCE_FMOD_EVENT_EMITTER_INSPECTOR_SCRIPT) as Script
+	)
 	if fmod_inspector_script:
 		resonance_fmod_event_emitter_inspector = fmod_inspector_script.new()
 		add_inspector_plugin(resonance_fmod_event_emitter_inspector)
@@ -148,6 +198,7 @@ func _enter_tree() -> void:
 		add_export_plugin(steam_audio_export_plugin)
 
 	print_rich("[color=green]Nexus Resonance: Ready.[/color]")
+
 
 func _exit_tree() -> void:
 	_detach_reverb_effect()
@@ -178,9 +229,11 @@ func _exit_tree() -> void:
 	if gizmo_instance:
 		remove_node_3d_gizmo_plugin(gizmo_instance)
 
+
 func _enable_plugin() -> void:
 	add_autoload_singleton("ResonanceLogger", LOGGER_AUTOLOAD_PATH)
 	Callable(self, "_setup_audio_bus").call_deferred()
+
 
 func _disable_plugin() -> void:
 	if Engine.has_singleton("ResonanceServer"):
@@ -189,13 +242,18 @@ func _disable_plugin() -> void:
 			srv.clear_probe_batches()
 	remove_autoload_singleton("ResonanceLogger")
 
+
 func _get_bus_editor() -> StringName:
 	var s: String = ProjectSettings.get_setting(AUDIO_BUS_PREFIX + "bus", "Master")
 	return StringName(s) if not s.is_empty() else &"Master"
 
+
 func _get_reverb_bus_name_editor() -> StringName:
-	var s: String = ProjectSettings.get_setting(AUDIO_BUS_PREFIX + "reverb_bus_name", "ResonanceReverb")
+	var s: String = ProjectSettings.get_setting(
+		AUDIO_BUS_PREFIX + "reverb_bus_name", "ResonanceReverb"
+	)
 	return StringName(s) if not s.is_empty() else BUS_NAME
+
 
 func _detach_reverb_effect() -> void:
 	var bus_name: StringName = _get_reverb_bus_name_editor()
@@ -208,6 +266,7 @@ func _detach_reverb_effect() -> void:
 		if eff and eff.get_class() == EFFECT_CLASS:
 			AudioServer.remove_bus_effect(idx, i)
 			break
+
 
 func _setup_audio_bus() -> void:
 	var bus_name: StringName = _get_reverb_bus_name_editor()
@@ -227,30 +286,47 @@ func _setup_audio_bus() -> void:
 	if idx >= 0:
 		AudioServer.set_bus_send(idx, send_name)
 
+
 func _has_main_screen() -> bool:
 	return false
+
 
 func _get_plugin_name() -> String:
 	return "Resonance"
 
+
 func _get_plugin_icon() -> Texture2D:
-	return get_editor_interface().get_base_control().get_theme_icon("AudioStreamPlayer", "EditorIcons")
+	return get_editor_interface().get_base_control().get_theme_icon(
+		"AudioStreamPlayer", "EditorIcons"
+	)
+
 
 func _register_audio_bus_project_settings() -> void:
 	if not ProjectSettings.has_setting(AUDIO_BUS_PREFIX + "bus"):
 		ProjectSettings.set_setting(AUDIO_BUS_PREFIX + "bus", "Master")
-		ProjectSettings.add_property_info({
-			"name": AUDIO_BUS_PREFIX + "bus",
-			"type": TYPE_STRING,
-			"hint": PROPERTY_HINT_NONE,
-		})
+		(
+			ProjectSettings
+			. add_property_info(
+				{
+					"name": AUDIO_BUS_PREFIX + "bus",
+					"type": TYPE_STRING,
+					"hint": PROPERTY_HINT_NONE,
+				}
+			)
+		)
 	if not ProjectSettings.has_setting(AUDIO_BUS_PREFIX + "reverb_bus_name"):
 		ProjectSettings.set_setting(AUDIO_BUS_PREFIX + "reverb_bus_name", "ResonanceReverb")
-		ProjectSettings.add_property_info({
-			"name": AUDIO_BUS_PREFIX + "reverb_bus_name",
-			"type": TYPE_STRING,
-			"hint": PROPERTY_HINT_NONE,
-		})
+		(
+			ProjectSettings
+			. add_property_info(
+				{
+					"name": AUDIO_BUS_PREFIX + "reverb_bus_name",
+					"type": TYPE_STRING,
+					"hint": PROPERTY_HINT_NONE,
+				}
+			)
+		)
+
 
 func _register_logger_project_settings() -> void:
 	const PREFIX := "audio/nexus_resonance/logger/"
@@ -262,21 +338,33 @@ func _register_logger_project_settings() -> void:
 		ProjectSettings.set_setting(PREFIX + "file_path", "user://nexus_resonance_log.ndjson")
 	if not ProjectSettings.has_setting(PREFIX + "steam_audio_verbose"):
 		ProjectSettings.set_setting(PREFIX + "steam_audio_verbose", false)
-		ProjectSettings.add_property_info({
-			"name": PREFIX + "steam_audio_verbose",
-			"type": TYPE_BOOL,
-			"hint": PROPERTY_HINT_NONE,
-		})
+		(
+			ProjectSettings
+			. add_property_info(
+				{
+					"name": PREFIX + "steam_audio_verbose",
+					"type": TYPE_BOOL,
+					"hint": PROPERTY_HINT_NONE,
+				}
+			)
+		)
+
 
 func _register_bake_project_settings() -> void:
 	const BAKE_PREFIX := "audio/nexus_resonance/bake/"
 	if not ProjectSettings.has_setting(BAKE_PREFIX + "output_dir"):
 		ProjectSettings.set_setting(BAKE_PREFIX + "output_dir", "res://audio_data/")
-		ProjectSettings.add_property_info({
-			"name": BAKE_PREFIX + "output_dir",
-			"type": TYPE_STRING,
-			"hint": PROPERTY_HINT_DIR,
-		})
+		(
+			ProjectSettings
+			. add_property_info(
+				{
+					"name": BAKE_PREFIX + "output_dir",
+					"type": TYPE_STRING,
+					"hint": PROPERTY_HINT_DIR,
+				}
+			)
+		)
+
 
 func _register_tool_shortcuts() -> void:
 	var sc_static: Shortcut = Shortcut.new()
@@ -305,6 +393,7 @@ func _register_tool_shortcuts() -> void:
 	ev_bake.command_or_control_autoremap = true
 	sc_bake.events = [ev_bake]
 	_tool_submenu.set_item_shortcut(ToolMenuId.BAKE_ALL_PROBE_VOLUMES, sc_bake, true)
+
 
 func _on_tool_submenu_id_pressed(id: int) -> void:
 	match id:
@@ -342,6 +431,7 @@ func _on_tool_submenu_id_pressed(id: int) -> void:
 		ToolMenuId.UNLINK_PROBE_VOLUME_REFS:
 			_on_tool_unlink_probe_refs(null)
 
+
 func _on_tool_bake_all_probe_volumes(_unused: Variant = null) -> void:
 	var root: Node = get_editor_interface().get_edited_scene_root()
 	if not root:
@@ -350,12 +440,19 @@ func _on_tool_bake_all_probe_volumes(_unused: Variant = null) -> void:
 	var volumes: Array[Node] = []
 	ResonanceSceneUtils.collect_resonance_probe_volumes(root, volumes)
 	if volumes.is_empty():
-		ResonanceEditorDialogs.show_warning(get_editor_interface(), tr(UIStrings.WARN_NO_PROBE_VOLUMES))
+		ResonanceEditorDialogs.show_warning(
+			get_editor_interface(), tr(UIStrings.WARN_NO_PROBE_VOLUMES)
+		)
 		return
 	if not bake_runner:
-		ResonanceEditorDialogs.show_critical(get_editor_interface(), tr(UIStrings.ERR_BAKE_RUNNER_NOT_INIT), tr(UIStrings.DIALOG_BAKE_FAILED_TITLE))
+		ResonanceEditorDialogs.show_critical(
+			get_editor_interface(),
+			tr(UIStrings.ERR_BAKE_RUNNER_NOT_INIT),
+			tr(UIStrings.DIALOG_BAKE_FAILED_TITLE)
+		)
 		return
 	bake_runner.run_bake(volumes)
+
 
 func _on_tool_clear_probe_batches(_unused: Variant = null) -> void:
 	if Engine.has_singleton("ResonanceServer"):
@@ -364,7 +461,12 @@ func _on_tool_clear_probe_batches(_unused: Variant = null) -> void:
 			srv.clear_probe_batches()
 			ResonanceEditorDialogs.show_info(tr(UIStrings.INFO_PROBE_BATCHES_CLEARED))
 	else:
-		ResonanceEditorDialogs.show_critical(get_editor_interface(), tr(UIStrings.ERR_GDEXTENSION_NOT_LOADED), tr(UIStrings.DIALOG_GDEXTENSION_NOT_LOADED_TITLE))
+		ResonanceEditorDialogs.show_critical(
+			get_editor_interface(),
+			tr(UIStrings.ERR_GDEXTENSION_NOT_LOADED),
+			tr(UIStrings.DIALOG_GDEXTENSION_NOT_LOADED_TITLE)
+		)
+
 
 func _on_tool_unlink_probe_refs(_unused: Variant = null) -> void:
 	var root: Node = get_editor_interface().get_edited_scene_root()
@@ -376,14 +478,18 @@ func _on_tool_unlink_probe_refs(_unused: Variant = null) -> void:
 		if n.is_class("ResonanceProbeVolume"):
 			selected_volumes.append(n)
 	if selected_volumes.is_empty():
-		ResonanceEditorDialogs.show_warning(get_editor_interface(), tr(UIStrings.WARN_SELECT_PROBE_VOLUMES))
+		ResonanceEditorDialogs.show_warning(
+			get_editor_interface(), tr(UIStrings.WARN_SELECT_PROBE_VOLUMES)
+		)
 		return
 	var ur: EditorUndoRedoManager = get_undo_redo()
 	ur.create_action("Nexus Resonance: Unlink Probe Volume References")
-	var result: Dictionary = { "count": 0, "nodes": [] }
+	var result: Dictionary = {"count": 0, "nodes": []}
 	_collect_probe_refs_to_clear(root, root, selected_volumes, result)
 	if result["count"] == 0:
-		ResonanceEditorDialogs.show_warning(get_editor_interface(), tr(UIStrings.WARN_NO_PLAYER_REFS))
+		ResonanceEditorDialogs.show_warning(
+			get_editor_interface(), tr(UIStrings.WARN_NO_PLAYER_REFS)
+		)
 		return
 	var nodes_to_clear: Array[Node] = []
 	for n in result["nodes"]:
@@ -393,9 +499,14 @@ func _on_tool_unlink_probe_refs(_unused: Variant = null) -> void:
 		ur.add_do_property(n, "pathing_probe_volume", NodePath())
 		ur.add_undo_property(n, "pathing_probe_volume", old_path)
 	ur.commit_action()
-	ResonanceEditorDialogs.show_success_toast(get_editor_interface(), tr(UIStrings.INFO_UNLINK_DONE) % result["count"])
+	ResonanceEditorDialogs.show_success_toast(
+		get_editor_interface(), tr(UIStrings.INFO_UNLINK_DONE) % result["count"]
+	)
 
-func _collect_probe_refs_to_clear(node: Node, scene_root: Node, targets: Array[Node], result: Dictionary) -> void:
+
+func _collect_probe_refs_to_clear(
+	node: Node, scene_root: Node, targets: Array[Node], result: Dictionary
+) -> void:
 	if node.has_method("get_pathing_probe_volume") and node.has_method("set_pathing_probe_volume"):
 		var path: NodePath = node.get_pathing_probe_volume()
 		if not path.is_empty():

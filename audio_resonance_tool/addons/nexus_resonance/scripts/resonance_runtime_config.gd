@@ -14,7 +14,15 @@ signal pathing_enabled_changed(enabled: bool)
 # --- Audio ---
 @export_group("Audio")
 ## Sample rate override. Use Godot Mix Rate = follow project settings. Other rates override; mismatch may cause audio issues (no resampling).
-@export_enum("Use Godot Mix Rate:0", "22050 Hz:22050", "44100 Hz:44100", "48000 Hz:48000", "96000 Hz:96000", "192000 Hz:192000") var sample_rate_override: int = 0
+@export_enum(
+	"Use Godot Mix Rate:0",
+	"22050 Hz:22050",
+	"44100 Hz:44100",
+	"48000 Hz:48000",
+	"96000 Hz:96000",
+	"192000 Hz:192000"
+)
+var sample_rate_override: int = 0
 ## Steam Audio processing block size. Auto = derive from Project Settings (audio/driver/output_latency). Manual = override for performance tuning.
 @export_enum("Auto:0", "256:256", "512:512", "1024:1024", "2048:2048") var audio_frame_size: int = 0
 ## Target bus for Direct + Pathing (player output). Empty = Master. Fallback when players use Global bus override.
@@ -43,8 +51,10 @@ signal pathing_enabled_changed(enabled: bool)
 ## When sources use "Use Global" reflections_type: Baked = probe interpolation; Realtime = raytracing (requires realtime_rays > 0).
 @export_enum("Baked:0", "Realtime:1") var default_reflections_mode: int = 0
 var _reflection_type: int = Constants.REFLECTION_TYPE_CONVOLUTION
-## Reverb algorithm. Parametric (fastest). Convolution uses ReflectionMixer (bundled convolutions). Hybrid = convolution + parametric tail (no mixer; can be slower than Convolution – reduce hybrid_reverb_transition_time and ambisonic_order for better perf). TAN = AMD GPU only.
-@export_enum("Convolution:0", "Parametric:1", "Hybrid:2", "TrueAudio Next (AMD GPU):3") var reflection_type: int:
+## Reverb algorithm. Parametric (fastest). Convolution uses ReflectionMixer (bundled convolutions).
+## Hybrid = convolution + parametric tail (no mixer; can be slower than Convolution – reduce hybrid_reverb_transition_time and ambisonic_order for better perf). TAN = AMD GPU only.
+@export_enum("Convolution:0", "Parametric:1", "Hybrid:2", "TrueAudio Next (AMD GPU):3")
+var reflection_type: int:
 	get:
 		return _reflection_type
 	set(v):
@@ -55,8 +65,19 @@ var _reflection_type: int = Constants.REFLECTION_TYPE_CONVOLUTION
 ## Max IR/reverb tail duration (s). Unity: Real Time Duration / Baking Duration. Longer tails need more memory and CPU.
 @export_range(0.1, 10.0, 0.1) var max_reverb_duration: float = 2.0
 var _realtime_rays: int = 0
-## Realtime raytracing rays. 0 = baked only. 64–8192 = realtime. Requires Embree on host; Android = 0.
-@export_enum("Baked Only:0", "64 Rays:64", "128 Rays:128", "256 Rays:256", "512 Rays:512", "1024 Rays:1024", "2048 Rays:2048", "4096 Rays:4096", "8192 Rays:8192") var realtime_rays: int:
+## Realtime raytracing rays. 0 = baked only. 64–8192 = realtime simulation (uses [member scene_type]; on platforms without Embree/OpenCL the native layer falls back to Default tracer).
+@export_enum(
+	"Baked Only:0",
+	"64 Rays:64",
+	"128 Rays:128",
+	"256 Rays:256",
+	"512 Rays:512",
+	"1024 Rays:1024",
+	"2048 Rays:2048",
+	"4096 Rays:4096",
+	"8192 Rays:8192"
+)
+var realtime_rays: int:
 	get:
 		return _realtime_rays
 	set(v):
@@ -133,6 +154,7 @@ var _scene_type: int = 1
 ## Direct runs every tick; Reflections+Pathing only when this many seconds elapsed. 0 = every tick (smoother pathing, more CPU). 0.1 = 100ms default.
 @export_range(0.0, 1.0, 0.01) var simulation_update_interval: float = 0.1
 
+
 func _validate_property(property: Dictionary) -> void:
 	if property.name in ["hybrid_reverb_transition_time", "hybrid_reverb_overlap_percent"]:
 		if reflection_type != Constants.REFLECTION_TYPE_HYBRID:
@@ -140,26 +162,36 @@ func _validate_property(property: Dictionary) -> void:
 	elif property.name in ["opencl_device_type", "opencl_device_index"]:
 		if scene_type != 2 and reflection_type != Constants.REFLECTION_TYPE_TAN:
 			property["usage"] = property["usage"] | PROPERTY_USAGE_READ_ONLY
-	elif property.name in ["realtime_irradiance_min_distance", "realtime_num_diffuse_samples", "realtime_bounces", "realtime_simulation_duration"]:
+	elif (
+		property.name
+		in [
+			"realtime_irradiance_min_distance",
+			"realtime_num_diffuse_samples",
+			"realtime_bounces",
+			"realtime_simulation_duration"
+		]
+	):
 		if realtime_rays == 0:
 			property["usage"] = property["usage"] | PROPERTY_USAGE_READ_ONLY
 	elif property.name == "pathing_normalize_eq":
 		if not pathing_enabled:
 			property["usage"] = property["usage"] | PROPERTY_USAGE_READ_ONLY
 
+
 ## Returns effective bus for Direct + Pathing. Empty config = Master.
 func get_bus_effective() -> StringName:
 	return bus if not str(bus).is_empty() else &"Master"
+
 
 ## Returns effective reverb bus name. Empty config = ResonanceReverb.
 func get_reverb_bus_name_effective() -> StringName:
 	return reverb_bus_name if not str(reverb_bus_name).is_empty() else &"ResonanceReverb"
 
-## Returns effective realtime_rays for the given OS. Android has no Embree, so always 0.
+
+## Returns realtime_rays unchanged for all platforms. [param os_name] is reserved for future per-OS caps; callers should pass [method OS.get_name].
 static func get_effective_realtime_rays(realtime_rays: int, os_name: String) -> int:
-	if os_name == "Android" and realtime_rays > 0:
-		return 0
 	return realtime_rays
+
 
 ## Derives Godot mix buffer size from Project Settings (audio/driver/output_latency). Matches reverb bus frame_count.
 static func _get_audio_frame_size_from_project() -> int:
@@ -183,18 +215,26 @@ static func _get_audio_frame_size_from_project() -> int:
 			best = c
 	return best
 
+
 ## Returns config dictionary for init_audio_engine. Includes sample_rate from AudioServer or sample_rate_override.
 func get_config() -> Dictionary:
 	var rays := get_effective_realtime_rays(realtime_rays, OS.get_name())
 	var mix_rate := int(AudioServer.get_mix_rate())
 	var rate := sample_rate_override if sample_rate_override > 0 else mix_rate
 	if sample_rate_override > 0 and sample_rate_override != mix_rate:
-		push_warning("Nexus Resonance: sample_rate_override (%d) differs from Godot mix rate (%d). No resampling; audio may be affected." % [sample_rate_override, mix_rate])
-	var frame_size := audio_frame_size if audio_frame_size > 0 else _get_audio_frame_size_from_project()
+		push_warning(
+			(
+				"Nexus Resonance: sample_rate_override (%d) differs from Godot mix rate (%d). No resampling; audio may be affected."
+				% [sample_rate_override, mix_rate]
+			)
+		)
+	var frame_size := (
+		audio_frame_size if audio_frame_size > 0 else _get_audio_frame_size_from_project()
+	)
 	return {
 		"sample_rate": rate,
 		"audio_frame_size": frame_size,
-		"audio_frame_size_was_auto": (audio_frame_size == 0),
+		"audio_frame_size_was_auto": audio_frame_size == 0,
 		"ambisonic_order": ambisonic_order,
 		"simulation_cpu_cores_percent": simulation_cpu_cores_percent,
 		"max_reverb_duration": max_reverb_duration,
@@ -232,6 +272,7 @@ func get_config() -> Dictionary:
 		"output_direct": true,
 		"output_reverb": true
 	}
+
 
 ## Creates a default runtime config for editor/fallback when no ResonanceRuntime in scene.
 static func create_default() -> ResonanceRuntimeConfig:

@@ -13,6 +13,11 @@ void ResonanceAmbisonicProcessor::initialize(IPLContext p_context, int p_sample_
     if (init_flags != AmbisonicInitFlags::NONE)
         return;
 
+    if (!p_context) {
+        ResonanceLog::error("ResonanceAmbisonicProcessor: Context is null.");
+        return;
+    }
+
     context = p_context;
     frame_size = p_frame_size;
     sample_rate = p_sample_rate;
@@ -107,6 +112,15 @@ void ResonanceAmbisonicProcessor::process(const std::vector<float>& input_data, 
             for (int i = 0; i < out_buffer.numChannels && out_buffer.data && out_buffer.data[i]; i++) {
                 memset(out_buffer.data[i], 0, frame_size * sizeof(float));
             }
+        }
+        return;
+    }
+
+    int num_channels_full = (ambisonic_order + 1) * (ambisonic_order + 1);
+    size_t required_samples = (size_t)frame_size * (size_t)num_channels_full;
+    if (input_data.size() < required_samples) {
+        for (int i = 0; i < out_buffer.numChannels && out_buffer.data && out_buffer.data[i]; i++) {
+            memset(out_buffer.data[i], 0, frame_size * sizeof(float));
         }
         return;
     }
