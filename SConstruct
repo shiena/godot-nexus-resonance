@@ -110,41 +110,27 @@ else:
         source=sources,
     )
 
-# Copy Steam Audio runtime libraries into the build output so the extension can load at runtime.
-# Per-platform library map: { source_subdir: [files] }
-_steam_audio_copy_map = {
-    "windows": {
-        "src": "windows-x64" if env.get("arch") == "x86_64" else "windows-x86",
-        "files": ["phonon.dll", "GPUUtilities.dll", "TrueAudioNext.dll"],
-    },
-    "linux": {
-        "src": "linux-x64" if env.get("arch") == "x86_64" else "linux-x86",
-        "files": ["libphonon.so"],
-    },
-    "macos": {
-        "src": "osx",
-        "files": ["libphonon.dylib"],
-    },
-    "android": {
-        "src": {"arm64": "android-armv8", "x86_64": "android-x64", "arm32": "android-armv7", "x86_32": "android-x86"}.get(env.get("arch", "arm64"), "android-armv8"),
-        "files": ["libphonon.so"],
-    },
-}
+# Copy Steam Audio runtime DLLs for Windows so nexus_resonance.dll can load (avoids Error 126: "Das angegebene Modul wurde nicht gefunden")
+if env["platform"] == "windows":
+    steam_src = os.path.join(steam_audio_lib, "windows-x64" if env["arch"] == "x86_64" else "windows-x86")
+    steam_dlls = ["phonon.dll", "GPUUtilities.dll", "TrueAudioNext.dll"]
 
-_platform = env["platform"]
-_installed_libs = []
-if _platform in _steam_audio_copy_map:
-    _copy_info = _steam_audio_copy_map[_platform]
-    _steam_src_dir = os.path.join(steam_audio_lib, _copy_info["src"])
-    _steam_files = _copy_info["files"]
+    def copy_steam_dlls(target, source, env):
+        if not os.path.isdir(steam_src):
+            print("WARNING: Steam Audio lib not found at %s. Run: python scripts/install_steam_audio.py" % steam_src)
+            return 0
+        dst = os.path.join(target_base, "windows")
+        os.makedirs(dst, exist_ok=True)
+        for dll in steam_dlls:
+            src_path = os.path.join(steam_src, dll)
+            if os.path.isfile(src_path):
+                shutil.copy2(src_path, dst)
+                print("Copied %s -> %s" % (dll, dst))
+            else:
+                print("WARNING: %s not found in %s" % (dll, steam_src))
+        return 0
 
-    _installed_libs = []
-    for _f in _steam_files:
-        _src_path = os.path.join(_steam_src_dir, _f)
-        if os.path.isfile(_src_path):
-            _installed_libs += env.Install(target_path, _src_path)
-        else:
-            print("WARNING: %s not found in %s" % (_f, _steam_src_dir))
+    env.AddPostAction(library, env.Action(copy_steam_dlls))
 
 # --- C++ UNIT TESTS (no Godot/Steam Audio) ---
 build_tests = ARGUMENTS.get("build_tests", "1") == "1"
@@ -159,7 +145,7 @@ if build_tests:
     env.Alias("test", test_exe)
 
 # Include compile_commands.json in default target when compiledb=1 (for C++ IntelliSense)
-default_targets = [library] + _installed_libs
+default_targets = [library]
 if test_exe:
     default_targets.append(test_exe)
 if env.get("compiledb", False):

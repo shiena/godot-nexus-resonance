@@ -57,6 +57,18 @@ jobs:
           restore-keys: |
             scons-Linux-all-
 
+      - name: Create bin directories
+        run: |
+          BIN=audio_resonance_tool/addons/nexus_resonance/bin
+          mkdir -p "$BIN"/{linux,android/arm64-v8a,android/x86_64}
+
+      - name: Copy Steam Audio runtime libraries
+        run: |
+          BIN=audio_resonance_tool/addons/nexus_resonance/bin
+          cp src/lib/steamaudio/lib/linux-x64/libphonon.so "$BIN/linux/"
+          cp src/lib/steamaudio/lib/android-armv8/libphonon.so "$BIN/android/arm64-v8a/"
+          cp src/lib/steamaudio/lib/android-x64/libphonon.so "$BIN/android/x86_64/"
+
       - name: Build Linux
         env:
           SCONS_CACHE: ${{ github.workspace }}/.scons-cache
@@ -121,6 +133,19 @@ jobs:
           restore-keys: |
             scons-Windows-all-
 
+      - name: Create bin directories
+        run: |
+          BIN=audio_resonance_tool/addons/nexus_resonance/bin
+          mkdir -p "$BIN"/windows
+
+      - name: Copy Steam Audio runtime libraries
+        run: |
+          BIN=audio_resonance_tool/addons/nexus_resonance/bin
+          cp src/lib/steamaudio/lib/windows-x64/phonon.dll "$BIN/windows/"
+          for dll in GPUUtilities.dll TrueAudioNext.dll; do
+            [ -f "src/lib/steamaudio/lib/windows-x64/$dll" ] && cp "src/lib/steamaudio/lib/windows-x64/$dll" "$BIN/windows/"
+          done
+
       - name: Build Windows
         env:
           SCONS_CACHE: ${{ github.workspace }}/.scons-cache
@@ -170,11 +195,16 @@ jobs:
           restore-keys: |
             scons-macOS-all-
 
-      - name: Copy Steam Audio static library for iOS distribution
+      - name: Create bin directories
         run: |
-          BIN=audio_resonance_tool/addons/nexus_resonance/bin/ios
-          mkdir -p "$BIN"
-          cp src/lib/steamaudio/lib/ios/libphonon.a "$BIN/"
+          BIN=audio_resonance_tool/addons/nexus_resonance/bin
+          mkdir -p "$BIN"/{macos,ios}
+
+      - name: Copy Steam Audio runtime libraries
+        run: |
+          BIN=audio_resonance_tool/addons/nexus_resonance/bin
+          cp src/lib/steamaudio/lib/osx/libphonon.dylib "$BIN/macos/"
+          cp src/lib/steamaudio/lib/ios/libphonon.a "$BIN/ios/"
 
       - name: Build iOS dependencies
         run: make ios-deps

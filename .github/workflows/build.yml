@@ -30,7 +30,6 @@ jobs:
             src:
               - 'src/**'
               - 'audio_resonance_tool/addons/nexus_resonance/**'
-              - 'SConstruct'
 
       - id: result
         run: |

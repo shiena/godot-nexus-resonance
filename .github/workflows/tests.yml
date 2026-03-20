@@ -25,7 +25,6 @@ jobs:
             src:
               - 'src/**'
               - 'audio_resonance_tool/addons/nexus_resonance/**'
-              - 'SConstruct'
             gd:
               - 'audio_resonance_tool/addons/nexus_resonance/**/*.gd'
               - 'audio_resonance_tool/test/**/*.gd'
@@ -73,6 +72,12 @@ jobs:
 
       - name: Install SCons
         run: pip install scons
+
+      - name: Create bin directory
+        run: mkdir -p audio_resonance_tool/addons/nexus_resonance/bin/linux
+
+      - name: Copy Steam Audio runtime libraries
+        run: cp src/lib/steamaudio/lib/linux-x64/libphonon.so audio_resonance_tool/addons/nexus_resonance/bin/linux/
 
       - name: Clang-format check
         run: |
@@ -137,6 +142,9 @@ jobs:
       - name: Install SCons
         run: pip install scons
 
+      - name: Create bin directory
+        run: mkdir -p audio_resonance_tool/addons/nexus_resonance/bin/windows
+
       - name: Build C++ extension and tests
         env:
           SCONS_CACHE: ${{ github.workspace }}/.scons-cache
@@ -163,7 +171,7 @@ jobs:
 
       - name: Install GUT test framework
         run: |
-          GUT_VERSION="9.6.0"
+          GUT_VERSION="9.3.0"
           curl -fsSL -o /tmp/gut.zip "https://github.com/bitwes/Gut/archive/refs/tags/v${GUT_VERSION}.zip"
           unzip -qo /tmp/gut.zip -d /tmp/gut
           mkdir -p audio_resonance_tool/addons/gut
