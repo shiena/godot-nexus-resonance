@@ -46,8 +46,8 @@ void ResonanceReflectionProcessor::initialize(IPLContext p_context, int p_sample
     IPLReflectionEffectSettings reflSettings{};
     reflSettings.type = effectType;
     reflSettings.irSize = (reflection_type == resonance::kReflectionParametric)
-            ? static_cast<IPLint32>(1)
-            : static_cast<IPLint32>(resonance::reverb_ir_size_samples(sample_rate, resonance::kDefaultReverbDurationSec)); // TAN uses same as Convolution
+                              ? static_cast<IPLint32>(1)
+                              : static_cast<IPLint32>(resonance::reverb_ir_size_samples(sample_rate, resonance::kDefaultReverbDurationSec)); // TAN uses same as Convolution
     reflSettings.numChannels = num_channels;
 
     if (iplReflectionEffectCreate(context, &audioSettings, &reflSettings, &reflection_effect) != IPL_STATUS_SUCCESS) {

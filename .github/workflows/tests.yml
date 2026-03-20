@@ -76,11 +76,8 @@ jobs:
 
       - name: Clang-format check
         run: |
-          sudo apt-get update && sudo apt-get install -y clang-format
-          find src -type f \( -name "*.cpp" -o -name "*.h" \) ! -path "*/lib/*" ! -path "*/gen/*" | xargs clang-format -i
-          echo "--- Diff (clang-format expected changes) ---"
-          git diff
-          git diff --exit-code || exit 1
+          sudo apt-get update && sudo apt-get install -y clang-format-14
+          bash scripts/check_clang_format.sh
 
       - name: Build C++ extension and tests
         env:
@@ -94,7 +91,7 @@ jobs:
         run: |
           sudo apt-get install -y clang-tidy
           if [ -f compile_commands.json ]; then
-            find src -type f \( -name "*.cpp" -o -name "*.h" \) ! -path "*/lib/*" ! -path "*/gen/*" | head -80 | xargs -r clang-tidy -p . -checks='-*,bugprone-*,cert-*,clang-analyzer-*' --warnings-as-errors=* 2>/dev/null || true
+            find src -type f \( -name "*.cpp" -o -name "*.h" \) ! -path "*/lib/*" ! -path "*/gen/*" | head -80 | xargs -r clang-tidy -p . -checks='-*,bugprone-*,-bugprone-easily-swappable-parameters,cert-*,clang-analyzer-*' --warnings-as-errors=* 2>/dev/null || true
           fi
 
       - name: Upload bin artifact

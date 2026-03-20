@@ -259,7 +259,7 @@ bool ResonanceServer::_init_scene_and_simulator() {
         rs.type = (reflection_type == resonance::kReflectionTan) ? IPL_REFLECTIONEFFECTTYPE_TAN : IPL_REFLECTIONEFFECTTYPE_CONVOLUTION;
         rs.numChannels = get_num_channels_for_order();
         rs.irSize = static_cast<IPLint32>(
-                std::lroundf(resonance::sanitize_audio_float(max_reverb_duration) * static_cast<float>(current_sample_rate)));
+            std::lroundf(resonance::sanitize_audio_float(max_reverb_duration) * static_cast<float>(current_sample_rate)));
         IPLReflectionMixer tmp_mixer = nullptr;
         if (iplReflectionMixerCreate(_ctx(), &audioSettings, &rs, &tmp_mixer) != IPL_STATUS_SUCCESS) {
             ResonanceLog::error("ResonanceServer: iplReflectionMixerCreate failed.");

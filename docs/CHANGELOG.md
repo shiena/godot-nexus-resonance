@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **ResonanceServer build layout** – Implementation split from monolithic `resonance_server.cpp` into focused translation units (`resonance_server_lifecycle.cpp`, `resonance_server_callbacks.cpp`, `resonance_server_listener.cpp`, `resonance_server_sources.cpp`, `resonance_server_fetch.cpp`, `resonance_server_scene_io.cpp`, `resonance_server_baking.cpp`, `resonance_server_debug_bind.cpp`). `SourceManager` / `ProbeBatchManager` moved to `handle_manager.cpp`. Public API and `resonance_server.h` unchanged.
-- **Android: realtime rays** – `ResonanceRuntimeConfig.get_effective_realtime_rays` no longer forces `0` on Android. Realtime simulation uses the configured `scene_type`; Embree/Radeon Rays fall back to Steam Audio’s built-in (Default) tracer on device, matching Steam Audio Unity behavior. **If your project assumed “no realtime on Android,”** set `realtime_rays` to **Baked Only (0)** or rely on baked probes to avoid extra CPU use.
+- **Android: realtime rays** – `ResonanceRuntimeConfig.get_effective_realtime_rays` no longer forces `0` on Android. Realtime simulation uses the configured `scene_type`; Embree/Radeon Rays fall back to Steam Audio’s built-in (Default) tracer on device.
 
 ### Fixed
 

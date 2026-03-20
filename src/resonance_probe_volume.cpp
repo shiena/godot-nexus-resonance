@@ -1,11 +1,11 @@
 #include "resonance_probe_volume.h"
 #include "resonance_constants.h"
 #include "resonance_log.h"
-#include <cstdint>
 #include "resonance_player.h"
 #include "resonance_server.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <godot_cpp/classes/dir_access.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/global_constants.hpp>

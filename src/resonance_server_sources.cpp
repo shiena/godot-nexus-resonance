@@ -1,9 +1,9 @@
 #include "resonance_constants.h"
 #include "resonance_log.h"
 #include "resonance_math.h"
-#include <cstdint>
 #include "resonance_server.h"
 #include "resonance_utils.h"
+#include <cstdint>
 #include <godot_cpp/variant/utility_functions.hpp>
 
 using namespace godot;
@@ -131,7 +131,7 @@ void ResonanceServer::set_source_attenuation_callback_data(int32_t handle, int a
     d.max_distance = max_distance;
     const int64_t curve_sz = curve_samples.size();
     d.num_curve_samples = static_cast<int>((!curve_samples.is_empty() && curve_sz <= resonance::kAttenuationCurveSamples) ? curve_sz
-                                                                                                                         : static_cast<int64_t>(resonance::kAttenuationCurveSamples));
+                                                                                                                          : static_cast<int64_t>(resonance::kAttenuationCurveSamples));
     for (int i = 0; i < d.num_curve_samples && i < curve_samples.size(); i++) {
         d.curve_samples[i] = curve_samples[i];
     }

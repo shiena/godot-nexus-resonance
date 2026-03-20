@@ -1,12 +1,12 @@
 #include "resonance_scene_manager.h"
 #include "ray_trace_debug_context.h"
 #include "resonance_constants.h"
-#include <cstdint>
 #include "resonance_geometry.h"
 #include "resonance_geometry_asset.h"
 #include "resonance_ipl_guard.h"
 #include "resonance_log.h"
 #include "resonance_utils.h"
+#include <cstdint>
 #include <cstring>
 #include <godot_cpp/classes/dir_access.hpp>
 #include <godot_cpp/classes/engine.hpp>
