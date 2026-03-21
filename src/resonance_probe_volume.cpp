@@ -501,8 +501,8 @@ void ResonanceProbeVolume::_prepare_and_execute_bake(const PackedVector3Array* p
         }
         String base_dir = resonance::kProbeBakeOutputDir;
         ProjectSettings* ps = ProjectSettings::get_singleton();
-        if (ps && ps->has_setting("audio/nexus_resonance/bake/output_dir")) {
-            base_dir = String(ps->get_setting("audio/nexus_resonance/bake/output_dir"));
+        if (ps && ps->has_setting(String(resonance::kProjectSettingsResonancePrefix) + "bake/output_dir")) {
+            base_dir = String(ps->get_setting(String(resonance::kProjectSettingsResonancePrefix) + "bake/output_dir"));
             if (!base_dir.ends_with("/"))
                 base_dir += "/";
         }

@@ -12,6 +12,7 @@
 #include <godot_cpp/classes/resource_saver.hpp>
 #include <godot_cpp/classes/standard_material3d.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
+#include <cstdint>
 #include <phonon.h>
 #include <vector>
 
@@ -200,10 +201,31 @@ void ResonanceGeometry::_clear_meshes_impl() {
     }
 
     // Clean up Steam Audio resources. Caller must hold simulation_mutex when server is valid.
+    // Dynamic geometry: static_meshes live in sub_scene; instanced_mesh is in the global scene.
+    // Detach InstancedMesh from the global scene before removing static meshes from sub_scene (runtime crash otherwise).
     if (server && server->is_initialized()) {
-        for (auto& mesh : static_meshes) {
-            iplStaticMeshRemove(mesh, server->get_scene_handle());
-            iplStaticMeshRelease(&mesh);
+        if (dynamic_object && instanced_mesh) {
+            IPLScene global_scene_handle = server->get_scene_handle();
+            iplInstancedMeshRemove(instanced_mesh, global_scene_handle);
+            iplInstancedMeshRelease(&instanced_mesh);
+            instanced_mesh = nullptr;
+            // Phonon: InstancedMeshRemove requires iplSceneCommit on the parent scene before other scene edits.
+            if (global_scene_handle)
+                iplSceneCommit(global_scene_handle);
+        }
+
+        IPLScene scene_for_static = dynamic_object ? sub_scene : server->get_scene_handle();
+        // Dynamic sub_scene: after InstancedMesh detach+commit on global scene, per-mesh Remove/Release on
+        // sub_scene can crash (Phonon 4.8.x). Drop handles and release the sub_scene only.
+        if (dynamic_object && sub_scene) {
+            static_meshes.clear();
+        } else {
+            for (auto& mesh : static_meshes) {
+                if (scene_for_static)
+                    iplStaticMeshRemove(mesh, scene_for_static);
+                iplStaticMeshRelease(&mesh);
+            }
+            static_meshes.clear();
         }
 
         if (instanced_mesh) {
@@ -211,25 +233,37 @@ void ResonanceGeometry::_clear_meshes_impl() {
             iplInstancedMeshRelease(&instanced_mesh);
         }
 
-        // Notify change if we removed triangles
+        // Notify change if we removed triangles (caller holds simulation_mutex via _clear_meshes)
         if (triangle_count > 0) {
-            server->notify_geometry_changed(-triangle_count);
+            server->notify_geometry_changed_assume_locked(-triangle_count);
         }
     } else {
         // Fallback cleanup (just release handles, don't touch scene)
-        for (auto& mesh : static_meshes)
-            iplStaticMeshRelease(&mesh);
+        if (dynamic_object && instanced_mesh) {
+            iplInstancedMeshRelease(&instanced_mesh);
+            instanced_mesh = nullptr;
+        }
+        if (dynamic_object && sub_scene) {
+            static_meshes.clear();
+        } else {
+            for (auto& mesh : static_meshes)
+                iplStaticMeshRelease(&mesh);
+            static_meshes.clear();
+        }
         if (instanced_mesh)
             iplInstancedMeshRelease(&instanced_mesh);
     }
 
     // Sub-scene belongs to this object, not the global scene directly
     if (sub_scene) {
+        if (dynamic_object)
+            iplSceneCommit(sub_scene);
         iplSceneRelease(&sub_scene);
         sub_scene = nullptr;
     }
 
     static_meshes.clear();
+    instanced_mesh = nullptr;
     triangle_count = 0;
 }
 
@@ -624,27 +658,50 @@ void ResonanceGeometry::discard_meshes_before_scene_release() {
     // explicitly removed and released. Static meshes are in global scene (static path) or sub_scene (dynamic path).
     if (server && server->is_initialized()) {
         auto lock = server->scoped_simulation_lock();
+        if (dynamic_object && instanced_mesh) {
+            IPLScene global_scene_handle = server->get_scene_handle();
+            iplInstancedMeshRemove(instanced_mesh, global_scene_handle);
+            iplInstancedMeshRelease(&instanced_mesh);
+            instanced_mesh = nullptr;
+            if (global_scene_handle)
+                iplSceneCommit(global_scene_handle);
+        }
         IPLScene scene_for_static = dynamic_object ? sub_scene : server->get_scene_handle();
-        for (auto& mesh : static_meshes) {
-            if (scene_for_static) {
-                iplStaticMeshRemove(mesh, scene_for_static);
+        if (dynamic_object && sub_scene) {
+            static_meshes.clear();
+        } else {
+            for (auto& mesh : static_meshes) {
+                if (scene_for_static)
+                    iplStaticMeshRemove(mesh, scene_for_static);
+                iplStaticMeshRelease(&mesh);
             }
-            iplStaticMeshRelease(&mesh);
+            static_meshes.clear();
         }
         if (instanced_mesh) {
             iplInstancedMeshRemove(instanced_mesh, server->get_scene_handle());
             iplInstancedMeshRelease(&instanced_mesh);
         }
         if (triangle_count > 0) {
-            server->notify_geometry_changed(-triangle_count);
+            server->notify_geometry_changed_assume_locked(-triangle_count);
         }
         if (sub_scene) {
+            if (dynamic_object)
+                iplSceneCommit(sub_scene);
             iplSceneRelease(&sub_scene);
             sub_scene = nullptr;
         }
     } else {
-        for (auto& mesh : static_meshes) {
-            iplStaticMeshRelease(&mesh);
+        if (dynamic_object && instanced_mesh) {
+            iplInstancedMeshRelease(&instanced_mesh);
+            instanced_mesh = nullptr;
+        }
+        if (dynamic_object && sub_scene) {
+            static_meshes.clear();
+        } else {
+            for (auto& mesh : static_meshes) {
+                iplStaticMeshRelease(&mesh);
+            }
+            static_meshes.clear();
         }
         if (instanced_mesh) {
             iplInstancedMeshRelease(&instanced_mesh);

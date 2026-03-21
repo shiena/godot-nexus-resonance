@@ -7,7 +7,7 @@ class_name ResonancePaths
 const PATH_AUDIO_DATA := "res://audio_data/"
 const PATH_RESONANCE_MESHES := "res://resonance_meshes/"
 
-const _OUTPUT_DIR_SETTING := "audio/nexus_resonance/bake/output_dir"
+const _OUTPUT_DIR_SETTING := "nexus/resonance/bake/output_dir"
 
 
 ## Returns the audio data output directory (bake, static export). Reads from Project Settings.

@@ -175,14 +175,10 @@ void ResonanceServer::_init_internal() {
     String version_str = String::num_int64(STEAMAUDIO_VERSION_MAJOR) + "." + String::num_int64(STEAMAUDIO_VERSION_MINOR) + "." + String::num_int64(STEAMAUDIO_VERSION_PATCH);
     const char* refl_names[] = {"Convolution", "Parametric", "Hybrid", "TrueAudio Next"};
     int refl_idx = (reflection_type >= resonance::kReflectionConvolution && reflection_type <= resonance::kReflectionTan) ? reflection_type : resonance::kReflectionConvolution;
-    String rays_str = (max_rays == 0) ? "Rays (Baked Only)" : "Rays (Realtime): " + String::num_int64(max_rays);
+    String rays_str = (max_rays == 0) ? "Rays: Baked Only (0)" : "Rays (Realtime): " + String::num_int64(max_rays);
     String engine_msg = "Engine Started (Steam Audio " + version_str + "). Rate: " + String::num_int64(current_sample_rate) +
                         " | Ambient Order: " + ambient_order_ordinal(ambisonic_order) + " | Reflection: " + refl_names[refl_idx] + " | " + rays_str;
     UtilityFunctions::print_rich("[color=cyan]Nexus Resonance:[/color] " + engine_msg);
-    Engine* eng = Engine::get_singleton();
-    if (max_rays == 0 && _uses_convolution_or_hybrid_or_tan() && (!eng || !eng->is_editor_hint())) {
-        UtilityFunctions::push_warning("Nexus Resonance: Rays=0 (Baked Only). Convolution/Hybrid/TAN reverb uses only baked probe data. Bake probes for reverb to work.");
-    }
 }
 
 void ResonanceServer::_init_context_and_devices() {

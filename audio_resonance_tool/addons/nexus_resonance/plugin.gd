@@ -52,13 +52,45 @@ var steam_audio_export_plugin: EditorExportPlugin = null
 const _tool_submenu_name := "Nexus Resonance"
 var _tool_submenu: PopupMenu = null
 
-const AUDIO_BUS_PREFIX := "audio/nexus_resonance/"
+## Project settings root: Nexus → Resonance (bundles with other Nexus addons under [nexus]).
+const SETTINGS_PREFIX := "nexus/resonance/"
+const LEGACY_SETTINGS_PREFIX := "audio/nexus_resonance/"
 
 
 func _enter_tree() -> void:
+	_migrate_legacy_project_settings()
 	_register_logger_project_settings()
 	_register_audio_bus_project_settings()
 	_register_bake_project_settings()
+
+
+func _migrate_legacy_project_settings() -> void:
+	var keys: Array[String] = [
+		"bus",
+		"reverb_bus_name",
+		"bake/output_dir",
+		"logger/categories_enabled",
+		"logger/output_to_file",
+		"logger/file_path",
+		"logger/steam_audio_verbose",
+		"bake_num_rays",
+		"bake_num_bounces",
+		"bake_num_threads",
+		"bake_reflection_type",
+		"bake_pathing_num_samples",
+		"bake_pathing_vis_range",
+		"bake_pathing_path_range",
+		"bake_pathing_radius",
+		"bake_pathing_threshold",
+	]
+	for k in keys:
+		var old_key := LEGACY_SETTINGS_PREFIX + k
+		var new_key := SETTINGS_PREFIX + k
+		if not ProjectSettings.has_setting(old_key):
+			continue
+		if not ProjectSettings.has_setting(new_key):
+			ProjectSettings.set_setting(new_key, ProjectSettings.get_setting(old_key))
+		ProjectSettings.clear(old_key)
 
 	var saver_script: Script = load(PROBE_DATA_SAVER_SCRIPT) as Script
 	if saver_script:
@@ -244,13 +276,13 @@ func _disable_plugin() -> void:
 
 
 func _get_bus_editor() -> StringName:
-	var s: String = ProjectSettings.get_setting(AUDIO_BUS_PREFIX + "bus", "Master")
+	var s: String = ProjectSettings.get_setting(SETTINGS_PREFIX + "bus", "Master")
 	return StringName(s) if not s.is_empty() else &"Master"
 
 
 func _get_reverb_bus_name_editor() -> StringName:
 	var s: String = ProjectSettings.get_setting(
-		AUDIO_BUS_PREFIX + "reverb_bus_name", "ResonanceReverb"
+		SETTINGS_PREFIX + "reverb_bus_name", "ResonanceReverb"
 	)
 	return StringName(s) if not s.is_empty() else BUS_NAME
 
@@ -302,25 +334,25 @@ func _get_plugin_icon() -> Texture2D:
 
 
 func _register_audio_bus_project_settings() -> void:
-	if not ProjectSettings.has_setting(AUDIO_BUS_PREFIX + "bus"):
-		ProjectSettings.set_setting(AUDIO_BUS_PREFIX + "bus", "Master")
+	if not ProjectSettings.has_setting(SETTINGS_PREFIX + "bus"):
+		ProjectSettings.set_setting(SETTINGS_PREFIX + "bus", "Master")
 		(
 			ProjectSettings
 			. add_property_info(
 				{
-					"name": AUDIO_BUS_PREFIX + "bus",
+					"name": SETTINGS_PREFIX + "bus",
 					"type": TYPE_STRING,
 					"hint": PROPERTY_HINT_NONE,
 				}
 			)
 		)
-	if not ProjectSettings.has_setting(AUDIO_BUS_PREFIX + "reverb_bus_name"):
-		ProjectSettings.set_setting(AUDIO_BUS_PREFIX + "reverb_bus_name", "ResonanceReverb")
+	if not ProjectSettings.has_setting(SETTINGS_PREFIX + "reverb_bus_name"):
+		ProjectSettings.set_setting(SETTINGS_PREFIX + "reverb_bus_name", "ResonanceReverb")
 		(
 			ProjectSettings
 			. add_property_info(
 				{
-					"name": AUDIO_BUS_PREFIX + "reverb_bus_name",
+					"name": SETTINGS_PREFIX + "reverb_bus_name",
 					"type": TYPE_STRING,
 					"hint": PROPERTY_HINT_NONE,
 				}
@@ -329,7 +361,7 @@ func _register_audio_bus_project_settings() -> void:
 
 
 func _register_logger_project_settings() -> void:
-	const PREFIX := "audio/nexus_resonance/logger/"
+	const PREFIX := SETTINGS_PREFIX + "logger/"
 	if not ProjectSettings.has_setting(PREFIX + "categories_enabled"):
 		ProjectSettings.set_setting(PREFIX + "categories_enabled", {})
 	if not ProjectSettings.has_setting(PREFIX + "output_to_file"):
@@ -351,7 +383,7 @@ func _register_logger_project_settings() -> void:
 
 
 func _register_bake_project_settings() -> void:
-	const BAKE_PREFIX := "audio/nexus_resonance/bake/"
+	const BAKE_PREFIX := SETTINGS_PREFIX + "bake/"
 	if not ProjectSettings.has_setting(BAKE_PREFIX + "output_dir"):
 		ProjectSettings.set_setting(BAKE_PREFIX + "output_dir", "res://audio_data/")
 		(

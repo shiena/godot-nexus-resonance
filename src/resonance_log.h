@@ -1,9 +1,13 @@
 #ifndef RESONANCE_LOG_H
 #define RESONANCE_LOG_H
 
+#include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/string.hpp>
 
 namespace godot {
+
+/// Forward to ResonanceLogger (GDScript) when available. Category for thematic filtering.
+void resonance_logger_log(const char* category, const char* message, Dictionary data);
 
 class ResonanceLog {
   public:

@@ -570,6 +570,8 @@ class ResonanceServer : public Object {
 
     // Updates
     void notify_geometry_changed(int triangle_delta);
+    /// Same as notify_geometry_changed but caller already holds simulation_mutex (e.g. _clear_meshes_impl).
+    void notify_geometry_changed_assume_locked(int triangle_delta);
     void update_listener(Vector3 pos, Vector3 dir, Vector3 up);
     void set_listener_valid(bool valid);
     /// Notify that the audio listener has changed. Call when listener is created or swapped (e.g. Splitscreen, VR).

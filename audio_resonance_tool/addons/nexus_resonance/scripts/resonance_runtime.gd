@@ -58,6 +58,8 @@ var _activator_fill_calls: int = 0
 
 ## Returns bake params from first Probe Volume with bake_config, or default. Used before init so pathing visibility params are set.
 func _get_bake_params_for_runtime() -> Dictionary:
+	if not is_inside_tree():
+		return ResonanceBakeConfig.create_default().get_bake_params()
 	var tree = get_tree()
 	if not tree:
 		return ResonanceBakeConfig.create_default().get_bake_params()
@@ -187,7 +189,7 @@ func _process(delta: float) -> void:
 			var vp = get_viewport()
 			if vp:
 				var cam = vp.get_camera_3d()
-				if cam:
+				if cam and is_inside_tree():
 					var listeners = get_tree().get_nodes_in_group("resonance_listener")
 					if listeners.is_empty():
 						srv.update_listener(
@@ -275,7 +277,7 @@ func _apply_perspective_correction() -> void:
 func _get_bus_effective() -> StringName:
 	if _runtime:
 		return _runtime.get_bus_effective()
-	var s: String = ProjectSettings.get_setting("audio/nexus_resonance/bus", "Master")
+	var s: String = ProjectSettings.get_setting("nexus/resonance/bus", "Master")
 	return StringName(s) if not s.is_empty() else &"Master"
 
 
@@ -309,6 +311,8 @@ func _ensure_reverb_bus_exists() -> bool:
 
 
 func _apply_bus_to_players() -> void:
+	if not is_inside_tree():
+		return
 	var tree = get_tree()
 	if not tree:
 		return
@@ -392,27 +396,29 @@ func _fill_activator_buffer() -> void:
 
 
 func _prepare_geometry_before_reinit() -> void:
-	if get_tree():
+	if is_inside_tree():
 		get_tree().call_group("resonance_geometry", "discard_meshes_before_scene_release")
 
 
 func _reload_after_reinit() -> void:
-	if get_tree():
-		var static_scene = ResonanceSceneUtils.find_resonance_static_scene(get_tree().get_root())
-		if static_scene and static_scene.static_scene_asset and static_scene.has_valid_asset():
-			var srv = Engine.get_singleton("ResonanceServer")
-			if srv and srv.has_method("load_static_scene_from_asset"):
-				srv.load_static_scene_from_asset(
-					static_scene.static_scene_asset, static_scene.get_global_transform()
-				)
-		get_tree().call_group_flags(
-			SceneTree.GROUP_CALL_DEFERRED,
-			"resonance_probe_volume",
-			"_reload_probe_batch_after_reinit"
-		)
-		get_tree().call_group_flags(
-			SceneTree.GROUP_CALL_DEFERRED, "resonance_geometry", "refresh_geometry"
-		)
+	if not is_inside_tree():
+		return
+	var tree = get_tree()
+	var static_scene = ResonanceSceneUtils.find_resonance_static_scene(tree.get_root())
+	if static_scene and static_scene.static_scene_asset and static_scene.has_valid_asset():
+		var srv = Engine.get_singleton("ResonanceServer")
+		if srv and srv.has_method("load_static_scene_from_asset"):
+			srv.load_static_scene_from_asset(
+				static_scene.static_scene_asset, static_scene.get_global_transform()
+			)
+	tree.call_group_flags(
+		SceneTree.GROUP_CALL_DEFERRED,
+		"resonance_probe_volume",
+		"_reload_probe_batch_after_reinit"
+	)
+	tree.call_group_flags(
+		SceneTree.GROUP_CALL_DEFERRED, "resonance_geometry", "refresh_geometry"
+	)
 
 
 func _connect_runtime_signals() -> void:
@@ -466,7 +472,7 @@ func _on_runtime_affecting_probes_changed(_arg = null) -> void:
 		if srv and srv.is_initialized():
 			srv.set_pathing_enabled(_runtime.pathing_enabled)
 			var removed = srv.revalidate_probe_batches_with_config()
-			if removed > 0 and get_tree():
+			if removed > 0 and is_inside_tree():
 				get_tree().call_group_flags(
 					SceneTree.GROUP_CALL_DEFERRED, "resonance_probe_volume", "reload_probe_batch"
 				)
@@ -474,11 +480,12 @@ func _on_runtime_affecting_probes_changed(_arg = null) -> void:
 
 
 func _notify_volumes_runtime_config_changed() -> void:
-	if not get_tree() or not _runtime:
+	if not is_inside_tree() or not _runtime:
 		return
+	var tree = get_tree()
 	var refl: int = _runtime.reflection_type
 	var pathing: bool = _runtime.pathing_enabled
-	get_tree().call_group_flags(
+	tree.call_group_flags(
 		SceneTree.GROUP_CALL_DEFERRED,
 		"resonance_probe_volume",
 		"notify_runtime_config_changed",

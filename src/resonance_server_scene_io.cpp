@@ -9,14 +9,20 @@
 
 using namespace godot;
 
-void ResonanceServer::notify_geometry_changed(int triangle_delta) {
+void ResonanceServer::notify_geometry_changed_assume_locked(int triangle_delta) {
     if (!_ctx())
         return;
     bool should_mark_dirty = (triangle_delta != 0) || _should_run_throttled(geometry_update_throttle_counter, geometry_update_throttle);
-    std::lock_guard<std::mutex> lock(simulation_mutex);
     global_triangle_count += triangle_delta;
     if (should_mark_dirty)
         scene_dirty = true;
+}
+
+void ResonanceServer::notify_geometry_changed(int triangle_delta) {
+    if (!_ctx())
+        return;
+    std::lock_guard<std::mutex> lock(simulation_mutex);
+    notify_geometry_changed_assume_locked(triangle_delta);
 }
 
 void ResonanceServer::save_scene_data(String filename) {

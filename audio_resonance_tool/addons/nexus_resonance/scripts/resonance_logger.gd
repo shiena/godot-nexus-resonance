@@ -11,7 +11,7 @@ extends Node
 ## multiple threads (e.g. C++). Entries are flushed to disk in _process() on the main thread.
 
 const DEFAULT_BUFFER_SIZE := 128
-const PROJECT_PREFIX := "audio/nexus_resonance/logger/"
+const PROJECT_PREFIX := "nexus/resonance/logger/"
 
 ## Standard categories for filtering
 const CATEGORY_REFLECTIONS := &"reflections"

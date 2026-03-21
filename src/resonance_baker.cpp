@@ -123,8 +123,8 @@ static String _resolve_save_path(Ref<ResonanceProbeData> probe_data_res) {
     if (path.is_empty()) {
         String base_dir = resonance::kProbeBakeOutputDir;
         ProjectSettings* ps = ProjectSettings::get_singleton();
-        if (ps && ps->has_setting("audio/nexus_resonance/bake/output_dir")) {
-            base_dir = String(ps->get_setting("audio/nexus_resonance/bake/output_dir"));
+        if (ps && ps->has_setting(String(resonance::kProjectSettingsResonancePrefix) + "bake/output_dir")) {
+            base_dir = String(ps->get_setting(String(resonance::kProjectSettingsResonancePrefix) + "bake/output_dir"));
             if (!base_dir.ends_with("/"))
                 base_dir += "/";
         }

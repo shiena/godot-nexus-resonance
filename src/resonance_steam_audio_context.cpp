@@ -11,7 +11,6 @@
 namespace godot {
 
 namespace {
-constexpr const char* kSteamAudioLogVerboseSetting = "audio/nexus_resonance/logger/steam_audio_verbose";
 
 void IPLCALL log_callback(IPLLogLevel level, const char* message) {
     String msg = "SteamAudio: " + String(message);
@@ -21,7 +20,8 @@ void IPLCALL log_callback(IPLLogLevel level, const char* message) {
         UtilityFunctions::push_warning(msg);
     else if (level == IPL_LOGLEVEL_INFO || level == IPL_LOGLEVEL_DEBUG) {
         ProjectSettings* ps = ProjectSettings::get_singleton();
-        if (ps && ps->has_setting(kSteamAudioLogVerboseSetting) && ps->get_setting(kSteamAudioLogVerboseSetting)) {
+        const String verbose_key = String(resonance::kProjectSettingsResonancePrefix) + "logger/steam_audio_verbose";
+        if (ps && ps->has_setting(verbose_key) && ps->get_setting(verbose_key)) {
             UtilityFunctions::print(msg);
         }
     }

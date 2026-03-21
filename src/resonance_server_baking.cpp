@@ -1,10 +1,10 @@
 #include "resonance_constants.h"
-#include "resonance_debug_agent.h"
 #include "resonance_geometry_asset.h"
 #include "resonance_ipl_guard.h"
 #include "resonance_log.h"
 #include "resonance_server.h"
 #include "resonance_utils.h"
+#include <cstdint>
 #include <cstring>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/project_settings.hpp>
@@ -136,7 +136,8 @@ int ResonanceServer::_get_bake_num_rays() const {
         return _bake_num_rays;
     ProjectSettings* ps = ProjectSettings::get_singleton();
     if (ps)
-        return (int)ps->get_setting("audio/nexus_resonance/bake_num_rays", resonance::kBakeDefaultNumRays);
+        return (int)ps->get_setting(String(resonance::kProjectSettingsResonancePrefix) + "bake_num_rays",
+                                     resonance::kBakeDefaultNumRays);
     return resonance::kBakeDefaultNumRays;
 }
 
@@ -145,7 +146,8 @@ int ResonanceServer::_get_bake_num_bounces() const {
         return _bake_num_bounces;
     ProjectSettings* ps = ProjectSettings::get_singleton();
     if (ps)
-        return (int)ps->get_setting("audio/nexus_resonance/bake_num_bounces", resonance::kBakeDefaultNumBounces);
+        return (int)ps->get_setting(String(resonance::kProjectSettingsResonancePrefix) + "bake_num_bounces",
+                                     resonance::kBakeDefaultNumBounces);
     return resonance::kBakeDefaultNumBounces;
 }
 
@@ -154,7 +156,8 @@ int ResonanceServer::_get_bake_num_threads() const {
         return _bake_num_threads;
     ProjectSettings* ps = ProjectSettings::get_singleton();
     if (ps)
-        return (int)ps->get_setting("audio/nexus_resonance/bake_num_threads", resonance::kBakeDefaultNumThreads);
+        return (int)ps->get_setting(String(resonance::kProjectSettingsResonancePrefix) + "bake_num_threads",
+                                     resonance::kBakeDefaultNumThreads);
     return resonance::kBakeDefaultNumThreads;
 }
 
@@ -163,7 +166,7 @@ int ResonanceServer::_get_bake_reflection_type() const {
         return _bake_reflection_type;
     ProjectSettings* ps = ProjectSettings::get_singleton();
     if (ps)
-        return (int)ps->get_setting("audio/nexus_resonance/bake_reflection_type", 2);
+        return (int)ps->get_setting(String(resonance::kProjectSettingsResonancePrefix) + "bake_reflection_type", 2);
     return 2;
 }
 
@@ -179,7 +182,7 @@ float ResonanceServer::_get_bake_pathing_param(const char* key, float default_va
     ProjectSettings* ps = ProjectSettings::get_singleton();
     if (!ps)
         return default_val;
-    String path = String("audio/nexus_resonance/") + key;
+    String path = String(resonance::kProjectSettingsResonancePrefix) + key;
     return (float)ps->get_setting(path, default_val);
 }
 
@@ -188,7 +191,8 @@ int ResonanceServer::_get_bake_pathing_num_samples() const {
         return _bake_pathing_num_samples;
     ProjectSettings* ps = ProjectSettings::get_singleton();
     if (ps)
-        return (int)ps->get_setting("audio/nexus_resonance/bake_pathing_num_samples", resonance::kBakePathingDefaultNumSamples);
+        return (int)ps->get_setting(String(resonance::kProjectSettingsResonancePrefix) + "bake_pathing_num_samples",
+                                     resonance::kBakePathingDefaultNumSamples);
     return resonance::kBakePathingDefaultNumSamples;
 }
 

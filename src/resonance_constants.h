@@ -8,7 +8,7 @@ namespace resonance {
 
 /// Version string (centralized; override via NEXUS_RESONANCE_VERSION when building)
 #ifndef NEXUS_RESONANCE_VERSION
-#define NEXUS_RESONANCE_VERSION "0.9.4"
+#define NEXUS_RESONANCE_VERSION "0.9.5"
 #endif
 constexpr const char* kVersion = NEXUS_RESONANCE_VERSION;
 
@@ -31,7 +31,10 @@ constexpr float kBakerMinSpacing = 0.1f;                       // Floor for prob
 constexpr float kBakerStaticEndpointSphereRadius = 1.0f;       // IPLSphere.radius when adding probes manually
 constexpr float kBakerStaticEndpointInfluenceFallback = 10.0f; // Fallback when influence_radius <= 0 for static endpoint bake
 
-/// Baker default parameters (overridable via ProjectSettings audio/nexus_resonance/bake_*)
+/// Godot ProjectSettings path prefix for this addon (see EditorPlugin registration).
+constexpr const char* kProjectSettingsResonancePrefix = "nexus/resonance/";
+
+/// Baker default parameters (overridable via ProjectSettings nexus/resonance/bake_* and bake_num_*)
 constexpr int kBakeDefaultNumRays = 4096;
 constexpr int kBakeDefaultNumBounces = 4;
 constexpr int kBakeDefaultNumThreads = 2;

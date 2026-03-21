@@ -1,6 +1,7 @@
 #include "../lib/catch2/single_include/catch2/catch.hpp"
 #include "../resonance_math.h"
 #include <cmath>
+#include <limits>
 
 using namespace resonance;
 
@@ -77,4 +78,14 @@ TEST_CASE("clamp_reverb_time valid above 0.1", "[resonance_math]") {
 TEST_CASE("clamp_reverb_time below 0.1 clamped", "[resonance_math]") {
     REQUIRE(clamp_reverb_time(0.05f) == Approx(0.1f));
     REQUIRE(clamp_reverb_time(0.0f) == Approx(0.1f));
+}
+
+TEST_CASE("sanitize_delay_samples finite unchanged", "[resonance_math]") {
+    REQUIRE(sanitize_delay_samples(0) == 0);
+    REQUIRE(sanitize_delay_samples(42) == 42);
+}
+
+TEST_CASE("reverb_ir_size_samples nominal", "[resonance_math]") {
+    REQUIRE(reverb_ir_size_samples(48000, 2.0f) == 96000);
+    REQUIRE(reverb_ir_size_samples(44100, 1.0f) == 44100);
 }

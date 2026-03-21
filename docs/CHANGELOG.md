@@ -2,8 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),  
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.9.5] - 2026-03-21
+
+### Changed
+
+- **Project Settings layout** – Resonance options moved from **Audio → Nexus Resonance** (`audio/nexus_resonance/`*) to **Nexus → Resonance** (`nexus/resonance/`*). Opening the project with the addon enabled migrates legacy keys and removes the old paths.
+
+### Fixed
+
+- **ResonanceDynamicGeometry + scene change** – Phonon teardown order for dynamic objects (global `InstancedMesh` off first, `iplSceneCommit`, sub-scene static meshes abandoned then `iplSceneRelease(sub_scene)`; no per-mesh Remove/Release on that Embree sub-scene after detach). Fixes native crash/hang on `change_scene` with moving geometry (e.g. door; MovementTestbed).
+- **Geometry notify deadlock** – `notify_geometry_changed_assume_locked` when `simulation_mutex` is already held (`_clear_meshes_impl`, `discard_meshes_before_scene_release`); avoids hang for meshes with `triangle_count > 0`.
+
+### Removed
+
+- Misleading startup warning that implied Convolution/Hybrid/TAN with Realtime Rays = Baked Only (0) required baked probes.
 
 ## [0.9.4] - 2026-03-20
 
@@ -24,7 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Steam Audio verbose logging** – Project Setting `audio/nexus_resonance/logger/steam_audio_verbose` forwards IPL_LOGLEVEL_INFO and IPL_LOGLEVEL_DEBUG to Godot output when enabled (for debugging).
+- **Steam Audio verbose logging** – Project Setting `nexus/resonance/logger/steam_audio_verbose` forwards IPL_LOGLEVEL_INFO and IPL_LOGLEVEL_DEBUG to Godot output when enabled (for debugging).
 - **Unit test for pathing_params_hash** – `test_pathing_hash_bake_runner_matches_cpp_format` ensures GDScript and C++ use identical dict format for hash consistency.
 
 ### Changed
@@ -190,7 +205,7 @@ New: "Export Dynamic Objects In All Scenes In Build".
 
 - **Configurable reverb bus** - `ResonanceRuntimeConfig.reverb_bus_name` for flexible routing. Reverb output is sent to the same bus as Direct+Pathing (`bus`).
 - **Per-source reverb bus override** - `ResonancePlayerConfig.reverb_bus_override` (Use Global / Custom) and `reverb_bus_name` for selecting the reverb bus per source. Use Global = RuntimeConfig; Custom = pick from existing buses.
-- **Project Settings** - `audio/nexus_resonance/reverb_bus_name` for editor/default bus setup.
+- **Project Settings** - `nexus/resonance/reverb_bus_name` for editor/default bus setup.
 
 ### Changed
 
@@ -258,7 +273,7 @@ New: "Export Dynamic Objects In All Scenes In Build".
 - Probe volume inspector: bake buttons, prerequisites checklist, preview settings
 - Probe sphere gizmo for volume visualization
 - SOFA importer for HRTF files
-- Configurable bake parameters in Project Settings (`audio/nexus_resonance/bake`_*)
+- Configurable bake parameters in Project Settings (`nexus/resonance/bake`_*)
 
 **Debug & Tooling**
 

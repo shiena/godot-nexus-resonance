@@ -70,17 +70,33 @@ Unit tests (GUT) in `audio_resonance_tool/test/unit/`:
 
 Run via Godot with GUT addon or CLI.
 
+**Manual regression (geometry teardown):** No C++ unit test covers full Phonon teardown. After changes to `ResonanceGeometry` cleanup, verify in a running project: attach **ResonanceDynamicGeometry** under a `MeshInstance3D`, run the game, then **change scene** (`change_scene_to_file` / equivalent). It must not crash; dynamic meshes are removed from the object’s `sub_scene` before `iplSceneRelease`, not from the global scene.
+
 ## Release Workflow
 
 1. Update version in `src/resonance_constants.h` (NEXUS_RESONANCE_VERSION).
 2. Tag: `git tag v0.8.1`
 3. Push tag: triggers `.github/workflows/release.yml` which builds all platforms (Linux, Windows, macOS, Android, iOS) and creates a GitHub Release with a unified addon zip.
 
+## Pre Push / PR (Checklist)
+
+
+| Was                           | Wie                                                                                                                                                                                                         |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **C++-Format (wie Linux-CI)** | `[scripts/check_clang_format.sh](scripts/check_clang_format.sh)` — bei Fehlern `[scripts/format_cpp.sh](scripts/format_cpp.sh)`, dann erneut prüfen.                                                        |
+| **Alles in einem (lokal)**    | `[scripts/prep_push.sh](scripts/prep_push.sh)` (Bash / Git Bash) oder `[scripts/prep_push.ps1](scripts/prep_push.ps1)` (PowerShell; `CLANG_FORMAT_BIN` oder `.tools\LLVM-14-extract\bin\clang-format.exe`). |
+| **C++-Unit-Tests**            | `scons` (baut Tests standardmäßig), dann `build/tests/nexus_resonance_tests` bzw. `.exe`.                                                                                                                   |
+| **GDScript**                  | GUT läuft in **tests.yml** auf geänderten Pfaden; bei relevanten `.gd`-Änderungen lokal GUT ausführen oder auf CI vertrauen.                                                                                |
+| **Version sichtbar**          | Bei Release: `CHANGELOG` + `NEXUS_RESONANCE_VERSION` in `src/resonance_constants.h`.                                                                                                                        |
+
+
+Cursor: Regel `[.cursor/rules/before-push.mdc](.cursor/rules/before-push.mdc)` — Assistent soll bei „will pushen“ / Release-Vorhaben Format-Check und C++-Tests ausführen.
+
 ## CI/CD
 
 - **build.yml** - Builds all platforms on push/PR to main (Linux/Windows/Android on ubuntu, macOS/iOS on macos-latest)
 - **release.yml** - Full build + GitHub Release on version tags (`v`*)
-- **tests.yml** - C++ unit tests + GDScript GUT tests on push/PR; **clang-format-14** on all `src/**/*.cpp` and `src/**/*.h` except `lib/` and `gen/` (must produce a clean `git diff` after format). Use the same binary locally (e.g. `clang-format-14` on Ubuntu 22.04, or LLVM 14’s `clang-format.exe`) so the Linux job’s format check matches your tree.
+- **tests.yml** - C++unit tests + GDScript GUT tests on push/PR; **clang-format-14** check via `[scripts/check_clang_format.sh](scripts/check_clang_format.sh)` (`--dry-run -Werror` — no in-tree edits, no `git diff` drift). Those `**.sh` files must be committed** with the workflow; if they are missing on GitHub, the format step fails with **exit 127** (script/binary not found). Before pushing C++ changes, run `[scripts/format_cpp.sh](scripts/format_cpp.sh)` (or `CLANG_FORMAT_BIN=…` if your binary is not named `clang-format-14`). **clang-tidy** (first 80 `src` units, `bugprone-`* / `cert-*` / `clang-analyzer-*`) runs with warnings as errors but **excludes** `bugprone-easily-swappable-parameters`, which is too noisy for multi-`float` / multi-`int` engine callbacks.
 - **codeql.yml** - CodeQL security analysis (manual trigger)
 
 ## Known Limits and Workarounds
