@@ -6,13 +6,13 @@
 #include "resonance_server.h"
 #include "resonance_static_scene.h"
 #include "resonance_utils.h"
+#include <cstdint>
 #include <godot_cpp/classes/array_mesh.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/project_settings.hpp>
 #include <godot_cpp/classes/resource_saver.hpp>
 #include <godot_cpp/classes/standard_material3d.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
-#include <cstdint>
 #include <phonon.h>
 #include <vector>
 

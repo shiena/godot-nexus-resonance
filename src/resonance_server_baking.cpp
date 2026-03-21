@@ -137,7 +137,7 @@ int ResonanceServer::_get_bake_num_rays() const {
     ProjectSettings* ps = ProjectSettings::get_singleton();
     if (ps)
         return (int)ps->get_setting(String(resonance::kProjectSettingsResonancePrefix) + "bake_num_rays",
-                                     resonance::kBakeDefaultNumRays);
+                                    resonance::kBakeDefaultNumRays);
     return resonance::kBakeDefaultNumRays;
 }
 
@@ -147,7 +147,7 @@ int ResonanceServer::_get_bake_num_bounces() const {
     ProjectSettings* ps = ProjectSettings::get_singleton();
     if (ps)
         return (int)ps->get_setting(String(resonance::kProjectSettingsResonancePrefix) + "bake_num_bounces",
-                                     resonance::kBakeDefaultNumBounces);
+                                    resonance::kBakeDefaultNumBounces);
     return resonance::kBakeDefaultNumBounces;
 }
 
@@ -157,7 +157,7 @@ int ResonanceServer::_get_bake_num_threads() const {
     ProjectSettings* ps = ProjectSettings::get_singleton();
     if (ps)
         return (int)ps->get_setting(String(resonance::kProjectSettingsResonancePrefix) + "bake_num_threads",
-                                     resonance::kBakeDefaultNumThreads);
+                                    resonance::kBakeDefaultNumThreads);
     return resonance::kBakeDefaultNumThreads;
 }
 
@@ -192,7 +192,7 @@ int ResonanceServer::_get_bake_pathing_num_samples() const {
     ProjectSettings* ps = ProjectSettings::get_singleton();
     if (ps)
         return (int)ps->get_setting(String(resonance::kProjectSettingsResonancePrefix) + "bake_pathing_num_samples",
-                                     resonance::kBakePathingDefaultNumSamples);
+                                    resonance::kBakePathingDefaultNumSamples);
     return resonance::kBakePathingDefaultNumSamples;
 }
 
