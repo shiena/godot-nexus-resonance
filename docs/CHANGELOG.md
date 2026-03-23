@@ -5,16 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),  
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.6] - 2026-03-23
+
+### Added
+
+- **Editor export plugin** - Resonance now registers for **Linux**, **macOS**, and **Android** (in addition to Windows) and calls `add_shared_object` for the same native libraries as `[dependencies]` in `nexus_resonance.gdextension` (`libphonon.so` / `libphonon.dylib` per platform; per enabled Android ABI under `bin/android/<abi>/`). Warns when Android **armeabi-v7a** or **x86** is enabled but no matching `libphonon.so` is shipped in the addon.
+- **ResonanceRuntime** - **enable_debug**: when `false`, debug/performance/player overlay toggle keys are ignored; turning it off at runtime closes overlays and player ray viz.
+
+### Fixed
+
+- **Sound at level start (ResonancePlayer)** - With Autoplay or other audio that starts as soon as the scene runs, you no longer get a brief flash of „unblocked“ direct sound before the world feels ready. Playback stays quiet until spatial audio can respect your geometry and occlusion, so the first thing you hear matches what you see (walls and materials in the way).
+- **ResonanceDynamicGeometry on phones and tablets** - Moving or animated acoustic geometry (doors, platforms, props) is now taken into account on Android builds the same way as on desktop, so sound can be blocked or reflected by those objects instead of behaving as if they were not there.
+
+### Changed
+
+- **ResonanceRuntimeConfig** - **Breaking Change:** default **Scene Type** is now **Default (0, built-in Phonon tracer)** instead of Embree. 
+- **ResonanceRuntime** - Replaced **debug_sources** with **player_overlay_toggle_key** (default F3) to toggle source/occlusion + reflection ray visualization like the other overlays.
+- **ResonanceRuntime** - Default overlay keys: debug **F1**, performance **F2**, player **F3** (when **enable_debug** is on).
+- **Project Settings (Nexus → Resonance)** - **Bus** / **Reverb Bus Name** removed (configure buses on **ResonanceRuntimeConfig**). 
+- **Debug overlay** - Overhauled.
+
+### Removed
+
+- **ResonanceRuntime** - `performance_overlay_enabled` (performance overlay only via **performance_overlay_toggle_key**).
+- **ResonanceRuntime** - `debug_sources` (use **player_overlay_toggle_key** instead).
+
 ## [0.9.5] - 2026-03-21
 
 ### Changed
 
-- **Project Settings layout** – Resonance options moved from **Audio → Nexus Resonance** (`audio/nexus_resonance/`*) to **Nexus → Resonance** (`nexus/resonance/`*). Opening the project with the addon enabled migrates legacy keys and removes the old paths.
+- **Project Settings layout** - Resonance options moved from **Audio → Nexus Resonance** (`audio/nexus_resonance/`*) to **Nexus → Resonance** (`nexus/resonance/`*). Opening the project with the addon enabled migrates legacy keys and removes the old paths.
 
 ### Fixed
 
-- **ResonanceDynamicGeometry + scene change** – Phonon teardown order for dynamic objects (global `InstancedMesh` off first, `iplSceneCommit`, sub-scene static meshes abandoned then `iplSceneRelease(sub_scene)`; no per-mesh Remove/Release on that Embree sub-scene after detach). Fixes native crash/hang on `change_scene` with moving geometry (e.g. door; MovementTestbed).
-- **Geometry notify deadlock** – `notify_geometry_changed_assume_locked` when `simulation_mutex` is already held (`_clear_meshes_impl`, `discard_meshes_before_scene_release`); avoids hang for meshes with `triangle_count > 0`.
+- **ResonanceDynamicGeometry + scene change** - Phonon teardown order for dynamic objects (global `InstancedMesh` off first, `iplSceneCommit`, sub-scene static meshes abandoned then `iplSceneRelease(sub_scene)`; no per-mesh Remove/Release on that Embree sub-scene after detach). Fixes native crash/hang on `change_scene` with moving geometry (e.g. door; MovementTestbed).
+- **Geometry notify deadlock** - `notify_geometry_changed_assume_locked` when `simulation_mutex` is already held (`_clear_meshes_impl`, `discard_meshes_before_scene_release`); avoids hang for meshes with `triangle_count > 0`.
 
 ### Removed
 
@@ -24,38 +49,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **ResonanceServer build layout** – Implementation split from monolithic `resonance_server.cpp` into focused translation units (`resonance_server_lifecycle.cpp`, `resonance_server_callbacks.cpp`, `resonance_server_listener.cpp`, `resonance_server_sources.cpp`, `resonance_server_fetch.cpp`, `resonance_server_scene_io.cpp`, `resonance_server_baking.cpp`, `resonance_server_debug_bind.cpp`). `SourceManager` / `ProbeBatchManager` moved to `handle_manager.cpp`. Public API and `resonance_server.h` unchanged.
-- **Android: realtime rays** – `ResonanceRuntimeConfig.get_effective_realtime_rays` no longer forces `0` on Android. Realtime simulation uses the configured `scene_type`; Embree/Radeon Rays fall back to Steam Audio’s built-in (Default) tracer on device.
+- **ResonanceServer build layout** - Implementation split from monolithic `resonance_server.cpp` into focused translation units (`resonance_server_lifecycle.cpp`, `resonance_server_callbacks.cpp`, `resonance_server_listener.cpp`, `resonance_server_sources.cpp`, `resonance_server_fetch.cpp`, `resonance_server_scene_io.cpp`, `resonance_server_baking.cpp`, `resonance_server_debug_bind.cpp`). `SourceManager` / `ProbeBatchManager` moved to `handle_manager.cpp`. Public API and `resonance_server.h` unchanged.
+- **Android: realtime rays** - `ResonanceRuntimeConfig.get_effective_realtime_rays` no longer forces `0` on Android. Realtime simulation uses the configured `scene_type`; Embree/Radeon Rays fall back to Steam Audio’s built-in (Default) tracer on device.
 
 ### Fixed
 
-- **Processor init / ambisonic input bounds** – `ResonanceAmbisonicProcessor::initialize` and `ResonanceReflectionProcessor::initialize` reject null `IPLContext`; `ResonanceAmbisonicProcessor::process` avoids out-of-bounds read when interleaved input is shorter than `frame_size * (order+1)^2` (clears stereo output instead of calling `iplAudioBufferDeinterleave` on undersized data).
-- **Ring buffer zero capacity** – `RingBuffer::write`/`read` return immediately when `capacity == 0`, avoiding undefined behavior from `% 0` and `capacity - pos` underflow.
-- **Bake progress thread safety** – `bake_progress` is emitted on the **Godot main thread** via `call_deferred` (Steam Audio `IPLProgressCallback` may run on worker threads).
-- **Reverb after reinit** – Convolution reverb bus (`ResonanceAudioEffect`) resets its `MixerProcessor` when the server’s Steam Audio generation changes, avoiding stale Phonon handles after `reinit_audio_engine`.
-- **Empty mesh / bake asset guards** – Dynamic geometry path rejects empty serialized mesh data; bake static-scene path requires non-zero asset size before passing buffers to Phonon.
+- **Processor init / ambisonic input bounds** - `ResonanceAmbisonicProcessor::initialize` and `ResonanceReflectionProcessor::initialize` reject null `IPLContext`; `ResonanceAmbisonicProcessor::process` avoids out-of-bounds read when interleaved input is shorter than `frame_size * (order+1)^2` (clears stereo output instead of calling `iplAudioBufferDeinterleave` on undersized data).
+- **Ring buffer zero capacity** - `RingBuffer::write`/`read` return immediately when `capacity == 0`, avoiding undefined behavior from `% 0` and `capacity - pos` underflow.
+- **Bake progress thread safety** - `bake_progress` is emitted on the **Godot main thread** via `call_deferred` (Steam Audio `IPLProgressCallback` may run on worker threads).
+- **Reverb after reinit** - Convolution reverb bus (`ResonanceAudioEffect`) resets its `MixerProcessor` when the server’s Steam Audio generation changes, avoiding stale Phonon handles after `reinit_audio_engine`.
+- **Empty mesh / bake asset guards** - Dynamic geometry path rejects empty serialized mesh data; bake static-scene path requires non-zero asset size before passing buffers to Phonon.
 
 ## [0.9.3] - 2026-03-17
 
 ### Added
 
-- **Steam Audio verbose logging** – Project Setting `nexus/resonance/logger/steam_audio_verbose` forwards IPL_LOGLEVEL_INFO and IPL_LOGLEVEL_DEBUG to Godot output when enabled (for debugging).
-- **Unit test for pathing_params_hash** – `test_pathing_hash_bake_runner_matches_cpp_format` ensures GDScript and C++ use identical dict format for hash consistency.
+- **Steam Audio verbose logging** - Project Setting `nexus/resonance/logger/steam_audio_verbose` forwards IPL_LOGLEVEL_INFO and IPL_LOGLEVEL_DEBUG to Godot output when enabled (for debugging).
+- **Unit test for pathing_params_hash** - `test_pathing_hash_bake_runner_matches_cpp_format` ensures GDScript and C++ use identical dict format for hash consistency.
 
 ### Changed
 
-- **TAN/OpenCL init** – Documented that SEH crash handling is Windows/MSVC-only; TAN init considered Windows-only stable on other platforms.
-- **ProbeData loader** – Class doc now documents size limits (data: 256 MiB, probe_positions: 1 MiB) and str_to_var memory considerations.
-- **ProbeData saver** – Class doc now documents concurrency: avoid simultaneous saves on the same .tres path to prevent race conditions.
-- **iplProbeBatchRetain/Release** – API comments in ResonanceServer and ResonanceProbeBatchRegistry explicitly state that every Retain return value must be released by the caller.
-- **resonance_config_constants** – Added `REFLECTION_DISPLAY_NAMES` for debug overlay; documented that BakeConfig supports 0/1/2 only (no TAN).
-- **debug_overlay** – Uses `Constants.REFLECTION_DISPLAY_NAMES` instead of local array; TAN (Index 3) now shown correctly; DRY for reverb bus section.
-- **performance_overlay** – Connects to `get_viewport().size_changed` so overlay position updates on window resize.
-- **resonance_fmod_event_emitter** – Consolidated Limitation docs to single block; `_is_fmod_emitter` uses exact class check (`FmodEventEmitter3D`) instead of substring.
-- **resonance_logger** – Comment documenting READ_WRITE concurrency and recommended single-writer usage when multiple processes access log file.
-- **resonance_ui_strings** – Documented `DOC_BASE_URL` and anchors.
-- **resonance_runtime** – Comment clarifying `load_static_scene_from_asset` as legacy single-scene API.
-- **resonance_scene_utils** – `export_type` parameter as `StringName` for consistency.
+- **TAN/OpenCL init** - Documented that SEH crash handling is Windows/MSVC-only; TAN init considered Windows-only stable on other platforms.
+- **ProbeData loader** - Class doc now documents size limits (data: 256 MiB, probe_positions: 1 MiB) and str_to_var memory considerations.
+- **ProbeData saver** - Class doc now documents concurrency: avoid simultaneous saves on the same .tres path to prevent race conditions.
+- **iplProbeBatchRetain/Release** - API comments in ResonanceServer and ResonanceProbeBatchRegistry explicitly state that every Retain return value must be released by the caller.
+- **resonance_config_constants** - Added `REFLECTION_DISPLAY_NAMES` for debug overlay; documented that BakeConfig supports 0/1/2 only (no TAN).
+- **debug_overlay** - Uses `Constants.REFLECTION_DISPLAY_NAMES` instead of local array; TAN (Index 3) now shown correctly; DRY for reverb bus section.
+- **performance_overlay** - Connects to `get_viewport().size_changed` so overlay position updates on window resize.
+- **resonance_fmod_event_emitter** - Consolidated Limitation docs to single block; `_is_fmod_emitter` uses exact class check (`FmodEventEmitter3D`) instead of substring.
+- **resonance_logger** - Comment documenting READ_WRITE concurrency and recommended single-writer usage when multiple processes access log file.
+- **resonance_ui_strings** - Documented `DOC_BASE_URL` and anchors.
+- **resonance_runtime** - Comment clarifying `load_static_scene_from_asset` as legacy single-scene API.
+- **resonance_scene_utils** - `export_type` parameter as `StringName` for consistency.
 
 ## [0.9.2] - 2026-03-16
 
@@ -63,16 +88,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **ProbeData serialization** – `static_scene_params_hash` is now saved and loaded by the custom ProbeData Saver/Loader. Previously it was lost on save, causing unnecessary re-bakes and wrong "outdated" status.
-- **iplAudioBufferAllocate** – Return value checked in `ResonancePlayer` and `ResonanceAmbisonicPlayer`; on failure, cleanup and log instead of using uninitialized buffers.
-- **Scene save/load ctx** – Null checks for `ctx` in `save_scene_data` and `load_scene_data` (ResonanceSceneManager) to avoid crashes when server is shutting down.
-- **Empty probe data** – ResonanceProbeBatchRegistry rejects empty `PackedByteArray` before `iplSerializedObjectCreate`.
-- **MixerProcessor init** – ResonanceAudioEffect now checks `processor.is_ready()` after init; reverb stays silent until init succeeds instead of running with invalid state.
+- **ProbeData serialization** - `static_scene_params_hash` is now saved and loaded by the custom ProbeData Saver/Loader. Previously it was lost on save, causing unnecessary re-bakes and wrong "outdated" status.
+- **iplAudioBufferAllocate** - Return value checked in `ResonancePlayer` and `ResonanceAmbisonicPlayer`; on failure, cleanup and log instead of using uninitialized buffers.
+- **Scene save/load ctx** - Null checks for `ctx` in `save_scene_data` and `load_scene_data` (ResonanceSceneManager) to avoid crashes when server is shutting down.
+- **Empty probe data** - ResonanceProbeBatchRegistry rejects empty `PackedByteArray` before `iplSerializedObjectCreate`.
+- **MixerProcessor init** - ResonanceAudioEffect now checks `processor.is_ready()` after init; reverb stays silent until init succeeds instead of running with invalid state.
 
 ### Changed
 
-- **OpenCL / TAN / RadeonRays** – Error status codes logged on init failure for easier debugging (ResonanceSteamAudioContext).
-- **Bake pipeline** – Defensive `Engine.has_singleton("ResonanceServer")` and `srv` null check at start of `_run_bake_pipeline_main_thread`; aborts cleanly if GDExtension is unloaded during bake (e.g. editor close).
+- **OpenCL / TAN / RadeonRays** - Error status codes logged on init failure for easier debugging (ResonanceSteamAudioContext).
+- **Bake pipeline** - Defensive `Engine.has_singleton("ResonanceServer")` and `srv` null check at start of `_run_bake_pipeline_main_thread`; aborts cleanly if GDExtension is unloaded during bake (e.g. editor close).
 
 ## [0.9.1] - 2026-03-15
 
@@ -93,8 +118,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Performance Overlay** - Optional overlay (FPS, frame time, physics time). Enable via `performance_overlay_enabled` on ResonanceRuntime; toggle with F4. Independent from debug overlay.
-- **ResonanceLogger startup log** - Init entry "ResonanceLogger ready" when logger starts. Log panel opens expanded by default.
-- **Improved empty log message** - Explains when logs appear (init, bake, validation, etc.).
 
 ### Removed
 
