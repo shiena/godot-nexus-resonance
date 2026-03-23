@@ -88,6 +88,7 @@ void ResonanceServer::clear_static_scenes() {
     RuntimeSceneState state(_runtime_static_meshes, _runtime_static_triangle_count, _runtime_static_debug_mesh_ids,
                             &global_triangle_count, &scene_dirty, _runtime_static_sub_scenes, _runtime_static_instanced_meshes);
     scene_manager_.clear_static_scenes(scene, &ray_trace_debug_context_, state);
+    reset_spatial_audio_warmup_passes();
 }
 
 void ResonanceServer::add_static_scene_from_asset(const Ref<ResonanceGeometryAsset>& p_asset, const Transform3D& p_transform) {
@@ -98,6 +99,7 @@ void ResonanceServer::add_static_scene_from_asset(const Ref<ResonanceGeometryAss
                             &global_triangle_count, &scene_dirty, _runtime_static_sub_scenes, _runtime_static_instanced_meshes);
     scene_manager_.add_static_scene_from_asset(_ctx(), scene, p_asset, &ray_trace_debug_context_,
                                                wants_debug_reflection_viz(), state, p_transform, _scene_type(), _embree(), _radeon());
+    reset_spatial_audio_warmup_passes();
 }
 
 void ResonanceServer::load_static_scene_from_asset(const Ref<ResonanceGeometryAsset>& p_asset, const Transform3D& p_transform) {
@@ -108,6 +110,7 @@ void ResonanceServer::load_static_scene_from_asset(const Ref<ResonanceGeometryAs
                             &global_triangle_count, &scene_dirty, _runtime_static_sub_scenes, _runtime_static_instanced_meshes);
     scene_manager_.load_static_scene_from_asset(_ctx(), scene, p_asset, &ray_trace_debug_context_,
                                                 wants_debug_reflection_viz(), state, p_transform, _scene_type(), _embree(), _radeon());
+    reset_spatial_audio_warmup_passes();
 }
 
 void ResonanceServer::set_bake_params(Dictionary params) {

@@ -20,6 +20,7 @@ const RESONANCE_FMOD_EVENT_EMITTER_INSPECTOR_SCRIPT = "res://addons/nexus_resona
 
 const ResonanceSceneUtils = preload("res://addons/nexus_resonance/scripts/resonance_scene_utils.gd")
 const UIStrings = preload("res://addons/nexus_resonance/scripts/resonance_ui_strings.gd")
+const ResonanceLoggerScript = preload("res://addons/nexus_resonance/scripts/resonance_logger.gd")
 const ResonanceEditorDialogs = preload(
 	"res://addons/nexus_resonance/editor/resonance_editor_dialogs.gd"
 )
@@ -59,16 +60,15 @@ const LEGACY_SETTINGS_PREFIX := "audio/nexus_resonance/"
 
 func _enter_tree() -> void:
 	_migrate_legacy_project_settings()
+	_migrate_nexus_bake_output_dir()
+	_clear_bus_project_settings()
 	_register_logger_project_settings()
-	_register_audio_bus_project_settings()
 	_register_bake_project_settings()
+	_init_editor_plugin_ui()
 
 
 func _migrate_legacy_project_settings() -> void:
 	var keys: Array[String] = [
-		"bus",
-		"reverb_bus_name",
-		"bake/output_dir",
 		"logger/categories_enabled",
 		"logger/output_to_file",
 		"logger/file_path",
@@ -92,6 +92,34 @@ func _migrate_legacy_project_settings() -> void:
 			ProjectSettings.set_setting(new_key, ProjectSettings.get_setting(old_key))
 		ProjectSettings.clear(old_key)
 
+	# Legacy bake/output_dir -> nexus/.../bake/default_output_directory (not the old bus keys).
+	var legacy_bake := LEGACY_SETTINGS_PREFIX + "bake/output_dir"
+	var new_bake := SETTINGS_PREFIX + "bake/default_output_directory"
+	if ProjectSettings.has_setting(legacy_bake) and not ProjectSettings.has_setting(new_bake):
+		ProjectSettings.set_setting(new_bake, ProjectSettings.get_setting(legacy_bake))
+	if ProjectSettings.has_setting(legacy_bake):
+		ProjectSettings.clear(legacy_bake)
+
+
+func _migrate_nexus_bake_output_dir() -> void:
+	var old_k := SETTINGS_PREFIX + "bake/output_dir"
+	var new_k := SETTINGS_PREFIX + "bake/default_output_directory"
+	if ProjectSettings.has_setting(old_k) and not ProjectSettings.has_setting(new_k):
+		ProjectSettings.set_setting(new_k, ProjectSettings.get_setting(old_k))
+	if ProjectSettings.has_setting(old_k):
+		ProjectSettings.clear(old_k)
+
+
+func _clear_bus_project_settings() -> void:
+	for k in [SETTINGS_PREFIX + "bus", SETTINGS_PREFIX + "reverb_bus_name"]:
+		if ProjectSettings.has_setting(k):
+			ProjectSettings.clear(k)
+	for k in [LEGACY_SETTINGS_PREFIX + "bus", LEGACY_SETTINGS_PREFIX + "reverb_bus_name"]:
+		if ProjectSettings.has_setting(k):
+			ProjectSettings.clear(k)
+
+
+func _init_editor_plugin_ui() -> void:
 	var saver_script: Script = load(PROBE_DATA_SAVER_SCRIPT) as Script
 	if saver_script:
 		var saver: ResourceFormatSaver = saver_script.new()
@@ -276,15 +304,12 @@ func _disable_plugin() -> void:
 
 
 func _get_bus_editor() -> StringName:
-	var s: String = ProjectSettings.get_setting(SETTINGS_PREFIX + "bus", "Master")
-	return StringName(s) if not s.is_empty() else &"Master"
+	# Matches ResonanceRuntimeConfig defaults (buses are not Project Settings anymore).
+	return &"Master"
 
 
 func _get_reverb_bus_name_editor() -> StringName:
-	var s: String = ProjectSettings.get_setting(
-		SETTINGS_PREFIX + "reverb_bus_name", "ResonanceReverb"
-	)
-	return StringName(s) if not s.is_empty() else BUS_NAME
+	return BUS_NAME
 
 
 func _detach_reverb_effect() -> void:
@@ -333,37 +358,25 @@ func _get_plugin_icon() -> Texture2D:
 	)
 
 
-func _register_audio_bus_project_settings() -> void:
-	if not ProjectSettings.has_setting(SETTINGS_PREFIX + "bus"):
-		ProjectSettings.set_setting(SETTINGS_PREFIX + "bus", "Master")
-		(
-			ProjectSettings
-			. add_property_info(
-				{
-					"name": SETTINGS_PREFIX + "bus",
-					"type": TYPE_STRING,
-					"hint": PROPERTY_HINT_NONE,
-				}
-			)
-		)
-	if not ProjectSettings.has_setting(SETTINGS_PREFIX + "reverb_bus_name"):
-		ProjectSettings.set_setting(SETTINGS_PREFIX + "reverb_bus_name", "ResonanceReverb")
-		(
-			ProjectSettings
-			. add_property_info(
-				{
-					"name": SETTINGS_PREFIX + "reverb_bus_name",
-					"type": TYPE_STRING,
-					"hint": PROPERTY_HINT_NONE,
-				}
-			)
-		)
-
-
 func _register_logger_project_settings() -> void:
 	const PREFIX := SETTINGS_PREFIX + "logger/"
 	if not ProjectSettings.has_setting(PREFIX + "categories_enabled"):
-		ProjectSettings.set_setting(PREFIX + "categories_enabled", {})
+		ProjectSettings.set_setting(
+			PREFIX + "categories_enabled", ResonanceLoggerScript.get_default_categories_enabled_dict()
+		)
+	else:
+		var ce: Variant = ProjectSettings.get_setting(PREFIX + "categories_enabled")
+		if ce is Dictionary and (ce as Dictionary).is_empty():
+			ProjectSettings.set_setting(
+				PREFIX + "categories_enabled", ResonanceLoggerScript.get_default_categories_enabled_dict()
+			)
+	ProjectSettings.add_property_info(
+		{
+			"name": PREFIX + "categories_enabled",
+			"type": TYPE_DICTIONARY,
+			"hint": PROPERTY_HINT_NONE,
+		}
+	)
 	if not ProjectSettings.has_setting(PREFIX + "output_to_file"):
 		ProjectSettings.set_setting(PREFIX + "output_to_file", false)
 	if not ProjectSettings.has_setting(PREFIX + "file_path"):
@@ -384,18 +397,16 @@ func _register_logger_project_settings() -> void:
 
 func _register_bake_project_settings() -> void:
 	const BAKE_PREFIX := SETTINGS_PREFIX + "bake/"
-	if not ProjectSettings.has_setting(BAKE_PREFIX + "output_dir"):
-		ProjectSettings.set_setting(BAKE_PREFIX + "output_dir", "res://audio_data/")
-		(
-			ProjectSettings
-			. add_property_info(
-				{
-					"name": BAKE_PREFIX + "output_dir",
-					"type": TYPE_STRING,
-					"hint": PROPERTY_HINT_DIR,
-				}
-			)
-		)
+	const KEY := "default_output_directory"
+	if not ProjectSettings.has_setting(BAKE_PREFIX + KEY):
+		ProjectSettings.set_setting(BAKE_PREFIX + KEY, "res://audio_data/")
+	ProjectSettings.add_property_info(
+		{
+			"name": BAKE_PREFIX + KEY,
+			"type": TYPE_STRING,
+			"hint": PROPERTY_HINT_DIR,
+		}
+	)
 
 
 func _register_tool_shortcuts() -> void:

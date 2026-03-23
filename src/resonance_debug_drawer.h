@@ -63,8 +63,8 @@ class ResonanceDebugDrawer {
     void initialize(Node3D* p_parent);
     void cleanup();
 
-    // Main Loop
-    void process(double delta, const ResonanceDebugData& data, bool show_occ, bool show_reverb, String node_name);
+    // Main Loop. When hud_active is false, hides mesh and label even if show_occ/show_reverb are on (playback idle / grace expired).
+    void process(double delta, const ResonanceDebugData& data, bool show_occ, bool show_reverb, String node_name, bool hud_active);
 };
 
 } // namespace godot

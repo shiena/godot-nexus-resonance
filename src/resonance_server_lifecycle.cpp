@@ -352,6 +352,7 @@ void ResonanceServer::_worker_thread_func() {
             }
 
             iplSimulatorRunDirect(simulator);
+            _worker_note_direct_sim_pass_completed();
             // Reflections and Pathing only when simulation_update_interval elapsed (saves CPU)
             pathing_ran_this_tick.store(false);
             bool run_heavy = reflections_pathing_requested.exchange(false, std::memory_order_acq_rel);
@@ -403,6 +404,7 @@ void ResonanceServer::_shutdown_steam_audio() {
     simulation_requested.store(false);
     reflections_pathing_requested.store(false);
     scene_dirty.store(false);
+    spatial_audio_warmup_passes_remaining_.store(0, std::memory_order_release);
     pathing_ran_this_tick.store(false);
     reflections_have_run_once_.store(false);
     {
@@ -421,6 +423,7 @@ void ResonanceServer::_shutdown_steam_audio() {
         _source_attenuation_entries.clear();
     }
     _source_update_snapshot_.clear();
+    realtime_reflection_log_once_handles_.clear();
     {
         std::lock_guard<std::mutex> c_lock(reverb_cache_mutex_);
         reverb_param_cache_read_.clear();
@@ -507,3 +510,21 @@ void ResonanceServer::_shutdown_steam_audio() {
 String ResonanceServer::get_version() { return String("Nexus Resonance v") + resonance::kVersion; }
 bool ResonanceServer::is_initialized() const { return (_ctx() != nullptr); }
 bool ResonanceServer::is_simulating() const { return is_initialized() && global_triangle_count > 0; }
+
+bool ResonanceServer::is_spatial_audio_output_ready() const {
+    if (!is_initialized())
+        return true;
+    return spatial_audio_warmup_passes_remaining_.load(std::memory_order_acquire) <= 0;
+}
+
+void ResonanceServer::reset_spatial_audio_warmup_passes() {
+    if (!is_initialized())
+        return;
+    spatial_audio_warmup_passes_remaining_.store(resonance::kSpatialAudioWarmupWorkerPasses, std::memory_order_release);
+}
+
+void ResonanceServer::_worker_note_direct_sim_pass_completed() {
+    int v = spatial_audio_warmup_passes_remaining_.load(std::memory_order_relaxed);
+    if (v > 0)
+        spatial_audio_warmup_passes_remaining_.store(v - 1, std::memory_order_release);
+}

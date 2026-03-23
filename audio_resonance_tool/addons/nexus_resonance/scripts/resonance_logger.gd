@@ -34,6 +34,14 @@ const ALL_CATEGORIES: Array[StringName] = [
 	CATEGORY_VALIDATION
 ]
 
+
+## Default Project Settings value for `logger/categories_enabled` (all categories on).
+static func get_default_categories_enabled_dict() -> Dictionary:
+	var d := {}
+	for c in ALL_CATEGORIES:
+		d[str(c)] = true
+	return d
+
 ## Emitted when a log entry is added (after category filter). Args: category, message, data
 signal log_entry_added(category: StringName, message: String, data: Dictionary)
 
@@ -65,10 +73,6 @@ func _init() -> void:
 			_categories_enabled[cat] = true
 
 
-func _ready() -> void:
-	print_rich("[color=cyan]Nexus Resonance:[/color] ResonanceLogger initiated")
-
-
 func _process(_delta: float) -> void:
 	if not _output_to_file:
 		return
@@ -85,8 +89,12 @@ func _load_category_defaults() -> void:
 		return
 	var v = ProjectSettings.get_setting(PROJECT_PREFIX + "categories_enabled")
 	if v is Dictionary:
-		for k in v:
-			_categories_enabled[StringName(str(k))] = bool(v[k])
+		if v.is_empty():
+			for cat in ALL_CATEGORIES:
+				_categories_enabled[cat] = true
+		else:
+			for k in v:
+				_categories_enabled[StringName(str(k))] = bool(v[k])
 	if ProjectSettings.has_setting(PROJECT_PREFIX + "output_to_file"):
 		_output_to_file = ProjectSettings.get_setting(PROJECT_PREFIX + "output_to_file")
 	if ProjectSettings.has_setting(PROJECT_PREFIX + "file_path"):

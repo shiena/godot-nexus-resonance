@@ -118,8 +118,14 @@ void ResonanceAmbisonicInternalPlayback::_process_steam_audio_block() {
     // 1. Read interleaved data from ring buffer
     input_ring.read(temp_interleaved_input.data(), block_samples);
 
-    // 2. Process (Vector-based input)
-    processor.process(temp_interleaved_input, sa_out_buffer, params_current.listener_orientation);
+    ResonanceServer* srv = ResonanceServer::get_singleton();
+    if (srv && srv->is_initialized() && !srv->is_spatial_audio_output_ready()) {
+        for (int ch = 0; ch < sa_out_buffer.numChannels && sa_out_buffer.data && sa_out_buffer.data[ch]; ch++)
+            memset(sa_out_buffer.data[ch], 0, frame_size_ * sizeof(float));
+    } else {
+        // 2. Process (Vector-based input)
+        processor.process(temp_interleaved_input, sa_out_buffer, params_current.listener_orientation);
+    }
 
     // 3. Write de-interleaved stereo output to rings
     output_ring_l.write(sa_out_buffer.data[0], frame_size_);

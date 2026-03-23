@@ -89,6 +89,8 @@ void ResonanceGeometry::_ready() {
 }
 
 void ResonanceGeometry::_exit_tree() {
+    server_init_retry_pending_ = false;
+    server_init_retry_count_ = 0;
     // Godot frees child nodes automatically when parent is removed; do not queue_free.
     viz_geometry_override = nullptr;
     // Skip clear in editor: modifying IPL scene during scene switch (after bake) can crash.
@@ -105,6 +107,39 @@ void ResonanceGeometry::_notification(int p_what) {
             _update_dynamic_transform();
         }
     }
+}
+
+void ResonanceGeometry::_schedule_retry_create_meshes_when_server_ready() {
+    Engine* eng = Engine::get_singleton();
+    if (eng && eng->is_editor_hint())
+        return;
+    if (!is_inside_tree())
+        return;
+    if (server_init_retry_pending_)
+        return;
+    server_init_retry_pending_ = true;
+    call_deferred("_deferred_retry_create_meshes");
+}
+
+void ResonanceGeometry::_deferred_retry_create_meshes() {
+    server_init_retry_pending_ = false;
+    Engine* eng = Engine::get_singleton();
+    if (eng && eng->is_editor_hint())
+        return;
+    if (!is_inside_tree())
+        return;
+    ResonanceServer* server = ResonanceServer::get_singleton();
+    if (!server || !server->is_initialized()) {
+        if (server_init_retry_count_ < kMaxServerInitRetries) {
+            server_init_retry_count_++;
+            server_init_retry_pending_ = true;
+            call_deferred("_deferred_retry_create_meshes");
+        }
+        return;
+    }
+    server_init_retry_count_ = 0;
+    _create_meshes();
+    _update_viz_geometry_override();
 }
 
 void ResonanceGeometry::set_dynamic(bool p_dynamic) {
@@ -322,8 +357,11 @@ void ResonanceGeometry::_create_meshes() {
     }
 
     ResonanceServer* server = ResonanceServer::get_singleton();
-    if (!server || !server->is_initialized())
+    if (!server || !server->is_initialized()) {
+        _schedule_retry_create_meshes_when_server_ready();
         return;
+    }
+    server_init_retry_count_ = 0;
 
     Transform3D xform = dynamic_object ? Transform3D() : node3d->get_global_transform();
 
@@ -331,9 +369,11 @@ void ResonanceGeometry::_create_meshes() {
         auto lock = server->scoped_simulation_lock();
         _clear_meshes_impl();
         // --- Load from serialized asset (iplStaticMeshLoad) ---
+        // Sub-scene must match global scene ray tracer (Embree / Default / Radeon Rays); see ResonanceServer::_init_scene_and_simulator.
         IPLSceneSettings sceneSettings{};
-        sceneSettings.type = IPL_SCENETYPE_EMBREE;
+        sceneSettings.type = server->get_scene_type();
         sceneSettings.embreeDevice = server->get_embree_device_handle();
+        sceneSettings.radeonRaysDevice = server->get_radeon_rays_device_handle();
 
         if (iplSceneCreate(server->get_context_handle(), &sceneSettings, &sub_scene) != IPL_STATUS_SUCCESS) {
             ResonanceLog::error("ResonanceGeometry: iplSceneCreate failed (asset path).");
@@ -418,8 +458,9 @@ void ResonanceGeometry::_create_meshes() {
 
             if (dynamic_object) {
                 IPLSceneSettings sceneSettings{};
-                sceneSettings.type = IPL_SCENETYPE_EMBREE;
+                sceneSettings.type = server->get_scene_type();
                 sceneSettings.embreeDevice = server->get_embree_device_handle();
+                sceneSettings.radeonRaysDevice = server->get_radeon_rays_device_handle();
 
                 if (iplSceneCreate(server->get_context_handle(), &sceneSettings, &sub_scene) == IPL_STATUS_SUCCESS) {
 
@@ -721,6 +762,7 @@ void ResonanceGeometry::_bind_methods() {
     ClassDB::bind_method(D_METHOD("set_material", "p_material"), &ResonanceGeometry::set_material);
     ClassDB::bind_method(D_METHOD("get_material"), &ResonanceGeometry::get_material);
     ClassDB::bind_method(D_METHOD("refresh_geometry"), &ResonanceGeometry::refresh_geometry);
+    ClassDB::bind_method(D_METHOD("_deferred_retry_create_meshes"), &ResonanceGeometry::_deferred_retry_create_meshes);
     ClassDB::bind_method(D_METHOD("discard_meshes_before_scene_release"), &ResonanceGeometry::discard_meshes_before_scene_release);
     ClassDB::bind_method(D_METHOD("set_dynamic", "p_dynamic"), &ResonanceGeometry::set_dynamic);
     ClassDB::bind_method(D_METHOD("is_dynamic"), &ResonanceGeometry::is_dynamic);

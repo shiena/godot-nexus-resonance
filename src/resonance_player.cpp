@@ -271,6 +271,14 @@ void ResonanceInternalPlayback::_process_steam_audio_block() {
         }
     }
 
+    if (!srv->is_spatial_audio_output_ready()) {
+        memset(sa_final_mix_buffer.data[0], 0, frame_size_ * sizeof(float));
+        memset(sa_final_mix_buffer.data[1], 0, frame_size_ * sizeof(float));
+        output_ring_l.write(sa_final_mix_buffer.data[0], frame_size_);
+        output_ring_r.write(sa_final_mix_buffer.data[1], frame_size_);
+        return;
+    }
+
     if (local_source) {
         float dbg_direct = 0.0f;
         float dbg_reverb = 0.0f;
@@ -699,6 +707,8 @@ void ResonanceReverbPlayback::set_parent_player(ResonancePlayer* p_player) {
 int32_t ResonanceReverbPlayback::_mix(AudioFrame* buffer, float _rate_scale, int32_t frames) {
     if (!parent_player || frames <= 0)
         return 0;
+    if (!parent_player->is_playing())
+        return 0;
     ResonanceInternalPlayback* main_pb = Object::cast_to<ResonanceInternalPlayback>(parent_player->get_stream_playback().ptr());
     if (!main_pb)
         return 0;
@@ -747,6 +757,8 @@ bool ResonancePlayer::_config_bool(const char* key, bool default_val) const {
     return (v.get_type() != Variant::NIL) ? (bool)v : default_val;
 }
 ResonanceInternalPlayback* ResonancePlayer::_get_resonance_playback() {
+    if (!is_playing())
+        return nullptr;
     Ref<AudioStreamPlayback> pb = get_stream_playback();
     return pb.is_valid() ? Object::cast_to<ResonanceInternalPlayback>(pb.ptr()) : nullptr;
 }
@@ -1084,28 +1096,15 @@ void ResonancePlayer::_process_config_and_pathing(ResonanceServer* srv) {
     _apply_update_source(pathing_batch);
 }
 
-void ResonancePlayer::_process_debug_drawing(double delta, ResonanceServer* srv, const ResonanceDebugData& dbg_data) {
-    if (!exclude_from_debug_) {
-        debug_drawer.process(
-            delta,
-            dbg_data,
-            srv->is_debug_occlusion_enabled(),
-            srv->is_debug_reflections_enabled(),
-            get_name());
-    }
+void ResonancePlayer::_sync_player_debug_drawer(double delta, ResonanceServer* srv, const ResonanceDebugData& dbg_data, bool hud_active) {
+    if (exclude_from_debug_)
+        return;
+    const bool occ = srv && srv->is_debug_occlusion_enabled();
+    const bool ref = srv && srv->is_debug_reflections_enabled();
+    debug_drawer.process(delta, dbg_data, occ, ref, get_name(), hud_active);
 }
 
-void ResonancePlayer::_process(double delta) {
-    Engine* eng = Engine::get_singleton();
-    if (eng && eng->is_editor_hint())
-        return;
-    if (!player_config.is_valid() || !is_playing())
-        return;
-
-    ResonanceServer* srv = ResonanceServer::get_singleton();
-    if (!srv || !srv->is_simulating() || source_handle < 0)
-        return;
-
+void ResonancePlayer::_push_playback_parameters_from_simulation(ResonanceServer* srv, ResonanceDebugData* opt_debug_out) {
     _process_config_and_pathing(srv);
 
     const ConfigCache& c = config_cache_;
@@ -1120,7 +1119,6 @@ void ResonancePlayer::_process(double delta) {
     float reverb_pathing_attenuation;
     _compute_attenuation(dist, occ_data, attenuation, reverb_pathing_attenuation);
 
-    // Air absorption: Simulation mode uses occ_data; User Defined uses config low/mid/high
     Vector3 air_abs;
     if (c.air_absorption_enabled && c.air_absorption_input == 1) {
         air_abs.x = CLAMP(c.air_absorption_low, 0.0f, 1.0f);
@@ -1129,22 +1127,15 @@ void ResonancePlayer::_process(double delta) {
     } else {
         air_abs = Vector3(occ_data.air_absorption[0], occ_data.air_absorption[1], occ_data.air_absorption[2]);
     }
-    // Occlusion: Simulation uses occ_data; User Defined uses occlusion_value
     float occ_val = (c.occlusion_input == 1) ? CLAMP(c.occlusion_value, 0.0f, 1.0f) : occ_data.occlusion;
-    // Transmission: Simulation uses occ_data; User Defined uses transmission_low/mid/high
     float tx_low = (c.transmission_input == 1) ? CLAMP(c.transmission_low, 0.0f, 1.0f) : occ_data.transmission[0];
     float tx_mid = (c.transmission_input == 1) ? CLAMP(c.transmission_mid, 0.0f, 1.0f) : occ_data.transmission[1];
     float tx_high = (c.transmission_input == 1) ? CLAMP(c.transmission_high, 0.0f, 1.0f) : occ_data.transmission[2];
-    // Directivity: Simulation uses occ_data; User Defined uses directivity_value
     float directivity_val = (c.directivity_input == 1) ? CLAMP(c.directivity_value, 0.0f, 1.0f) : occ_data.directivity;
 
-    // --- Variables needed for Logic and Debug ---
-
-    // 1. Check if Reverb is available
     IPLReflectionEffectParams ignored_params{};
     bool has_reverb = srv->fetch_reverb_params(source_handle, ignored_params);
 
-    // 2. Enable flags derived from mix levels (0 = muted) AND Server global switch
     bool direct_enabled = (c.direct_mix_level > 0.0f) && (!srv || srv->is_output_direct_enabled());
     bool reverb_enabled = ((c.reflections_mix_level > 0.0f) || (c.pathing_mix_level > 0.0f)) && (!srv || srv->is_output_reverb_enabled());
 
@@ -1161,20 +1152,79 @@ void ResonancePlayer::_process(double delta) {
     if (res_pb)
         res_pb->update_parameters(new_params);
 
-    // --- DEBUG DRAWING ---
+    if (opt_debug_out) {
+        opt_debug_out->source_pos = get_global_position();
+        opt_debug_out->listener_pos = listener_pos;
+        opt_debug_out->occlusion = occ_val;
+        opt_debug_out->transmission[0] = tx_low;
+        opt_debug_out->transmission[1] = tx_mid;
+        opt_debug_out->transmission[2] = tx_high;
+        opt_debug_out->attenuation = attenuation;
+        opt_debug_out->distance = dist;
+        opt_debug_out->air_absorption = air_abs;
+        opt_debug_out->directivity_val = directivity_val;
+        opt_debug_out->air_abs_enabled = c.air_absorption_enabled;
+        opt_debug_out->directivity_enabled = c.directivity_enabled;
+    }
+}
+
+void ResonancePlayer::_deferred_push_playback_parameters() {
+    Engine* eng = Engine::get_singleton();
+    if (eng && eng->is_editor_hint())
+        return;
+    if (!player_config.is_valid() || !is_playing())
+        return;
+    ResonanceServer* srv = ResonanceServer::get_singleton();
+    if (!srv || !srv->is_simulating() || source_handle < 0)
+        return;
+    _push_playback_parameters_from_simulation(srv, nullptr);
+}
+
+void ResonancePlayer::_process(double delta) {
+    Engine* eng = Engine::get_singleton();
+    if (eng && eng->is_editor_hint())
+        return;
+    if (!player_config.is_valid())
+        return;
+
+    ResonanceServer* srv = ResonanceServer::get_singleton();
+    const bool dbg_occ = srv && srv->is_debug_occlusion_enabled();
+    const bool dbg_ref = srv && srv->is_debug_reflections_enabled();
+    const bool want_player_debug_ui = !exclude_from_debug_ && (dbg_occ || dbg_ref);
+    const bool pipeline_ok = is_playing() && srv && srv->is_simulating() && source_handle >= 0;
+
+    if (want_player_debug_ui) {
+        if (pipeline_ok)
+            debug_overlay_grace_timer_ = resonance::kDebugOverlayGraceSeconds;
+        else
+            debug_overlay_grace_timer_ -= delta;
+    } else {
+        debug_overlay_grace_timer_ = 0.0;
+    }
+
+    const bool show_debug_hud = want_player_debug_ui && (pipeline_ok || debug_overlay_grace_timer_ > 0.0);
+
+    if (!is_playing()) {
+        if (show_debug_hud && debug_overlay_has_last_data_)
+            _sync_player_debug_drawer(delta, srv, debug_overlay_last_data_, true);
+        else
+            _sync_player_debug_drawer(delta, srv, ResonanceDebugData{}, false);
+        return;
+    }
+
+    if (!srv || !srv->is_simulating() || source_handle < 0) {
+        if (show_debug_hud && debug_overlay_has_last_data_)
+            _sync_player_debug_drawer(delta, srv, debug_overlay_last_data_, true);
+        else
+            _sync_player_debug_drawer(delta, srv, ResonanceDebugData{}, false);
+        return;
+    }
+
     ResonanceDebugData dbg_data;
-    dbg_data.source_pos = get_global_position();
-    dbg_data.listener_pos = listener_pos;
-    dbg_data.occlusion = occ_val;
-    dbg_data.transmission[0] = tx_low;
-    dbg_data.transmission[1] = tx_mid;
-    dbg_data.transmission[2] = tx_high;
-    dbg_data.attenuation = attenuation;
-    dbg_data.distance = dist;
-    dbg_data.air_absorption = air_abs;
-    dbg_data.directivity_val = directivity_val;
-    dbg_data.air_abs_enabled = c.air_absorption_enabled;
-    dbg_data.directivity_enabled = c.directivity_enabled;
+    _push_playback_parameters_from_simulation(srv, &dbg_data);
+
+    // --- DEBUG DRAWING ---
+    ResonanceInternalPlayback* res_pb = _get_resonance_playback();
     if (res_pb) {
         res_pb->get_debug_signal_levels(dbg_data.signal_direct, dbg_data.signal_reverb, dbg_data.signal_pathing);
     } else {
@@ -1183,7 +1233,9 @@ void ResonancePlayer::_process(double delta) {
         dbg_data.signal_pathing = 0.0f;
     }
 
-    _process_debug_drawing(delta, srv, dbg_data);
+    debug_overlay_last_data_ = dbg_data;
+    debug_overlay_has_last_data_ = true;
+    _sync_player_debug_drawer(delta, srv, dbg_data, show_debug_hud);
 }
 
 void ResonancePlayer::_ensure_source_exists() {
@@ -1220,6 +1272,8 @@ void ResonancePlayer::play_stream(double from_pos) {
         if (!rp->is_playing())
             rp->play();
     }
+    if (player_config.is_valid())
+        call_deferred("_deferred_push_playback_parameters");
 }
 
 void ResonancePlayer::stop() {
@@ -1332,6 +1386,7 @@ void ResonancePlayer::_bind_methods() {
     ClassDB::bind_method(D_METHOD("set_reverb_split_output", "p_enable", "p_reverb_bus"), &ResonancePlayer::set_reverb_split_output, DEFVAL(StringName()));
     ClassDB::bind_method(D_METHOD("get_audio_instrumentation"), &ResonancePlayer::get_audio_instrumentation);
     ClassDB::bind_method(D_METHOD("reset_audio_instrumentation"), &ResonancePlayer::reset_audio_instrumentation);
+    ClassDB::bind_method(D_METHOD("_deferred_push_playback_parameters"), &ResonancePlayer::_deferred_push_playback_parameters);
 
     ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "player_config", PROPERTY_HINT_RESOURCE_TYPE, "ResonancePlayerConfig"), "set_player_config", "get_player_config");
     ADD_PROPERTY(PropertyInfo(Variant::NODE_PATH, "pathing_probe_volume", PROPERTY_HINT_NODE_PATH_VALID_TYPES, "ResonanceProbeVolume"), "set_pathing_probe_volume", "get_pathing_probe_volume");

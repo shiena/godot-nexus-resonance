@@ -4,7 +4,7 @@
 		Scene configuration node for Nexus Resonance. Initializes and drives the audio engine.
 	</brief_description>
 	<description>
-		Nexus Resonance scene configuration node. Add via Add Child Node > ResonanceRuntime. Assign a ResonanceRuntimeConfig resource (create new or link existing) for runtime settings. Handles ResonanceServer init, listener fallback when no ResonanceListener, reverb bus activator, pathing/reflection debug visualization, and notifying probe volumes when config changes.
+		Nexus Resonance scene configuration node. Add via Add Child Node &gt; ResonanceRuntime. Assign a ResonanceRuntimeConfig resource (create or link existing) for runtime settings. Handles ResonanceServer init, listener fallback when no ResonanceListener, reverb bus activator, pathing/reflection debug visualization, and notifying probe volumes when config changes.
 	</description>
 	<tutorials>
 	</tutorials>
@@ -12,7 +12,7 @@
 		<method name="get_config_dict">
 			<return type="Dictionary" />
 			<description>
-				Returns config dict for init_audio_engine. Merges runtime config resource with node's debug flags (debug_occlusion).
+				Returns config dict for init_audio_engine. Merges runtime config resource with debug_occlusion (player/source ray overlay state).
 			</description>
 		</method>
 	</methods>
@@ -20,17 +20,17 @@
 		<member name="runtime" type="ResonanceRuntimeConfig">
 			Runtime configuration resource. Create or link an existing .tres. Auto-created default if empty.
 		</member>
-		<member name="debug_overlay_toggle_key" type="int" default="4194332">
-			Key to toggle debug overlay at runtime (default: F3).
+		<member name="enable_debug" type="bool" default="false">
+			When false, debug/performance/player overlay toggle keys do nothing (for release builds). When turned off at runtime, open overlays and player ray viz are closed.
 		</member>
-		<member name="performance_overlay_enabled" type="bool" default="false">
-			Enable optional performance overlay (FPS, frame time). Toggle with F4.
+		<member name="debug_overlay_toggle_key" type="int" default="4194332">
+			Key to toggle debug overlay at runtime (default: F1).
 		</member>
 		<member name="performance_overlay_toggle_key" type="int" default="4194333">
-			Key to toggle performance overlay at runtime (default: F4).
+			Key to toggle performance overlay at runtime (default: F2). Hidden until toggled on.
 		</member>
-		<member name="debug_sources" type="bool" default="false">
-			Draw source and reflection rays for debugging. Requires ResonanceServer debug support.
+		<member name="player_overlay_toggle_key" type="int" default="4194334">
+			Key to toggle player/source ray visualization (occlusion + reflection rays; default: F3). Only processed when enable_debug is true.
 		</member>
 	</members>
 </class>

@@ -501,10 +501,18 @@ void ResonanceProbeVolume::_prepare_and_execute_bake(const PackedVector3Array* p
         }
         String base_dir = resonance::kProbeBakeOutputDir;
         ProjectSettings* ps = ProjectSettings::get_singleton();
-        if (ps && ps->has_setting(String(resonance::kProjectSettingsResonancePrefix) + "bake/output_dir")) {
-            base_dir = String(ps->get_setting(String(resonance::kProjectSettingsResonancePrefix) + "bake/output_dir"));
-            if (!base_dir.ends_with("/"))
+        if (ps) {
+            const String prefix = String(resonance::kProjectSettingsResonancePrefix);
+            const String key_new = prefix + String(resonance::kProjectSettingsBakeDefaultOutputDirectory);
+            const String key_old = prefix + String(resonance::kProjectSettingsBakeOutputDirectoryLegacy);
+            if (ps->has_setting(key_new)) {
+                base_dir = String(ps->get_setting(key_new));
+            } else if (ps->has_setting(key_old)) {
+                base_dir = String(ps->get_setting(key_old));
+            }
+            if (!base_dir.ends_with("/")) {
                 base_dir += "/";
+            }
         }
         String path = base_dir + scene_name + "_" + node_name + "_baked_probes.tres";
         String dir = path.get_base_dir();

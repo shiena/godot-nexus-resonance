@@ -27,7 +27,7 @@ var sample_rate_override: int = 0
 @export_enum("Auto:0", "256:256", "512:512", "1024:1024", "2048:2048") var audio_frame_size: int = 0
 ## Target bus for Direct + Pathing (player output). Empty = Master. Fallback when players use Global bus override.
 @export var bus: StringName = &"Master"
-## Bus for convolution reverb (effect and activator). Empty = use Project Settings default.
+## Bus for convolution reverb (effect and activator). Empty = ResonanceReverb.
 ## Reverb output is sent to [member bus] (same as Direct+Pathing). No separate send bus.
 @export var reverb_bus_name: StringName = &"ResonanceReverb"
 
@@ -127,9 +127,9 @@ var _pathing_enabled: bool = false
 
 # --- Advanced ---
 @export_group("Advanced")
-var _scene_type: int = 1
+var _scene_type: int = 0
 ## Ray tracer backend. Default = built-in Phonon; Embree = Intel (faster CPU); Radeon Rays = GPU (Windows 64-bit).
-## Embree provides better CPU performance than Default. Radeon Rays offloads to GPU when available.
+## Godot often omits `scene_type = 0` in .tres; initializer 0 keeps „Default“ after reload. Embree/Radeon serialize as 1/2.
 @export_enum("Default:0", "Embree:1", "Radeon Rays:2") var scene_type: int:
 	get:
 		return _scene_type

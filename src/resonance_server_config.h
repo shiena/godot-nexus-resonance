@@ -52,7 +52,7 @@ struct ResonanceServerConfig {
 
     // Ray tracer / OpenCL / Radeon Rays
     /// 0=Default (built-in Phonon), 1=Embree (Intel, faster CPU), 2=Radeon Rays (GPU)
-    int scene_type = 1;
+    int scene_type = 0;
     int opencl_device_type = 0; // 0=GPU, 1=CPU, 2=Any
     int opencl_device_index = 0;
 

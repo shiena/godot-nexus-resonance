@@ -332,8 +332,8 @@ func _ensure_resonance_server_initialized(volumes: Array[Node]) -> bool:
 			var rt = cfg_node.get("runtime")
 			if rt and rt.has_method("get_config"):
 				config = rt.get_config()
-				var src = cfg_node.get("debug_sources")
-				config["debug_occlusion"] = false if src == null else src
+				# Editor bake init: never enable in-engine ray viz.
+				config["debug_occlusion"] = false
 	if config.is_empty():
 		_log_and_show_error(
 			"No ResonanceRuntime in scene.",

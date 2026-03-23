@@ -7,6 +7,7 @@
 namespace godot {
 
 /// Forward to ResonanceLogger (GDScript) when available. Category for thematic filtering.
+/// Always deferred to the main thread (safe from audio / worker threads).
 void resonance_logger_log(const char* category, const char* message, Dictionary data);
 
 class ResonanceLog {

@@ -32,19 +32,30 @@ var _runtime: ResonanceRuntimeConfig
 @export var fmod_bridge_enabled: bool = false
 
 @export_group("Runtime Debug")
-## Key to toggle debug overlay at runtime (F3). When overlay is on: cursor visible, camera ignores mouse.
-@export var debug_overlay_toggle_key: Key = KEY_F3
-## Enable optional performance overlay (FPS, frame time). Toggle with performance_overlay_toggle_key.
-## The overlay node is created lazily on first toggle (F4) so it does not flash when stopping the game.
-@export var performance_overlay_enabled: bool = false
-## Key to toggle performance overlay at runtime (F4). Independent from debug overlay.
-@export var performance_overlay_toggle_key: Key = KEY_F4
-## Draw source rays for debugging. Requires ResonanceServer debug support.
-@export var debug_sources: bool = false
+## When off, overlay keys do nothing (hide dev tools from players). Turn on for development builds only.
+@export var enable_debug: bool = false:
+	get:
+		return _enable_debug
+	set(v):
+		if _enable_debug == v:
+			return
+		var was_on := _enable_debug
+		_enable_debug = v
+		if was_on and not v:
+			_disable_runtime_debug_ui()
 
+## Key to toggle debug overlay (audio/server status, log).
+@export var debug_overlay_toggle_key: Key = KEY_F1
+## Key to toggle performance overlay (FPS, frame time). Off until first toggle; node is created lazily.
+@export var performance_overlay_toggle_key: Key = KEY_F2
+## Key to toggle player/source ray visualization (occlusion + reflection rays in engine). Requires ResonanceServer debug support.
+@export var player_overlay_toggle_key: Key = KEY_F3
+
+var _enable_debug: bool = false
 var _debug_overlay_visible: bool = false
 var _performance_overlay_visible: bool = false
-var _debug_overlay_mouse_mode_before: int = Input.MOUSE_MODE_CAPTURED
+## Effective source/reflection debug draw (was debug_sources bool).
+var _player_overlay_visible: bool = false
 
 var _fmod_bridge: RefCounted = null  # ResonanceFMODBridgeScript
 var _activator: AudioStreamPlayer
@@ -81,10 +92,10 @@ func get_fmod_bridge() -> RefCounted:
 	return _fmod_bridge
 
 
-## Returns config dict for init_audio_engine. Merges runtime config with node's debug flags.
+## Returns config dict for init_audio_engine. Merges runtime config with debug_occlusion (player ray overlay on/off).
 func get_config_dict() -> Dictionary:
 	var cfg: Dictionary = _runtime.get_config() if _runtime else {}
-	cfg["debug_occlusion"] = debug_sources
+	cfg["debug_occlusion"] = _player_overlay_visible
 	return cfg
 
 
@@ -106,8 +117,6 @@ func _ready() -> void:
 		_setup_activator()
 		call_deferred("_apply_bus_to_players")
 	_update_debug_overlay_visibility()
-	if not Engine.is_editor_hint() and _debug_overlay_visible:
-		call_deferred("_update_debug_overlay_mouse_mode")
 
 
 func _exit_tree() -> void:
@@ -123,12 +132,17 @@ func _exit_tree() -> void:
 func _input(event: InputEvent) -> void:
 	if Engine.is_editor_hint():
 		return
+	if not _enable_debug:
+		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == debug_overlay_toggle_key:
 			_toggle_debug_overlay()
 			get_viewport().set_input_as_handled()
-		elif performance_overlay_enabled and event.keycode == performance_overlay_toggle_key:
+		elif event.keycode == performance_overlay_toggle_key:
 			_toggle_performance_overlay()
+			get_viewport().set_input_as_handled()
+		elif event.keycode == player_overlay_toggle_key:
+			_toggle_player_overlay()
 			get_viewport().set_input_as_handled()
 
 
@@ -169,6 +183,39 @@ func _toggle_performance_overlay() -> void:
 		overlay.visible = _performance_overlay_visible
 		if _performance_overlay_visible:
 			overlay.process_mode = Node.PROCESS_MODE_INHERIT
+
+
+func _toggle_player_overlay() -> void:
+	_player_overlay_visible = not _player_overlay_visible
+	_apply_debug_flags()
+	_refresh_resonance_geometry_for_debug_viz()
+
+
+func _disable_runtime_debug_ui() -> void:
+	_debug_overlay_visible = false
+	_performance_overlay_visible = false
+	_player_overlay_visible = false
+	_update_debug_overlay_visibility()
+	var perf := get_node_or_null("PerformanceOverlay")
+	if perf:
+		perf.visible = false
+		perf.process_mode = Node.PROCESS_MODE_DISABLED
+	_apply_debug_flags()
+	_refresh_resonance_geometry_for_debug_viz()
+
+
+func _refresh_resonance_geometry_for_debug_viz() -> void:
+	if not is_inside_tree():
+		return
+	if not Engine.has_singleton("ResonanceServer"):
+		return
+	var srv = Engine.get_singleton("ResonanceServer")
+	if not srv.is_initialized():
+		return
+	if srv.has_method("wants_debug_reflection_viz") and srv.wants_debug_reflection_viz():
+		get_tree().call_group_flags(
+			SceneTree.GROUP_CALL_DEFERRED, "resonance_geometry", "refresh_geometry"
+		)
 
 
 func _process(delta: float) -> void:
@@ -228,11 +275,6 @@ func _initialize_server() -> void:
 	# FMOD Bridge: Connect Steam Audio to FMOD when enabled
 	if fmod_bridge_enabled:
 		_init_fmod_bridge()
-	# Trigger geometry refresh for debug reflection viz (ResonanceGeometry re-registers after init)
-	if srv.wants_debug_reflection_viz():
-		get_tree().call_group_flags(
-			SceneTree.GROUP_CALL_DEFERRED, "resonance_geometry", "refresh_geometry"
-		)
 	# Unity-style: load static scene(s) from ResonanceStaticScene nodes. Additive: one per scene.
 	var static_scenes: Array[Node] = []
 	ResonanceSceneUtils.collect_resonance_static_scenes(get_tree().get_root(), static_scenes)
@@ -250,8 +292,27 @@ func _initialize_server() -> void:
 				srv.load_static_scene_from_asset(
 					static_scenes[0].static_scene_asset, static_scenes[0].get_global_transform()
 				)
+	# add_static_scene_from_asset / load_static_scene_from_asset commit the IPL scene and set scene_dirty;
+	# the simulation worker runs iplSceneCommit + RunDirect on the next tick. Deferred refresh re-runs
+	# ResonanceGeometry::_create_meshes for nodes that missed server init during _ready (same as reinit path).
+	if is_inside_tree():
+		var tree = get_tree()
+		if tree:
+			tree.call_group_flags(
+				SceneTree.GROUP_CALL_DEFERRED, "resonance_geometry", "refresh_geometry"
+			)
 	_apply_debug_flags()
 	_apply_perspective_correction()
+	# Mute spatialized player output until several worker RunDirect ticks after scene/geometry settle (see kSpatialAudioWarmupWorkerPasses).
+	call_deferred("_deferred_reset_spatial_audio_warmup_passes")
+
+
+func _deferred_reset_spatial_audio_warmup_passes() -> void:
+	if not Engine.has_singleton("ResonanceServer"):
+		return
+	var srv = Engine.get_singleton("ResonanceServer")
+	if srv.is_initialized() and srv.has_method("reset_spatial_audio_warmup_passes"):
+		srv.reset_spatial_audio_warmup_passes()
 
 
 func _apply_debug_flags() -> void:
@@ -259,9 +320,9 @@ func _apply_debug_flags() -> void:
 		return
 	var srv = Engine.get_singleton("ResonanceServer")
 	if srv.is_initialized():
-		srv.set_debug_occlusion(debug_sources)
+		srv.set_debug_occlusion(_player_overlay_visible)
 		if srv.has_method("set_debug_reflections"):
-			srv.set_debug_reflections(debug_sources)
+			srv.set_debug_reflections(_player_overlay_visible)
 
 
 func _apply_perspective_correction() -> void:
@@ -277,8 +338,7 @@ func _apply_perspective_correction() -> void:
 func _get_bus_effective() -> StringName:
 	if _runtime:
 		return _runtime.get_bus_effective()
-	var s: String = ProjectSettings.get_setting("nexus/resonance/bus", "Master")
-	return StringName(s) if not s.is_empty() else &"Master"
+	return &"Master"
 
 
 func _get_reverb_bus_name() -> StringName:
@@ -419,6 +479,7 @@ func _reload_after_reinit() -> void:
 	tree.call_group_flags(
 		SceneTree.GROUP_CALL_DEFERRED, "resonance_geometry", "refresh_geometry"
 	)
+	call_deferred("_deferred_reset_spatial_audio_warmup_passes")
 
 
 func _connect_runtime_signals() -> void:
@@ -510,16 +571,3 @@ func _update_debug_overlay_visibility() -> void:
 	var overlay = get_node_or_null("DebugOverlay")
 	if overlay:
 		overlay.visible = _debug_overlay_visible
-	_update_debug_overlay_mouse_mode()
-
-
-func _update_debug_overlay_mouse_mode() -> void:
-	## When overlay is visible: show cursor, camera does not use mouse.
-	## When hidden: restore previous mouse mode (typically captured for FPS).
-	if Engine.is_editor_hint():
-		return
-	if _debug_overlay_visible:
-		_debug_overlay_mouse_mode_before = Input.get_mouse_mode()
-		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
-	else:
-		Input.set_mouse_mode(_debug_overlay_mouse_mode_before)

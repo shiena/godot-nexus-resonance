@@ -7,14 +7,19 @@ class_name ResonancePaths
 const PATH_AUDIO_DATA := "res://audio_data/"
 const PATH_RESONANCE_MESHES := "res://resonance_meshes/"
 
-const _OUTPUT_DIR_SETTING := "nexus/resonance/bake/output_dir"
+const _OUTPUT_DIR_SETTING := "nexus/resonance/bake/default_output_directory"
 
 
-## Returns the audio data output directory (bake, static export). Reads from Project Settings.
+## Returns the audio data output directory (bake, static export). Reads from Project Settings
+## (`default_output_directory`; legacy `bake/output_dir` supported until migrated).
 ## Falls back to PATH_AUDIO_DATA if not configured. Always returns a path ending with "/".
 static func get_audio_data_dir() -> String:
-	if ProjectSettings.has_setting(_OUTPUT_DIR_SETTING):
-		var dir: String = ProjectSettings.get_setting(_OUTPUT_DIR_SETTING, PATH_AUDIO_DATA)
+	const LEGACY := "nexus/resonance/bake/output_dir"
+	var key := _OUTPUT_DIR_SETTING
+	if not ProjectSettings.has_setting(key) and ProjectSettings.has_setting(LEGACY):
+		key = LEGACY
+	if ProjectSettings.has_setting(key):
+		var dir: String = ProjectSettings.get_setting(key, PATH_AUDIO_DATA)
 		if not dir.is_empty():
 			return dir if dir.ends_with("/") else dir + "/"
 	return PATH_AUDIO_DATA

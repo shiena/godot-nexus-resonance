@@ -52,6 +52,7 @@ void ResonanceServer::_destroy_source_handle_under_simulation_lock(int32_t handl
         _source_attenuation_entries.erase(handle);
     }
     _source_update_snapshot_.erase(handle);
+    realtime_reflection_log_once_handles_.erase(handle);
     source_manager.remove_source(handle);
 }
 
@@ -287,11 +288,9 @@ void ResonanceServer::_update_source_internal(IPLSource src, int32_t handle, Vec
 
     // Reflections: baked_data_variation -1=Realtime, 0=REVERB, 1=STATICSOURCE, 2=STATICLISTENER
     if (baked_data_variation == -1) {
-        static int s_realtime_source_log_count = 0;
-        if (s_realtime_source_log_count < 3) {
-            String src_msg = "Source " + String::num_int64(handle) + " using Realtime reflections (baked=FALSE). Rays: " + String::num_int64(max_rays);
+        if (realtime_reflection_log_once_handles_.insert(handle).second) {
+            String src_msg = "Source " + String::num_int64(handle) + " first realtime reflections update (baked=FALSE). Rays: " + String::num_int64(max_rays);
             UtilityFunctions::print_rich("[color=cyan]Nexus Resonance:[/color] " + src_msg);
-            s_realtime_source_log_count++;
         }
         inputs.baked = IPL_FALSE;
         inputs.bakedDataIdentifier.type = IPL_BAKEDDATATYPE_REFLECTIONS;

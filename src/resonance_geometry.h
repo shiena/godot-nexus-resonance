@@ -35,7 +35,14 @@ class ResonanceGeometry : public Node3D {
     int triangle_count = 0;
     int debug_mesh_id = -1; // RayTraceDebugContext mesh id for unregister
 
+    /// When _create_meshes runs before ResonanceServer::init_audio_engine, retry on later frames.
+    static constexpr int kMaxServerInitRetries = 64;
+    bool server_init_retry_pending_ = false;
+    int server_init_retry_count_ = 0;
+
     void _create_meshes();
+    void _schedule_retry_create_meshes_when_server_ready();
+    void _deferred_retry_create_meshes();
     void _clear_meshes();
     void _propagate_material_and_geometry_to_descendants();
     /// Internal: cleanup without locking. Caller must hold simulation lock when touching scene.

@@ -295,6 +295,9 @@ class ResonancePlayer : public AudioStreamPlayer3D {
 
     // Debug visualization
     ResonanceDebugDrawer debug_drawer;
+    ResonanceDebugData debug_overlay_last_data_{};
+    bool debug_overlay_has_last_data_ = false;
+    double debug_overlay_grace_timer_ = 0.0;
 
     void _update_stream_setup();                                 // Ensures the internal stream is set up correctly
     void _ensure_source_exists();                                // Ensures the source handle exists in the ResonanceServer
@@ -304,7 +307,11 @@ class ResonancePlayer : public AudioStreamPlayer3D {
 
     void _setup_attenuation(ResonanceServer* srv);
     void _process_config_and_pathing(ResonanceServer* srv);
-    void _process_debug_drawing(double delta, ResonanceServer* srv, const ResonanceDebugData& dbg_data);
+    /// Pushes occlusion/attenuation from simulation into the audio thread (same as one _process tick without debug UI).
+    /// When opt_debug_out is set, fills debug fields (not signal levels).
+    void _push_playback_parameters_from_simulation(ResonanceServer* srv, ResonanceDebugData* opt_debug_out = nullptr);
+    void _deferred_push_playback_parameters();
+    void _sync_player_debug_drawer(double delta, ResonanceServer* srv, const ResonanceDebugData& dbg_data, bool hud_active);
     void _compute_listener_data(Viewport* vp, Vector3& out_listener_pos, IPLCoordinateSpace3& out_listener_orient);
     void _compute_attenuation(float dist, const OcclusionData& occ_data, float& out_attenuation, float& out_reverb_pathing_attenuation);
     Vector3 _apply_perspective_correction(Vector3 listener_pos, Viewport* vp, bool apply_perspective, float perspective_factor_val);

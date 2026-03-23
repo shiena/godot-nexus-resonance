@@ -114,9 +114,17 @@ void ResonanceDebugDrawer::_update_label_text(const ResonanceDebugData& data, St
     label_instance->set_text(text);
 }
 
-void ResonanceDebugDrawer::process(double delta, const ResonanceDebugData& data, bool show_occ, bool show_reverb, String node_name) {
+void ResonanceDebugDrawer::process(double delta, const ResonanceDebugData& data, bool show_occ, bool show_reverb, String node_name, bool hud_active) {
     // 1. Cleanup check
     if (!show_occ && !show_reverb) {
+        if (mesh_instance && mesh_instance->is_visible())
+            mesh_instance->set_visible(false);
+        if (label_instance && label_instance->is_visible())
+            label_instance->set_visible(false);
+        return;
+    }
+
+    if (!hud_active) {
         if (mesh_instance && mesh_instance->is_visible())
             mesh_instance->set_visible(false);
         if (label_instance && label_instance->is_visible())

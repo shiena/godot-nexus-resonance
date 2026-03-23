@@ -1,7 +1,7 @@
 #include "resonance_log.h"
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/object.hpp>
-#include <godot_cpp/variant/array.hpp>
+#include <godot_cpp/variant/string.hpp>
 #include <godot_cpp/variant/string_name.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 #include <godot_cpp/variant/variant.hpp>
@@ -21,6 +21,8 @@ void ResonanceLog::info(const String& p_msg) {
         UtilityFunctions::print("Nexus Resonance: ", p_msg);
         // System Console (Backup)
         std::cout << "Nexus Resonance: " << p_msg.utf8().get_data() << std::endl;
+        String full_msg = "Nexus Resonance: " + p_msg;
+        resonance_logger_log("init", full_msg.utf8().get_data(), Dictionary());
     }
 }
 
@@ -76,11 +78,8 @@ void resonance_logger_log(const char* category, const char* message, Dictionary 
     Object* logger_obj = logger_var.operator Object*();
     if (!logger_obj || !logger_obj->has_method("log"))
         return;
-    Array args;
-    args.push_back(StringName(category));
-    args.push_back(String(message));
-    args.push_back(data);
-    logger_obj->callv("log", args);
+    // Must not call GDScript from the audio thread; defer so ResonanceLogger.log runs on the main thread.
+    logger_obj->call_deferred(StringName("log"), StringName(category), String(message), data);
 }
 
 } // namespace godot

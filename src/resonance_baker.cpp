@@ -123,10 +123,18 @@ static String _resolve_save_path(Ref<ResonanceProbeData> probe_data_res) {
     if (path.is_empty()) {
         String base_dir = resonance::kProbeBakeOutputDir;
         ProjectSettings* ps = ProjectSettings::get_singleton();
-        if (ps && ps->has_setting(String(resonance::kProjectSettingsResonancePrefix) + "bake/output_dir")) {
-            base_dir = String(ps->get_setting(String(resonance::kProjectSettingsResonancePrefix) + "bake/output_dir"));
-            if (!base_dir.ends_with("/"))
+        if (ps) {
+            const String prefix = String(resonance::kProjectSettingsResonancePrefix);
+            const String key_new = prefix + String(resonance::kProjectSettingsBakeDefaultOutputDirectory);
+            const String key_old = prefix + String(resonance::kProjectSettingsBakeOutputDirectoryLegacy);
+            if (ps->has_setting(key_new)) {
+                base_dir = String(ps->get_setting(key_new));
+            } else if (ps->has_setting(key_old)) {
+                base_dir = String(ps->get_setting(key_old));
+            }
+            if (!base_dir.ends_with("/")) {
                 base_dir += "/";
+            }
         }
         int n = s_fallback_counter.fetch_add(1) + 1;
         path = base_dir + "baked_probe_data_" + String::num_int64(n) + ".tres";

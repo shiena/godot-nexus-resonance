@@ -15,7 +15,7 @@ struct ResonanceSteamAudioContextConfig {
     int ambisonic_order = 1;
     float max_reverb_duration = 2.0f;
     int reflection_type = resonance::kReflectionConvolution; // May be modified (e.g. TAN fallback)
-    int scene_type = 1;                                      // 0=Default, 1=Embree, 2=Radeon Rays
+    int scene_type = 0;                                      // 0=Default, 1=Embree, 2=Radeon Rays
     int opencl_device_type = 0;                              // 0=GPU, 1=CPU, 2=Any
     int opencl_device_index = 0;
     bool context_validation = false;
@@ -59,7 +59,7 @@ class ResonanceSteamAudioContext {
     IPLTrueAudioNextDevice tan_device_ = nullptr;
     mutable IPLHRTF hrtf_[2] = {nullptr, nullptr};
     mutable std::atomic<bool> new_hrtf_written_{false};
-    IPLSceneType scene_type_ = IPL_SCENETYPE_EMBREE;
+    IPLSceneType scene_type_ = IPL_SCENETYPE_DEFAULT;
 };
 
 } // namespace godot

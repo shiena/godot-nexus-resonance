@@ -8,7 +8,7 @@ namespace resonance {
 
 /// Version string (centralized; override via NEXUS_RESONANCE_VERSION when building)
 #ifndef NEXUS_RESONANCE_VERSION
-#define NEXUS_RESONANCE_VERSION "0.9.5"
+#define NEXUS_RESONANCE_VERSION "0.9.6"
 #endif
 constexpr const char* kVersion = NEXUS_RESONANCE_VERSION;
 
@@ -19,6 +19,9 @@ constexpr int kMaxAudioFrameSize = 2048;
 
 /// Ring buffer capacity for audio playback (ResonancePlayer, ResonanceAmbisonicPlayer)
 constexpr int kRingBufferCapacity = 8192;
+/// After scene edits or startup, suppress spatialized player output until this many worker
+/// iplSimulatorRunDirect ticks complete (avoids audible unoccluded direct path before sim catches up).
+constexpr int kSpatialAudioWarmupWorkerPasses = 6;
 
 /// Default reverb/IR duration in seconds (used for irSize = sample_rate * duration)
 constexpr float kDefaultReverbDurationSec = 2.0f;
@@ -33,6 +36,9 @@ constexpr float kBakerStaticEndpointInfluenceFallback = 10.0f; // Fallback when 
 
 /// Godot ProjectSettings path prefix for this addon (see EditorPlugin registration).
 constexpr const char* kProjectSettingsResonancePrefix = "nexus/resonance/";
+/// Default baked audio / probe data directory (Project Settings; legacy `bake/output_dir` still read as fallback).
+constexpr const char* kProjectSettingsBakeDefaultOutputDirectory = "bake/default_output_directory";
+constexpr const char* kProjectSettingsBakeOutputDirectoryLegacy = "bake/output_dir";
 
 /// Baker default parameters (overridable via ProjectSettings nexus/resonance/bake_* and bake_num_*)
 constexpr int kBakeDefaultNumRays = 4096;
@@ -182,6 +188,8 @@ constexpr float kHRTFMinDB = -90.0f;
 
 /// ResonanceDebugDrawer: label update rate (5x per second), pixel size, offset, color
 constexpr double kDebugDrawerLabelUpdateRate = 0.2;
+/// After playback/sim pipeline stops, keep the player debug HUD (label + occlusion line) visible this long using last samples.
+constexpr double kDebugOverlayGraceSeconds = 2.0;
 constexpr float kDebugDrawerLabelPixelSize = 0.005f;
 constexpr float kDebugDrawerLabelOffsetY = 0.5f;
 

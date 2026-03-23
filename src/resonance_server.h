@@ -108,6 +108,8 @@ class ResonanceServer : public Object {
     std::vector<int> _runtime_static_debug_mesh_ids; // Debug viz mesh IDs for static scenes (unregister on clear)
     std::unordered_map<int32_t, std::unique_ptr<AttenuationEntry>> _source_attenuation_entries;
     std::unordered_map<int32_t, SourceUpdateSnapshot> _source_update_snapshot_;
+    /// Handles that already logged the realtime-reflections debug line once (cleared on destroy for ID recycle).
+    std::unordered_set<int32_t> realtime_reflection_log_once_handles_;
     std::recursive_mutex _attenuation_callback_mutex;
     IPLSimulator simulator = nullptr;
 
@@ -144,6 +146,8 @@ class ResonanceServer : public Object {
     std::atomic<int> pending_reinit_frame_size_{0};
     /// True when last init used Auto (audio_frame_size 0). Effect only requests reinit when Auto to avoid overriding user choice.
     std::atomic<bool> audio_frame_size_was_auto_{true};
+    /// 0 = spatialized player output allowed; >0 = suppress until worker completes this many RunDirect ticks after reset.
+    std::atomic<int> spatial_audio_warmup_passes_remaining_{0};
 
     // Helpers
     ResonanceBaker baker;
@@ -200,7 +204,7 @@ class ResonanceServer : public Object {
     bool _pathing_deviation_callback_enabled = false;
     std::mutex _pathing_deviation_mutex;
     // Ray tracer: 0=Default (built-in), 1=Embree (Intel), 2=Radeon Rays (GPU)
-    int scene_type = 1;
+    int scene_type = 0;
     // OpenCL device selection when scene_type=2 or TAN: type 0=GPU, 1=CPU, 2=Any; index = device index in list
     int opencl_device_type = 0; // IPL_OPENCLDEVICETYPE_GPU
     int opencl_device_index = 0;
@@ -342,6 +346,7 @@ class ResonanceServer : public Object {
     // Internal Methods
     void _apply_config(Dictionary config);
     void _worker_thread_func();
+    void _worker_note_direct_sim_pass_completed();
     void _init_internal();
     void _init_context_and_devices();
     bool _init_scene_and_simulator();
@@ -391,7 +396,7 @@ class ResonanceServer : public Object {
     IPLRadeonRaysDevice _radeon() const { return steam_audio_context_ ? steam_audio_context_->get_radeon_rays_device() : nullptr; }
     IPLTrueAudioNextDevice _tan() const { return steam_audio_context_ ? steam_audio_context_->get_tan_device() : nullptr; }
     IPLHRTF _hrtf() const { return steam_audio_context_ ? steam_audio_context_->get_hrtf() : nullptr; }
-    IPLSceneType _scene_type() const { return steam_audio_context_ ? steam_audio_context_->get_scene_type() : IPL_SCENETYPE_EMBREE; }
+    IPLSceneType _scene_type() const { return steam_audio_context_ ? steam_audio_context_->get_scene_type() : IPL_SCENETYPE_DEFAULT; }
 
   protected:
     static void _bind_methods();
@@ -423,7 +428,7 @@ class ResonanceServer : public Object {
     int32_t get_fmod_reverb_source_handle() const { return fmod_reverb_source_handle_; }
     /// FMOD Bridge: Pointer to simulation settings (valid while server initialized). For C++ bridge use.
     const IPLSimulationSettings* get_simulation_settings_for_fmod() const { return _ctx() ? &simulation_settings : nullptr; }
-    IPLSceneType get_scene_type() const { return steam_audio_context_ ? steam_audio_context_->get_scene_type() : IPL_SCENETYPE_EMBREE; }
+    IPLSceneType get_scene_type() const { return steam_audio_context_ ? steam_audio_context_->get_scene_type() : IPL_SCENETYPE_DEFAULT; }
 
     // Thread Safety
     void lock_mixer() { mixer_access_mutex.lock(); }
@@ -440,6 +445,10 @@ class ResonanceServer : public Object {
     String get_version();
     bool is_initialized() const;
     bool is_simulating() const;
+    /// When false, ResonancePlayer/Ambisonic spatial output is silent (warmup after scene changes or runtime start).
+    bool is_spatial_audio_output_ready() const;
+    /// Restart warmup counter (e.g. after loading static geometry). Call from main thread.
+    void reset_spatial_audio_warmup_passes();
     int get_sample_rate() const { return current_sample_rate; }
     int get_audio_frame_size() const { return frame_size; }
     int get_ambisonic_order() const { return ambisonic_order; }
