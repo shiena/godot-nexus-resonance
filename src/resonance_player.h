@@ -161,6 +161,9 @@ class ResonanceInternalPlayback : public AudioStreamPlayback {
     ResonanceInternalPlayback();
     ~ResonanceInternalPlayback();
 
+    /// Called by ResonanceServer before iplContextRelease (userdata = this).
+    static void ipl_context_reinit_cleanup(void* userdata);
+
     ResonanceInternalPlayback(const ResonanceInternalPlayback&) = delete;
     ResonanceInternalPlayback(ResonanceInternalPlayback&&) = delete;
 

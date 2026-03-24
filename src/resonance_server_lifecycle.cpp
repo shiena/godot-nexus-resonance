@@ -4,7 +4,9 @@
 #include "resonance_math.h"
 #include "resonance_server.h"
 #include "resonance_utils.h"
+#include <algorithm>
 #include <cmath>
+#include <godot_cpp/classes/audio_server.hpp>
 #if defined(_WIN32) && defined(_MSC_VER)
 #include <excpt.h>
 #endif
@@ -65,6 +67,45 @@ ResonanceServer::~ResonanceServer() {
 }
 
 ResonanceServer* ResonanceServer::get_singleton() { return g_resonance_server_singleton; }
+
+void ResonanceServer::register_ipl_context_client(void* key, IplContextClientCleanup cleanup) {
+    if (!key || !cleanup)
+        return;
+    std::lock_guard<std::mutex> lock(ipl_context_clients_mutex_);
+    for (IplContextClient& e : ipl_context_clients_) {
+        if (e.key == key) {
+            e.cleanup = cleanup;
+            return;
+        }
+    }
+    ipl_context_clients_.push_back(IplContextClient{key, cleanup});
+}
+
+void ResonanceServer::unregister_ipl_context_client(void* key) {
+    if (!key)
+        return;
+    std::lock_guard<std::mutex> lock(ipl_context_clients_mutex_);
+    auto& v = ipl_context_clients_;
+    v.erase(std::remove_if(v.begin(), v.end(), [key](const IplContextClient& e) { return e.key == key; }), v.end());
+}
+
+void ResonanceServer::_drain_ipl_context_clients_before_context_destroy() {
+    std::vector<IplContextClient> clients_copy;
+    {
+        std::lock_guard<std::mutex> lock(ipl_context_clients_mutex_);
+        clients_copy = std::move(ipl_context_clients_);
+        ipl_context_clients_.clear();
+    }
+    AudioServer* audio = AudioServer::get_singleton();
+    if (audio)
+        audio->lock();
+    for (const IplContextClient& c : clients_copy) {
+        if (c.cleanup && c.key)
+            c.cleanup(c.key);
+    }
+    if (audio)
+        audio->unlock();
+}
 
 void ResonanceServer::shutdown() {
     is_shutting_down_flag.store(true, std::memory_order_release);
@@ -201,6 +242,7 @@ void ResonanceServer::_init_context_and_devices() {
         return;
     }
     reflection_type = ctx_config.reflection_type;
+    scene_type = ctx_config.scene_type;
 
     if (debug_reflections.load(std::memory_order_acquire) && max_rays > 0) {
         ray_trace_debug_context_.clear();
@@ -503,6 +545,7 @@ void ResonanceServer::_shutdown_steam_audio() {
             iplSceneRelease(&scene);
     }
     if (steam_audio_context_) {
+        _drain_ipl_context_clients_before_context_destroy();
         steam_audio_context_->shutdown();
         steam_audio_context_.reset();
     }

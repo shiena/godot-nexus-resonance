@@ -11,13 +11,23 @@ using namespace godot;
 static bool s_frame_size_mismatch_warned = false;
 
 // --- INSTANCE ---
-// Note: When ResonanceServer reinitializes (e.g. via request_reinit_with_frame_size or reinit_audio_engine),
-// the processor holds stale IPLContext/effect handles. Effect instances are not recreated. For runtime reinit
-// scenarios, restart the game/editor or avoid reinit while audio is playing. Pre-release: full reinit detection
-// (e.g. server init-generation counter) may be added later.
+// Reinit/shutdown: ResonanceServer drains registered clients under AudioServer::lock before iplContextRelease.
+
+void ResonanceAudioEffectInstance::ipl_context_reinit_cleanup(void* userdata) {
+    if (!userdata)
+        return;
+    static_cast<ResonanceAudioEffectInstance*>(userdata)->_reset_ipl_mixer_for_context_lifecycle();
+}
+
+void ResonanceAudioEffectInstance::_reset_ipl_mixer_for_context_lifecycle() {
+    if (ResonanceServer* srv = ResonanceServer::get_singleton())
+        srv->unregister_ipl_context_client(this);
+    processor.cleanup();
+    initialized_processor = false;
+}
 
 ResonanceAudioEffectInstance::~ResonanceAudioEffectInstance() {
-    processor.cleanup();
+    _reset_ipl_mixer_for_context_lifecycle();
 }
 
 void ResonanceAudioEffectInstance::_process(const void* src_buffer, AudioFrame* dst_buffer, int32_t frame_count) {
@@ -42,6 +52,8 @@ void ResonanceAudioEffectInstance::_process(const void* src_buffer, AudioFrame* 
             ResonanceLog::error("ResonanceAudioEffect: MixerProcessor initialization failed. Reverb will be silent until init succeeds.");
             return;
         }
+        if (ResonanceServer* reg_srv = ResonanceServer::get_singleton())
+            reg_srv->register_ipl_context_client(this, &ResonanceAudioEffectInstance::ipl_context_reinit_cleanup);
         initialized_processor = true;
     }
 

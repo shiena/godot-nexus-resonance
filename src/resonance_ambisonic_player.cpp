@@ -29,6 +29,12 @@ ResonanceAmbisonicInternalPlayback::ResonanceAmbisonicInternalPlayback() {
 
 ResonanceAmbisonicInternalPlayback::~ResonanceAmbisonicInternalPlayback() { _cleanup_steam_audio(); }
 
+void ResonanceAmbisonicInternalPlayback::ipl_context_reinit_cleanup(void* userdata) {
+    if (!userdata)
+        return;
+    static_cast<ResonanceAmbisonicInternalPlayback*>(userdata)->_cleanup_steam_audio();
+}
+
 void ResonanceAmbisonicInternalPlayback::set_channel_playbacks(const Array& playbacks, int p_order) {
     ambisonic_order = CLAMP(p_order, 1, 3);
     int num_channels = (ambisonic_order + 1) * (ambisonic_order + 1);
@@ -64,6 +70,9 @@ void ResonanceAmbisonicInternalPlayback::_sync_params() {
 }
 
 void ResonanceAmbisonicInternalPlayback::_cleanup_steam_audio() {
+    if (ResonanceServer* reg_srv = ResonanceServer::get_singleton())
+        reg_srv->unregister_ipl_context_client(this);
+
     processor.cleanup();
     if (context && sa_out_buffer.data) {
         iplAudioBufferFree(context, &sa_out_buffer);
@@ -104,6 +113,8 @@ void ResonanceAmbisonicInternalPlayback::_lazy_init_steam_audio() {
     }
 
     is_initialized = true;
+    if (ResonanceServer* reg_srv = ResonanceServer::get_singleton())
+        reg_srv->register_ipl_context_client(this, &ResonanceAmbisonicInternalPlayback::ipl_context_reinit_cleanup);
     ResonanceLog::info("Nexus Resonance: Ambisonic DSP Initialized (Order: " + String::num(ambisonic_order) + ").");
 }
 
@@ -137,6 +148,10 @@ int32_t ResonanceAmbisonicInternalPlayback::_mix(AudioFrame* buffer, float rate_
         return 0;
 
     _sync_params();
+
+    ResonanceServer* srv_guard = ResonanceServer::get_singleton();
+    if (is_initialized && srv_guard && srv_guard->is_initialized() && context != srv_guard->get_context_handle())
+        _cleanup_steam_audio();
 
     int num_channels = (ambisonic_order + 1) * (ambisonic_order + 1);
     size_t block_samples = static_cast<size_t>(frame_size_) * static_cast<size_t>(num_channels);

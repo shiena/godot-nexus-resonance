@@ -73,6 +73,9 @@ class ResonanceAmbisonicInternalPlayback : public AudioStreamPlayback {
     ResonanceAmbisonicInternalPlayback();
     ~ResonanceAmbisonicInternalPlayback();
 
+    /// Called by ResonanceServer before iplContextRelease (userdata = this).
+    static void ipl_context_reinit_cleanup(void* userdata);
+
     void set_channel_playbacks(const Array& playbacks, int p_order);
 
     void update_parameters(const AmbisonicPlaybackParameters& p_params);

@@ -21,6 +21,8 @@ class ResonanceAudioEffectInstance : public AudioEffectInstance {
     // Assignment implicitly deleted when copy ctor is deleted; explicit decl conflicts with Godot base.
 
   private:
+    void _reset_ipl_mixer_for_context_lifecycle();
+
     ResonanceMixerProcessor processor;
     bool initialized_processor = false;
     Ref<ResonanceAudioEffect> effect_ref;
@@ -30,6 +32,9 @@ class ResonanceAudioEffectInstance : public AudioEffectInstance {
     ~ResonanceAudioEffectInstance();
 
     void set_effect(const Ref<ResonanceAudioEffect>& p_effect) { effect_ref = p_effect; }
+
+    /// Called by ResonanceServer before iplContextRelease (userdata = this).
+    static void ipl_context_reinit_cleanup(void* userdata);
 
     virtual void _process(const void* src_buffer, AudioFrame* dst_buffer, int32_t frame_count) override;
     virtual bool _process_silence() const override { return true; } // Always process - we output mixer, not bus input

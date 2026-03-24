@@ -26,6 +26,16 @@ void IPLCALL log_callback(IPLLogLevel level, const char* message) {
         }
     }
 }
+/// Valve Steam Audio (Unity docs): Radeon Rays and TrueAudio Next are supported on 64-bit Windows only.
+/// Avoid OpenCL device setup on Linux, macOS, Android, iOS, etc. to match that matrix and reduce driver crash risk.
+static bool opencl_radeon_tan_supported_host_os() {
+#if defined(_WIN32) && (defined(_M_X64) || defined(_M_AMD64) || defined(__x86_64__) || defined(__amd64__))
+    return true;
+#else
+    return false;
+#endif
+}
+
 } // namespace
 
 ResonanceSteamAudioContext::~ResonanceSteamAudioContext() {
@@ -88,8 +98,23 @@ bool ResonanceSteamAudioContext::init(ResonanceSteamAudioContextConfig& config) 
     }
 
     // OpenCL/TAN init may crash on systems without AMD GPU (TAN) or compatible OpenCL. SEH (__try/__except)
-    // is used on Windows/MSVC to catch crashes and fall back to Convolution/Default. On Linux/macOS or other
-    // compilers, no SEH-like mechanism is used; TAN init is considered Windows-only stable.
+    // is used on Windows/MSVC to catch crashes and fall back to Convolution/Default.
+    const bool wants_opencl_features = (config.scene_type == 2) || (config.reflection_type == resonance::kReflectionTan);
+    if (wants_opencl_features && !opencl_radeon_tan_supported_host_os()) {
+        if (config.scene_type == 2) {
+            config.scene_type = 0;
+            UtilityFunctions::push_warning(
+                "Nexus Resonance: Radeon Rays (OpenCL) is only supported on 64-bit Windows per Steam Audio. "
+                "Using built-in ray tracer (Default) on this platform.");
+        }
+        if (config.reflection_type == resonance::kReflectionTan) {
+            config.reflection_type = resonance::kReflectionConvolution;
+            UtilityFunctions::push_warning(
+                "Nexus Resonance: TrueAudio Next is only supported on 64-bit Windows per Steam Audio. "
+                "Using Convolution on this platform.");
+        }
+    }
+
     bool needs_opencl = (config.scene_type == 2) || (config.reflection_type == resonance::kReflectionTan);
     if (needs_opencl && context_) {
 #if defined(_WIN32) && defined(_MSC_VER)

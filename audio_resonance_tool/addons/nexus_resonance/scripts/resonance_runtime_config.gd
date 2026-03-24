@@ -52,7 +52,8 @@ var sample_rate_override: int = 0
 @export_enum("Baked:0", "Realtime:1") var default_reflections_mode: int = 0
 var _reflection_type: int = Constants.REFLECTION_TYPE_CONVOLUTION
 ## Reverb algorithm. Parametric (fastest). Convolution uses ReflectionMixer (bundled convolutions).
-## Hybrid = convolution + parametric tail (no mixer; can be slower than Convolution – reduce hybrid_reverb_transition_time and ambisonic_order for better perf). TAN = AMD GPU only.
+## Hybrid = convolution + parametric tail (no mixer; can be slower than Convolution – reduce hybrid_reverb_transition_time and ambisonic_order for better perf).
+## TrueAudio Next: Steam Audio supports TAN on 64-bit Windows only; other platforms fall back to Convolution with a warning.
 @export_enum("Convolution:0", "Parametric:1", "Hybrid:2", "TrueAudio Next (AMD GPU):3")
 var reflection_type: int:
 	get:
@@ -128,7 +129,8 @@ var _pathing_enabled: bool = false
 # --- Advanced ---
 @export_group("Advanced")
 var _scene_type: int = 0
-## Ray tracer backend. Default = built-in Phonon; Embree = Intel (faster CPU); Radeon Rays = GPU (Windows 64-bit).
+## Ray tracer backend. Default = built-in Phonon; Embree = Intel (faster CPU on Windows/Linux/macOS per Steam Audio).
+## Radeon Rays = OpenCL GPU path supported on 64-bit Windows only; Linux/macOS/Android/iOS fall back to Default with a warning.
 ## Godot often omits `scene_type = 0` in .tres; initializer 0 keeps „Default“ after reload. Embree/Radeon serialize as 1/2.
 @export_enum("Default:0", "Embree:1", "Radeon Rays:2") var scene_type: int:
 	get:

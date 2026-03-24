@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),  
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.7] - 2026-03-24
+
+### Fixed
+
+- **Crash when loading another scene or reloading audio settings while sound is playing** — especially reported on Linux after changing ray-tracer options (e.g. Embree) and switching levels: the game could quit with a native crash. You can change scenes and let the engine restart audio without losing stability; spatialized playback and convolution reverb recover cleanly instead of taking the process down.
+
 ## [0.9.6] - 2026-03-23
 
 ### Added

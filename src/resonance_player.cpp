@@ -83,6 +83,12 @@ ResonanceInternalPlayback::ResonanceInternalPlayback() {
 
 ResonanceInternalPlayback::~ResonanceInternalPlayback() { _cleanup_steam_audio(); }
 
+void ResonanceInternalPlayback::ipl_context_reinit_cleanup(void* userdata) {
+    if (!userdata)
+        return;
+    static_cast<ResonanceInternalPlayback*>(userdata)->_cleanup_steam_audio();
+}
+
 void ResonanceInternalPlayback::set_base_playback(const Ref<AudioStreamPlayback>& p_playback) { base_playback = p_playback; }
 
 void ResonanceInternalPlayback::update_parameters(const PlaybackParameters& p_params) {
@@ -111,6 +117,9 @@ void ResonanceInternalPlayback::_sync_params() {
 }
 
 void ResonanceInternalPlayback::_cleanup_steam_audio() {
+    if (ResonanceServer* reg_srv = ResonanceServer::get_singleton())
+        reg_srv->unregister_ipl_context_client(this);
+
     if (local_source) {
         iplSourceRelease(&local_source);
         local_source = nullptr;
@@ -194,6 +203,8 @@ void ResonanceInternalPlayback::_lazy_init_steam_audio(int ignored_rate) {
     }
 
     is_initialized = true;
+    if (ResonanceServer* reg_srv = ResonanceServer::get_singleton())
+        reg_srv->register_ipl_context_client(this, &ResonanceInternalPlayback::ipl_context_reinit_cleanup);
     ResonanceLog::info("Playback Initialized.");
 }
 
@@ -567,6 +578,10 @@ int32_t ResonanceInternalPlayback::_mix(AudioFrame* buffer, double rate_scale, i
     last_mix_time_ = now;
     _sync_params();
 
+    ResonanceServer* srv_guard = ResonanceServer::get_singleton();
+    if (is_initialized && srv_guard && srv_guard->is_initialized() && context != srv_guard->get_context_handle())
+        _cleanup_steam_audio();
+
     PackedVector2Array mixed_frames = base_playback->mix_audio(rate_scale, frames);
     int32_t samples_read = mixed_frames.size();
     if (samples_read == 0)
@@ -584,6 +599,10 @@ int32_t ResonanceInternalPlayback::_mix(AudioFrame* buffer, double rate_scale, i
     if (samples_read == 0) {
         if (!is_initialized)
             return 0;
+        if (!srv_guard || !srv_guard->is_initialized() || context != srv_guard->get_context_handle()) {
+            _cleanup_steam_audio();
+            return 0;
+        }
         while (output_ring_l.get_available_read() < (size_t)frames) {
             if (!direct_processor.process_tail(sa_direct_out_buffer))
                 break;
@@ -1268,9 +1287,10 @@ void ResonancePlayer::play_stream(double from_pos) {
     play(from_pos);
     Node* reverb_child = get_node_or_null(NodePath("ResonanceReverbOutput"));
     if (reverb_child && reverb_child->is_class("AudioStreamPlayer")) {
-        AudioStreamPlayer* rp = Object::cast_to<AudioStreamPlayer>(reverb_child);
-        if (!rp->is_playing())
-            rp->play();
+        if (AudioStreamPlayer* rp = Object::cast_to<AudioStreamPlayer>(reverb_child)) {
+            if (!rp->is_playing())
+                rp->play();
+        }
     }
     if (player_config.is_valid())
         call_deferred("_deferred_push_playback_parameters");
@@ -1279,7 +1299,8 @@ void ResonancePlayer::play_stream(double from_pos) {
 void ResonancePlayer::stop() {
     Node* reverb_child = get_node_or_null(NodePath("ResonanceReverbOutput"));
     if (reverb_child && reverb_child->is_class("AudioStreamPlayer")) {
-        Object::cast_to<AudioStreamPlayer>(reverb_child)->stop();
+        if (AudioStreamPlayer* rp = Object::cast_to<AudioStreamPlayer>(reverb_child))
+            rp->stop();
     }
     AudioStreamPlayer3D::stop();
 }
@@ -1308,7 +1329,8 @@ void ResonancePlayer::set_reverb_split_output(bool p_enable, const StringName& p
     } else if (reverb_split_output_ && !p_reverb_bus.is_empty()) {
         Node* child = get_node_or_null(NodePath("ResonanceReverbOutput"));
         if (child && child->is_class("AudioStreamPlayer")) {
-            Object::cast_to<AudioStreamPlayer>(child)->set_bus(p_reverb_bus);
+            if (AudioStreamPlayer* rp = Object::cast_to<AudioStreamPlayer>(child))
+                rp->set_bus(p_reverb_bus);
         }
     }
 }
@@ -1330,7 +1352,8 @@ void ResonancePlayer::_update_reverb_split_child(const StringName& p_reverb_bus)
             if (is_playing())
                 reverb_player->play();
         } else if (!p_reverb_bus.is_empty() && child->is_class("AudioStreamPlayer")) {
-            Object::cast_to<AudioStreamPlayer>(child)->set_bus(p_reverb_bus);
+            if (AudioStreamPlayer* rp = Object::cast_to<AudioStreamPlayer>(child))
+                rp->set_bus(p_reverb_bus);
         }
     } else if (child) {
         child->queue_free();

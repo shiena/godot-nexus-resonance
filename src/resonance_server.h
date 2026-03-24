@@ -352,6 +352,16 @@ class ResonanceServer : public Object {
     bool _init_scene_and_simulator();
     void _start_worker_thread();
     void _shutdown_steam_audio();
+    /// Call registered IPL clients to free buffers/effects while context is still valid (AudioServer::lock).
+    void _drain_ipl_context_clients_before_context_destroy();
+
+    struct IplContextClient {
+        void* key = nullptr;
+        void (*cleanup)(void*) = nullptr;
+    };
+    std::mutex ipl_context_clients_mutex_;
+    std::vector<IplContextClient> ipl_context_clients_;
+
     void _update_source_internal(IPLSource source, int32_t handle, Vector3 position, float radius,
                                  Vector3 source_forward, Vector3 source_up,
                                  float directivity_weight, float directivity_power, bool air_absorption_enabled,
@@ -413,6 +423,12 @@ class ResonanceServer : public Object {
     void init_audio_engine(Dictionary config);
     /// Re-initialize with new config (e.g. when ResonanceRuntimeConfig overrides toolbar init). Shuts down first.
     void reinit_audio_engine(Dictionary config);
+
+    /// Clients that allocate IPL audio buffers / effects on the current context register for teardown before
+    /// iplContextRelease (reinit/shutdown). Cleanup runs under AudioServer::lock on the main/shutdown thread.
+    using IplContextClientCleanup = void (*)(void* userdata);
+    void register_ipl_context_client(void* key, IplContextClientCleanup cleanup);
+    void unregister_ipl_context_client(void* key);
 
     // Getters
     IPLContext get_context_handle() const { return steam_audio_context_ ? steam_audio_context_->get_context() : nullptr; }
