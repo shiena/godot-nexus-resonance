@@ -4,7 +4,8 @@
 		A Steam Audio source that supports physics-based occlusion, transmission, and reverb.
 	</brief_description>
 	<description>
-		ResonancePlayer extends AudioStreamPlayer3D for sources that interact with Steam Audio geometry. Assign a ResonancePlayerConfig to enable occlusion, distance attenuation, air absorption, and directivity. When player_config is null, behaves as a normal AudioStreamPlayer3D (no Resonance processing).
+		ResonancePlayer extends AudioStreamPlayer3D for sources that interact with Steam Audio geometry. Assign a [url=#ResonancePlayerConfig]ResonancePlayerConfig[/url] to [member player_config] to enable occlusion, distance attenuation, air absorption, and directivity. When [member player_config] is null, behaves as a normal AudioStreamPlayer3D (no Resonance processing).
+		Inspector documentation for resource properties: open [url=#ResonancePlayerConfig]ResonancePlayerConfig[/url] from here (sub-resources have no documentation button in the inspector).
 	</description>
 	<tutorials>
 	</tutorials>
@@ -19,7 +20,7 @@
 	</methods>
 	<members>
 		<member name="player_config" type="ResonancePlayerConfig" setter="set_player_config" getter="get_player_config">
-			ResonancePlayerConfig resource. When set, enables Steam Audio processing (occlusion, reverb, pathing, etc.). When null, acts as plain AudioStreamPlayer3D.
+			[url=#ResonancePlayerConfig]ResonancePlayerConfig[/url] resource. When set, enables Steam Audio processing (occlusion, reverb, pathing, etc.). When null, acts as plain AudioStreamPlayer3D. All resource fields are documented on the linked page.
 		</member>
 		<member name="pathing_probe_volume" type="NodePath" setter="set_pathing_probe_volume" getter="get_pathing_probe_volume">
 			Pathing: Optional ResonanceProbeVolume to use for path finding. Empty = use first loaded volume with pathing. Only used when player_config is set.

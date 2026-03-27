@@ -9,14 +9,14 @@ const EFFECT_CLASS = "ResonanceAudioEffect"
 const PROBE_DATA_SAVER_SCRIPT = "res://addons/nexus_resonance/editor/resonance_probe_data_saver.gd"
 const PROBE_DATA_LOADER_SCRIPT = "res://addons/nexus_resonance/editor/resonance_probe_data_loader.gd"
 const SOFA_IMPORTER_SCRIPT = "res://addons/nexus_resonance/editor/sofa_importer.gd"
-const RESONANCE_RUNTIME_SCRIPT = "res://addons/nexus_resonance/scripts/resonance_runtime.gd"
-const RESONANCE_CONFIG_ICON = "res://addons/nexus_resonance/ui/icons/resonance_config_icon.svg"
 const RESONANCE_GEOMETRY_INSPECTOR_SCRIPT = "res://addons/nexus_resonance/editor/resonance_geometry_inspector.gd"
 const RESONANCE_BAKE_RUNNER_SCRIPT = "res://addons/nexus_resonance/editor/resonance_bake_runner.gd"
 const RESONANCE_PROBE_VOLUME_INSPECTOR_SCRIPT = "res://addons/nexus_resonance/editor/resonance_probe_volume_inspector.gd"
 const RESONANCE_EXPORT_HANDLER_SCRIPT = "res://addons/nexus_resonance/editor/resonance_export_handler.gd"
 const RESONANCE_EXPORT_PLUGIN_SCRIPT = "res://addons/nexus_resonance/editor/nexus_resonance_export_plugin.gd"
 const RESONANCE_FMOD_EVENT_EMITTER_INSPECTOR_SCRIPT = "res://addons/nexus_resonance/editor/resonance_fmod_event_emitter_inspector.gd"
+const RESONANCE_RUNTIME_SCRIPT = "res://addons/nexus_resonance/scripts/resonance_runtime.gd"
+const RESONANCE_RUNTIME_ICON = "res://addons/nexus_resonance/ui/icons/resonance_config_icon.svg"
 
 const ResonanceSceneUtils = preload("res://addons/nexus_resonance/scripts/resonance_scene_utils.gd")
 const UIStrings = preload("res://addons/nexus_resonance/scripts/resonance_ui_strings.gd")
@@ -232,13 +232,6 @@ func _init_editor_plugin_ui() -> void:
 		if sofa_importer:
 			add_import_plugin(sofa_importer)
 
-	add_custom_type(
-		"ResonanceRuntime",
-		"Node",
-		load(RESONANCE_RUNTIME_SCRIPT) as Script,
-		load(RESONANCE_CONFIG_ICON) as Texture2D
-	)
-
 	var inspector_script: Script = load(RESONANCE_GEOMETRY_INSPECTOR_SCRIPT) as Script
 	if inspector_script:
 		resonance_geometry_inspector = inspector_script.new()
@@ -266,7 +259,6 @@ func _exit_tree() -> void:
 	# On editor exit Godot may tear these down before _exit_tree; calling remove can trigger SIGSEGV.
 	probe_data_saver = null
 	probe_data_loader = null
-	remove_custom_type("ResonanceRuntime")
 	if resonance_geometry_inspector:
 		remove_inspector_plugin(resonance_geometry_inspector)
 		resonance_geometry_inspector = null
@@ -292,10 +284,19 @@ func _exit_tree() -> void:
 
 func _enable_plugin() -> void:
 	add_autoload_singleton("ResonanceLogger", LOGGER_AUTOLOAD_PATH)
+	if ClassDB.class_exists("ResonanceRuntime"):
+		add_custom_type(
+			"ResonanceRuntime",
+			"ResonanceRuntime",
+			load(RESONANCE_RUNTIME_SCRIPT) as Script,
+			load(RESONANCE_RUNTIME_ICON) as Texture2D
+		)
 	Callable(self, "_setup_audio_bus").call_deferred()
 
 
 func _disable_plugin() -> void:
+	if ClassDB.class_exists("ResonanceRuntime"):
+		remove_custom_type("ResonanceRuntime")
 	if Engine.has_singleton("ResonanceServer"):
 		var srv: Variant = Engine.get_singleton("ResonanceServer")
 		if srv and srv.has_method("clear_probe_batches"):

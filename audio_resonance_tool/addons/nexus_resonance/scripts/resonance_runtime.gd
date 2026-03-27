@@ -1,9 +1,9 @@
 @tool
-extends Node
-class_name ResonanceRuntime
+@icon("res://addons/nexus_resonance/ui/icons/resonance_config_icon.svg")
+extends ResonanceRuntime
 
 ## Nexus Resonance scene configuration node.
-## Add via Add Child Node > ResonanceRuntime.
+## Add via **Add Child Node** and search **ResonanceRuntime** (GDExtension node type + this script).
 ## Assign a ResonanceRuntimeConfig resource (create new or link existing) for runtime settings.
 
 const ResonanceRuntimeConfig = preload(
@@ -15,6 +15,14 @@ const ResonanceFMODBridgeScript = preload(
 	"res://addons/nexus_resonance/scripts/resonance_fmod_bridge.gd"
 )
 const EFFECT_CLASS := "ResonanceAudioEffect"
+
+## Custom Performance monitor IDs (Debugger → Monitors). Unregistered in [method _exit_tree].
+const _NEXUS_PERF_MON_MAIN := "Nexus Resonance/Main/runtime_last_tick_us"
+const _NEXUS_PERF_MON_W_DIRECT := "Nexus Resonance/Worker/us_run_direct"
+const _NEXUS_PERF_MON_W_REFL := "Nexus Resonance/Worker/us_run_reflections"
+const _NEXUS_PERF_MON_W_PATH := "Nexus Resonance/Worker/us_run_pathing"
+const _NEXUS_PERF_MON_W_SYNC := "Nexus Resonance/Worker/us_sync_fetch"
+const _NEXUS_PERF_MON_W_SUM := "Nexus Resonance/Worker/last_tick_sum_us"
 
 var _runtime: ResonanceRuntimeConfig
 ## Runtime configuration resource. Create or link .tres. Auto-created default if empty.
@@ -65,6 +73,9 @@ var _activator: AudioStreamPlayer
 var activator_instrumentation: Dictionary = {}
 var _activator_frames_pushed: int = 0
 var _activator_fill_calls: int = 0
+
+## Duration of the last [method _process] tick in microseconds (activator, listener, [method ResonanceServer.tick]). Shown in overlays; compare to worker timings from the ResonanceServer singleton.
+var main_thread_last_tick_usec: int = 0
 
 
 ## Returns bake params from first Probe Volume with bake_config, or default. Used before init so pathing visibility params are set.
@@ -117,9 +128,12 @@ func _ready() -> void:
 		_setup_activator()
 		call_deferred("_apply_bus_to_players")
 	_update_debug_overlay_visibility()
+	if not Engine.is_editor_hint():
+		_register_nexus_performance_monitors()
 
 
 func _exit_tree() -> void:
+	_unregister_nexus_performance_monitors()
 	var perf_overlay = get_node_or_null("PerformanceOverlay")
 	if perf_overlay:
 		perf_overlay.visible = false
@@ -212,15 +226,17 @@ func _refresh_resonance_geometry_for_debug_viz() -> void:
 	var srv = Engine.get_singleton("ResonanceServer")
 	if not srv.is_initialized():
 		return
-	if srv.has_method("wants_debug_reflection_viz") and srv.wants_debug_reflection_viz():
-		get_tree().call_group_flags(
-			SceneTree.GROUP_CALL_DEFERRED, "resonance_geometry", "refresh_geometry"
-		)
+	# sync_reflection_debug_viz updates RayTraceDebugContext only. Full refresh_geometry() rebuilds
+	# IPL InstancedMesh/sub-scenes and breaks Embree dynamic occlusion when toggling F3.
+	get_tree().call_group_flags(
+		SceneTree.GROUP_CALL_DEFERRED, "resonance_geometry", "sync_reflection_debug_viz"
+	)
 
 
 func _process(delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
+	var t0_usec := Time.get_ticks_usec()
 	_fill_activator_buffer()
 	if Engine.has_singleton("ResonanceServer"):
 		var srv = Engine.get_singleton("ResonanceServer")
@@ -245,6 +261,10 @@ func _process(delta: float) -> void:
 							cam.global_transform.basis.y
 						)
 			srv.tick(delta)
+			if srv.has_method("flush_pending_source_updates"):
+				srv.flush_pending_source_updates()
+	var dt_usec := Time.get_ticks_usec() - t0_usec
+	main_thread_last_tick_usec = dt_usec if dt_usec > 0 else 0
 
 
 func _initialize_server() -> void:
@@ -565,6 +585,78 @@ func _warn_restart_if_needed() -> void:
 		print_rich(
 			"[color=yellow][Nexus Resonance] Change requires game restart to take effect.[/color]"
 		)
+
+
+func _register_nexus_performance_monitors() -> void:
+	var existing: Array = Performance.get_custom_monitor_names()
+	var ids: Array[String] = [
+		_NEXUS_PERF_MON_MAIN,
+		_NEXUS_PERF_MON_W_DIRECT,
+		_NEXUS_PERF_MON_W_REFL,
+		_NEXUS_PERF_MON_W_PATH,
+		_NEXUS_PERF_MON_W_SYNC,
+		_NEXUS_PERF_MON_W_SUM,
+	]
+	for id in ids:
+		if id in existing:
+			Performance.remove_custom_monitor(id)
+	Performance.add_custom_monitor(_NEXUS_PERF_MON_MAIN, Callable(self, "_nexus_perf_read_main_usec"))
+	Performance.add_custom_monitor(
+		_NEXUS_PERF_MON_W_DIRECT, Callable(self, "_nexus_perf_worker_field").bind("us_run_direct")
+	)
+	Performance.add_custom_monitor(
+		_NEXUS_PERF_MON_W_REFL, Callable(self, "_nexus_perf_worker_field").bind("us_run_reflections")
+	)
+	Performance.add_custom_monitor(
+		_NEXUS_PERF_MON_W_PATH, Callable(self, "_nexus_perf_worker_field").bind("us_run_pathing")
+	)
+	Performance.add_custom_monitor(
+		_NEXUS_PERF_MON_W_SYNC, Callable(self, "_nexus_perf_worker_field").bind("us_sync_fetch")
+	)
+	Performance.add_custom_monitor(_NEXUS_PERF_MON_W_SUM, Callable(self, "_nexus_perf_read_worker_sum"))
+
+
+func _unregister_nexus_performance_monitors() -> void:
+	if Engine.is_editor_hint():
+		return
+	var ids: Array[String] = [
+		_NEXUS_PERF_MON_MAIN,
+		_NEXUS_PERF_MON_W_DIRECT,
+		_NEXUS_PERF_MON_W_REFL,
+		_NEXUS_PERF_MON_W_PATH,
+		_NEXUS_PERF_MON_W_SYNC,
+		_NEXUS_PERF_MON_W_SUM,
+	]
+	for id in ids:
+		Performance.remove_custom_monitor(id)
+
+
+func _nexus_perf_read_main_usec() -> int:
+	return main_thread_last_tick_usec
+
+
+func _nexus_perf_worker_field(field: String) -> int:
+	if not Engine.has_singleton("ResonanceServer"):
+		return 0
+	var srv = Engine.get_singleton("ResonanceServer")
+	if not srv.is_initialized() or not srv.has_method("get_simulation_worker_timing"):
+		return 0
+	return int(srv.get_simulation_worker_timing().get(field, 0))
+
+
+func _nexus_perf_read_worker_sum() -> int:
+	if not Engine.has_singleton("ResonanceServer"):
+		return 0
+	var srv = Engine.get_singleton("ResonanceServer")
+	if not srv.is_initialized() or not srv.has_method("get_simulation_worker_timing"):
+		return 0
+	var w: Dictionary = srv.get_simulation_worker_timing()
+	return (
+		int(w.get("us_run_direct", 0))
+		+ int(w.get("us_run_reflections", 0))
+		+ int(w.get("us_run_pathing", 0))
+		+ int(w.get("us_sync_fetch", 0))
+	)
 
 
 func _update_debug_overlay_visibility() -> void:

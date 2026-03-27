@@ -5,7 +5,7 @@
 	</brief_description>
 	<description>
 		ResonanceDynamicGeometry is a subclass of [ResonanceGeometry] for moving objects. It is excluded from the baked static scene export. The mesh is exported separately via Tools → Nexus Resonance → Export Dynamic Meshes or via the inspector "Export Mesh" button when a ResonanceDynamicGeometry is selected.
-		Assign a [ResonanceGeometryAsset] to [member mesh_asset] when using export (auto-assigned by Export Dynamic Mesh). Enable path_validation_enabled in [ResonancePlayerConfig] when using dynamic geometry that can block baked paths.
+		Assign a [ResonanceGeometryAsset] to [member mesh_asset] when using export (auto-assigned by Export Dynamic Mesh). Enable path validation ([url=#ResonanceRuntimeConfig]ResonanceRuntimeConfig[/url] defaults or per-source **Enabled** in [url=#ResonancePlayerConfig]ResonancePlayerConfig[/url]) when dynamic geometry can block baked paths.
 	</description>
 	<tutorials>
 	</tutorials>

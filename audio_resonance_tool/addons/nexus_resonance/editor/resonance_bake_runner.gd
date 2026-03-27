@@ -475,9 +475,21 @@ func _prepare_probe_data_for_bake(vol: Node, probe_data: Resource, root: Node) -
 	var scene_path = root.get_scene_file_path()
 	if not scene_path.is_empty():
 		scene_name = scene_path.get_file().get_basename()
-	var node_name = str(vol.name).to_lower().replace(" ", "_")
+	var node_key: String
+	if vol.is_inside_tree():
+		var rel_str: String = str(root.get_path_to(vol))
+		if rel_str.begins_with("."):
+			rel_str = rel_str.substr(1)
+		node_key = rel_str.replace("/", "_").replace("@", "_").replace("\\", "_").replace(":", "_")
+		node_key = node_key.to_lower().replace(" ", "_")
+	else:
+		node_key = str(vol.name).to_lower().replace(" ", "_")
+	if node_key.is_empty():
+		node_key = str(vol.name).to_lower().replace(" ", "_")
+	if node_key.length() > 128:
+		node_key = "h_%s" % str(abs(hash(str(root.get_path_to(vol)) if vol.is_inside_tree() else vol.name)))
 	var audio_dir: String = ResonancePaths.get_audio_data_dir()
-	var path: String = audio_dir + "%s_%s_baked_probes.tres" % [scene_name, node_name]
+	var path: String = audio_dir + "%s_%s_baked_probes.tres" % [scene_name, node_key]
 	if not DirAccess.dir_exists_absolute(audio_dir):
 		var mkdir_err: int = DirAccess.make_dir_recursive_absolute(audio_dir)
 		if mkdir_err != OK or not DirAccess.dir_exists_absolute(audio_dir):

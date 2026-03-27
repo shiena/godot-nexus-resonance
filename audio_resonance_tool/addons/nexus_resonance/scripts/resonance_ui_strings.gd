@@ -86,6 +86,10 @@ const WARN_SERVER_INIT_FAILED := "Server init failed."
 const WARN_BAKE_RUNNER_NOT_SET := "Bake runner not set. Cannot bake."
 const WARN_NO_RESONANCE_RUNTIME := "Scene has no ResonanceRuntime. Add ResonanceRuntime for export to make sense."
 const WARN_NO_EXPORTABLE_STATIC_CONTENT := "Scene has no ResonanceStaticGeometry or ResonanceStaticScene. Add ResonanceStaticGeometry for export."
+const WARN_STATIC_SCENE_NO_ASSET_STILL_MERGED := (
+	"ResonanceStaticScene at %s has no static_scene_asset; nested ResonanceStaticGeometry is still merged into this export. "
+	+ "Export the sub-scene first to assign an asset, or remove the node — then parent exports will skip this subtree."
+)
 const WARN_NO_SCENES_OPEN := "No scenes open."
 const WARN_NO_SCENES_EXPORTED := "No scenes exported."
 const WARN_NO_SCENE_FILES := "No scene files found."

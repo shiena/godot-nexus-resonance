@@ -5,7 +5,7 @@
 	</brief_description>
 	<description>
 		ResonanceProbeData holds the baked probe batch from Steam Audio. Assigned to [ResonanceProbeVolume]'s [member probe_data] property. Created automatically when baking probes; save the scene after baking to persist.
-		Contains reflection data (Convolution/Parametric/Hybrid), optional pathing data, and optional static source/listener data. The baked reflection type must match [ResonanceRuntimeConfig]'s reflection_type at runtime.
+		Contains reflection data (Convolution/Parametric/Hybrid), optional pathing data, and optional static source/listener data. The baked reflection type must match [url=#ResonanceRuntimeConfig]ResonanceRuntimeConfig[/url] [member ResonanceRuntimeConfig.reflection_type] at runtime.
 	</description>
 	<tutorials>
 	</tutorials>

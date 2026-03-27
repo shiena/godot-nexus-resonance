@@ -48,7 +48,8 @@ class ResonanceSceneManager {
     void save_scene_data(IPLContext ctx, IPLScene scene, const String& filename);
     /// Load scene from serialized file. On failure, optionally creates empty scene and sets out_global_triangle_count to 0.
     /// @param out_scene Must not be null. Will be released if non-null before loading.
-    void load_scene_data(IPLContext ctx, IPLScene* out_scene, IPLSimulator sim,
+    /// @return true if a new scene handle was installed and the simulator was updated.
+    bool load_scene_data(IPLContext ctx, IPLScene* out_scene, IPLSimulator sim,
                          IPLSceneType scene_type, IPLEmbreeDevice embree, IPLRadeonRaysDevice radeon,
                          const String& filename, int* out_global_triangle_count);
 
@@ -65,15 +66,21 @@ class ResonanceSceneManager {
     Error export_static_scene_to_asset(Node* scene_root, const String& path);
     /// Export static ResonanceGeometry from scene to OBJ+MTL (iplSceneSaveOBJ). Path without extension, e.g. "res://debug/scene".
     Error export_static_scene_to_obj(Node* scene_root, const String& file_base_name);
+    /// Writes Phonon scene to OBJ+MTL via _nexus_obj_staging next to the destination, then rename (avoids truncate races with editor reimport).
+    static Error save_phonon_scene_obj_atomic(IPLScene phonon_scene, const String& absolute_obj_path);
     int64_t get_static_scene_hash(Node* scene_root, std::function<uint64_t(const PackedByteArray&)> hash_fn);
 
   private:
-    static void collect_static_geometry_recursive(Node* node, std::vector<ResonanceGeometry*>& out);
+    /// export_root: same as initial scene_root; nested ResonanceStaticScene with valid asset prunes subtree (not the root itself).
+    static void collect_static_geometry_recursive(Node* node, Node* export_root, std::vector<ResonanceGeometry*>& out);
+    /// When \p out_mat_indices is non-null, \p out_materials must also be non-null (and vice versa).
     static void collect_static_mesh_data(Node* scene_root, std::vector<IPLVector3>& out_vertices,
-                                         std::vector<IPLTriangle>& out_triangles, std::vector<IPLint32>* out_mat_indices);
+                                         std::vector<IPLTriangle>& out_triangles, std::vector<IPLint32>* out_mat_indices,
+                                         std::vector<IPLMaterial>* out_materials);
     /// Builds temp context/scene/mesh from mesh data for export. Caller must release temp_mesh, temp_scene, export_context.
     static bool _build_temp_scene_for_export(std::vector<IPLVector3>& vertices,
                                              std::vector<IPLTriangle>& triangles, std::vector<IPLint32>& mat_indices,
+                                             std::vector<IPLMaterial>& materials,
                                              IPLContext* out_ctx, IPLScene* out_scene, IPLStaticMesh* out_mesh);
     static int register_asset_debug_geometry(const Ref<ResonanceGeometryAsset>& asset, RayTraceDebugContext* debug_ctx,
                                              const Transform3D& transform = Transform3D());

@@ -9,6 +9,13 @@ func test_create_default_has_required_keys():
 	for key in required:
 		assert_has(config, key, "config missing: " + key)
 
+
+func test_create_default_scene_type_is_builtin():
+	var rt = ResonanceRuntimeConfig.create_default()
+	assert_eq(rt.scene_type, 0, "default scene_type should be Default (0); matches Godot omitting 0 in .tres")
+	var config = rt.get_config()
+	assert_eq(config.get("scene_type", -1), 0, "get_config should expose scene_type 0")
+
 func test_get_config_applies_properties():
 	var rt = ResonanceRuntimeConfig.create_default()
 	rt.ambisonic_order = 2
@@ -51,6 +58,26 @@ func test_audio_frame_size_manual_passthrough():
 	rt.audio_frame_size = 1024
 	var config = rt.get_config()
 	assert_eq(config.get("audio_frame_size", -1), 1024, "manual audio_frame_size should pass through")
+
+
+func test_get_config_includes_simulator_and_hrtf_keys():
+	var rt = ResonanceRuntimeConfig.create_default()
+	rt.hrtf_volume_db = -3.0
+	rt.hrtf_normalization_type = 1
+	rt.max_occlusion_samples = 32
+	rt.max_simulation_sources = 48
+	rt.context_validation = true
+	var config = rt.get_config()
+	assert_eq(config.get("hrtf_volume_db", 999.0), -3.0, "hrtf_volume_db passthrough")
+	assert_eq(config.get("hrtf_normalization_type", -1), 1, "hrtf_normalization_type passthrough")
+	assert_eq(config.get("max_occlusion_samples", -1), 32, "max_occlusion_samples passthrough")
+	assert_eq(config.get("max_simulation_sources", -1), 48, "max_simulation_sources passthrough")
+	assert_true(config.get("context_validation", false), "context_validation passthrough")
+
+
+func test_get_hrtf_sofa_effective_empty_list_returns_null():
+	var rt = ResonanceRuntimeConfig.create_default()
+	assert_null(rt.get_hrtf_sofa_effective(), "no SOFA when library empty and legacy slot null")
 
 # --- get_effective_realtime_rays: pass-through on all platforms (v0.9.4+) ---
 # Android no longer forces baked-only (0); realtime rays follow project settings.

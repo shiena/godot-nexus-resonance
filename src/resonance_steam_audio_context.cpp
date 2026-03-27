@@ -76,7 +76,8 @@ bool ResonanceSteamAudioContext::init(ResonanceSteamAudioContextConfig& config) 
             hrtfSettings.type = IPL_HRTFTYPE_SOFA;
             hrtfSettings.sofaData = reinterpret_cast<const IPLuint8*>(ptr);
             hrtfSettings.sofaDataSize = static_cast<int>(sz);
-            hrtfSettings.volume = ResonanceSOFAAsset::db_to_gain(config.hrtf_sofa_asset->get_volume_db());
+            const float sofa_db = config.hrtf_sofa_asset->get_volume_db();
+            hrtfSettings.volume = ResonanceSOFAAsset::db_to_gain(config.hrtf_volume_db + sofa_db);
             hrtfSettings.normType = (config.hrtf_sofa_asset->get_norm_type() == ResonanceSOFAAsset::NORM_RMS)
                                         ? IPL_HRTFNORMTYPE_RMS
                                         : IPL_HRTFNORMTYPE_NONE;
@@ -84,8 +85,8 @@ bool ResonanceSteamAudioContext::init(ResonanceSteamAudioContextConfig& config) 
     }
     if (hrtfSettings.type != IPL_HRTFTYPE_SOFA) {
         hrtfSettings.type = IPL_HRTFTYPE_DEFAULT;
-        hrtfSettings.volume = 1.0f;
-        hrtfSettings.normType = IPL_HRTFNORMTYPE_NONE;
+        hrtfSettings.volume = ResonanceSOFAAsset::db_to_gain(config.hrtf_volume_db);
+        hrtfSettings.normType = (config.hrtf_normalization_type == 1) ? IPL_HRTFNORMTYPE_RMS : IPL_HRTFNORMTYPE_NONE;
     }
     IPLHRTF new_hrtf = nullptr;
     if (iplHRTFCreate(context_, &audioSettings, &hrtfSettings, &new_hrtf) == IPL_STATUS_SUCCESS && new_hrtf) {
@@ -157,7 +158,7 @@ bool ResonanceSteamAudioContext::init(ResonanceSteamAudioContextConfig& config) 
                         tanSettings.frameSize = config.frame_size;
                         tanSettings.irSize = (IPLint32)(config.max_reverb_duration * (float)config.sample_rate);
                         tanSettings.order = config.ambisonic_order;
-                        tanSettings.maxSources = resonance::kMaxSimulationSources;
+                        tanSettings.maxSources = config.max_simulation_sources;
                         IPLerror tan_status = iplTrueAudioNextDeviceCreate(opencl_device_, &tanSettings, &tan_device_);
                         if (tan_status != IPL_STATUS_SUCCESS || !tan_device_) {
                             ResonanceLog::error("ResonanceSteamAudioContext: iplTrueAudioNextDeviceCreate failed (status=" + String::num(tan_status) + ").");
@@ -221,6 +222,14 @@ bool ResonanceSteamAudioContext::init(ResonanceSteamAudioContextConfig& config) 
             }
         }
     }
+
+    // Align config.scene_type with the effective ray tracer (Embree/Radeon init may fall back to Default).
+    if (scene_type_ == IPL_SCENETYPE_RADEONRAYS)
+        config.scene_type = 2;
+    else if (scene_type_ == IPL_SCENETYPE_EMBREE)
+        config.scene_type = 1;
+    else
+        config.scene_type = 0;
 
     return true;
 }

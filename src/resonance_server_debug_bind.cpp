@@ -75,6 +75,78 @@ void ResonanceServer::reset_reverb_bus_instrumentation() {
     instrumentation_fetch_lock_ok.store(0, std::memory_order_relaxed);
     instrumentation_fetch_cache_hit.store(0, std::memory_order_relaxed);
     instrumentation_fetch_cache_miss.store(0, std::memory_order_relaxed);
+    reset_pathing_instrumentation();
+}
+
+void ResonanceServer::reset_pathing_instrumentation() {
+    instrumentation_pathing_fetch_early_exit.store(0, std::memory_order_relaxed);
+    instrumentation_pathing_fetch_lock_ok.store(0, std::memory_order_relaxed);
+    instrumentation_pathing_fetch_src_null.store(0, std::memory_order_relaxed);
+    instrumentation_pathing_fetch_sh_ok.store(0, std::memory_order_relaxed);
+    instrumentation_pathing_fetch_sh_null.store(0, std::memory_order_relaxed);
+    instrumentation_pathing_fetch_sh_bad_order.store(0, std::memory_order_relaxed);
+    instrumentation_pathing_fetch_cache_hit.store(0, std::memory_order_relaxed);
+    instrumentation_pathing_fetch_cache_miss.store(0, std::memory_order_relaxed);
+    instrumentation_pathing_sim_attempt.store(0, std::memory_order_relaxed);
+    instrumentation_pathing_sim_ran.store(0, std::memory_order_relaxed);
+    instrumentation_pathing_sim_seh_fail.store(0, std::memory_order_relaxed);
+    instrumentation_pathing_sim_skip_listener.store(0, std::memory_order_relaxed);
+    instrumentation_pathing_sim_skip_cooldown.store(0, std::memory_order_relaxed);
+    instrumentation_pathing_player_gate.store(0, std::memory_order_relaxed);
+    instrumentation_pathing_player_applied.store(0, std::memory_order_relaxed);
+    instrumentation_pathing_player_fetch_miss.store(0, std::memory_order_relaxed);
+    instrumentation_worker_us_run_direct.store(0, std::memory_order_relaxed);
+    instrumentation_worker_us_run_reflections.store(0, std::memory_order_relaxed);
+    instrumentation_worker_us_run_pathing.store(0, std::memory_order_relaxed);
+    instrumentation_worker_us_sync_fetch.store(0, std::memory_order_relaxed);
+}
+
+Dictionary ResonanceServer::get_simulation_worker_timing() const {
+    Dictionary d;
+    d["us_run_direct"] = (int64_t)instrumentation_worker_us_run_direct.load(std::memory_order_relaxed);
+    d["us_run_reflections"] = (int64_t)instrumentation_worker_us_run_reflections.load(std::memory_order_relaxed);
+    d["us_run_pathing"] = (int64_t)instrumentation_worker_us_run_pathing.load(std::memory_order_relaxed);
+    d["us_sync_fetch"] = (int64_t)instrumentation_worker_us_sync_fetch.load(std::memory_order_relaxed);
+    return d;
+}
+
+Dictionary ResonanceServer::get_pathing_instrumentation() const {
+    Dictionary d;
+    d["fetch_early_exit"] = (int64_t)instrumentation_pathing_fetch_early_exit.load(std::memory_order_relaxed);
+    d["fetch_lock_ok"] = (int64_t)instrumentation_pathing_fetch_lock_ok.load(std::memory_order_relaxed);
+    d["fetch_src_null"] = (int64_t)instrumentation_pathing_fetch_src_null.load(std::memory_order_relaxed);
+    d["fetch_sh_ok"] = (int64_t)instrumentation_pathing_fetch_sh_ok.load(std::memory_order_relaxed);
+    d["fetch_sh_null"] = (int64_t)instrumentation_pathing_fetch_sh_null.load(std::memory_order_relaxed);
+    d["fetch_sh_bad_order"] = (int64_t)instrumentation_pathing_fetch_sh_bad_order.load(std::memory_order_relaxed);
+    d["fetch_cache_hit"] = (int64_t)instrumentation_pathing_fetch_cache_hit.load(std::memory_order_relaxed);
+    d["fetch_cache_miss"] = (int64_t)instrumentation_pathing_fetch_cache_miss.load(std::memory_order_relaxed);
+    d["sim_attempt"] = (int64_t)instrumentation_pathing_sim_attempt.load(std::memory_order_relaxed);
+    d["sim_ran"] = (int64_t)instrumentation_pathing_sim_ran.load(std::memory_order_relaxed);
+    d["sim_seh_fail"] = (int64_t)instrumentation_pathing_sim_seh_fail.load(std::memory_order_relaxed);
+    d["sim_skip_listener"] = (int64_t)instrumentation_pathing_sim_skip_listener.load(std::memory_order_relaxed);
+    d["sim_skip_cooldown"] = (int64_t)instrumentation_pathing_sim_skip_cooldown.load(std::memory_order_relaxed);
+    d["player_gate"] = (int64_t)instrumentation_pathing_player_gate.load(std::memory_order_relaxed);
+    d["player_applied"] = (int64_t)instrumentation_pathing_player_applied.load(std::memory_order_relaxed);
+    d["player_fetch_miss"] = (int64_t)instrumentation_pathing_player_fetch_miss.load(std::memory_order_relaxed);
+    d["pathing_enabled"] = pathing_enabled;
+    d["pending_listener_valid"] = pending_listener_valid.load(std::memory_order_relaxed);
+    d["pathing_crash_cooldown"] = pathing_crash_cooldown.load(std::memory_order_relaxed);
+    d["path_validation_enabled"] = path_validation_enabled;
+    d["find_alternate_paths"] = find_alternate_paths;
+    d["pathing_ran_this_tick"] = pathing_ran_this_tick.load(std::memory_order_relaxed);
+    return d;
+}
+
+void ResonanceServer::record_pathing_player_gate_enter() {
+    instrumentation_pathing_player_gate.fetch_add(1, std::memory_order_relaxed);
+}
+
+void ResonanceServer::record_pathing_player_applied() {
+    instrumentation_pathing_player_applied.fetch_add(1, std::memory_order_relaxed);
+}
+
+void ResonanceServer::record_pathing_player_fetch_miss() {
+    instrumentation_pathing_player_fetch_miss.fetch_add(1, std::memory_order_relaxed);
 }
 
 Dictionary ResonanceServer::get_reverb_bus_instrumentation() const {
@@ -171,6 +243,7 @@ void ResonanceServer::_bind_methods() {
     ClassDB::bind_method(D_METHOD("notify_listener_changed"), &ResonanceServer::notify_listener_changed);
     ClassDB::bind_method(D_METHOD("notify_listener_changed_to", "listener_node"), &ResonanceServer::notify_listener_changed_to);
     ClassDB::bind_method(D_METHOD("tick", "delta"), &ResonanceServer::tick);
+    ClassDB::bind_method(D_METHOD("flush_pending_source_updates"), &ResonanceServer::flush_pending_source_updates);
 
     // Probes
     ClassDB::bind_method(D_METHOD("generate_manual_grid", "tr", "ext", "sp", "generation_type", "height_above_floor"),
@@ -190,6 +263,10 @@ void ResonanceServer::_bind_methods() {
     ClassDB::bind_method(D_METHOD("bake_static_source", "dat", "endpoint_position", "influence_radius"), &ResonanceServer::bake_static_source);
     ClassDB::bind_method(D_METHOD("bake_static_listener", "dat", "endpoint_position", "influence_radius"), &ResonanceServer::bake_static_listener);
     ClassDB::bind_method(D_METHOD("save_scene_obj", "file_base_name"), &ResonanceServer::save_scene_obj);
+    ClassDB::bind_method(D_METHOD("save_scene_data", "filename"), &ResonanceServer::save_scene_data);
+    ClassDB::bind_method(D_METHOD("load_scene_data", "filename"), &ResonanceServer::load_scene_data);
+    ClassDB::bind_method(D_METHOD("refresh_all_geometry_from_scene_tree"), &ResonanceServer::refresh_all_geometry_from_scene_tree);
+    ClassDB::bind_method(D_METHOD("_deferred_refresh_all_geometry_after_scene_load"), &ResonanceServer::_deferred_refresh_all_geometry_after_scene_load);
     ClassDB::bind_method(D_METHOD("export_static_scene_to_asset", "scene_root", "path"), &ResonanceServer::export_static_scene_to_asset);
     ClassDB::bind_method(D_METHOD("export_static_scene_to_obj", "scene_root", "file_base_name"), &ResonanceServer::export_static_scene_to_obj);
     ClassDB::bind_method(D_METHOD("get_static_scene_hash", "scene_root"), &ResonanceServer::get_static_scene_hash);
@@ -237,6 +314,9 @@ void ResonanceServer::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_realtime_rays"), &ResonanceServer::get_realtime_rays);
     ClassDB::bind_method(D_METHOD("get_reverb_bus_instrumentation"), &ResonanceServer::get_reverb_bus_instrumentation);
     ClassDB::bind_method(D_METHOD("reset_reverb_bus_instrumentation"), &ResonanceServer::reset_reverb_bus_instrumentation);
+    ClassDB::bind_method(D_METHOD("get_pathing_instrumentation"), &ResonanceServer::get_pathing_instrumentation);
+    ClassDB::bind_method(D_METHOD("reset_pathing_instrumentation"), &ResonanceServer::reset_pathing_instrumentation);
+    ClassDB::bind_method(D_METHOD("get_simulation_worker_timing"), &ResonanceServer::get_simulation_worker_timing);
 
     // Properties
     ADD_PROPERTY(PropertyInfo(Variant::BOOL, "debug_occlusion"), "set_debug_occlusion", "is_debug_occlusion_enabled");

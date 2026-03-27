@@ -4,7 +4,7 @@
 		Marks mesh surfaces for Steam Audio simulation. Add as child of MeshInstance3D, or of any Node3D when using geometry_override.
 	</brief_description>
 	<description>
-		ResonanceGeometry exposes mesh triangles to Steam Audio for occlusion, transmission, and reverb. Normally must be a direct child of a MeshInstance3D. When [member geometry_override] is set, a MeshInstance3D parent is not required—a child of any Node3D suffices (transform is taken from the parent). Assign a ResonanceMaterial to control absorption, scattering, and transmission per surface. All ResonanceGeometry in the scene is used when baking probes.
+		ResonanceGeometry exposes mesh triangles to Steam Audio for occlusion, transmission, and reverb. Normally must be a direct child of a MeshInstance3D. When [member geometry_override] is set, a MeshInstance3D parent is not required—a child of any Node3D suffices; override mesh vertices are in this node's local space (use this node's transform). Assign a ResonanceMaterial to control absorption, scattering, and transmission per surface. All ResonanceGeometry in the scene is used when baking probes.
 	</description>
 	<tutorials>
 	</tutorials>
@@ -25,14 +25,25 @@
 			When enabled, geometry of all child nodes (with MeshInstance3D or geometry_override) is exported as acoustic geometry. Same as Steam Audio "Export All Children".
 		</member>
 		<member name="dynamic" type="bool" setter="set_dynamic" getter="is_dynamic" default="false">
-			When true, geometry is updated for moving/rotating objects. Enable path_validation_enabled on ResonancePlayer when using dynamic geometry that can block baked paths.
+			When true, geometry is updated for moving/rotating objects. Enable path validation (runtime default or per-source **Enabled**) when using dynamic geometry that can block baked paths.
 		</member>
 	</members>
 	<methods>
+		<method name="get_mesh_bake_transform">
+			<return type="Transform3D" />
+			<description>
+				World transform from mesh vertex space to global space: this node's global transform when [member geometry_override] is set, otherwise the parent [MeshInstance3D]'s global transform (or this node's global if there is no MeshInstance parent). Matches static scene export and runtime acoustic registration.
+			</description>
+		</method>
 		<method name="export_dynamic_mesh_to_asset">
 			<return type="Error" />
 			<param index="0" name="p_path" type="String" />
 			<description>Export mesh (parent MeshInstance3D or geometry_override if set) to a ResonanceGeometryAsset file. Works in Editor without running the scene. Saves to p_path (.tres) and assigns mesh_asset. Requires a Node3D parent; MeshInstance3D is only needed when geometry_override is unset.
+			</description>
+		</method>
+		<method name="sync_reflection_debug_viz">
+			<description>
+				Updates reflection debug overlay geometry only (CPU ray-hit visualization). Does not remove or recreate Steam Audio static or instanced meshes. Prefer this over [method refresh_geometry] when toggling debug flags so dynamic Embree geometry stays valid.
 			</description>
 		</method>
 	</methods>

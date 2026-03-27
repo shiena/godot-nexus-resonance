@@ -20,6 +20,10 @@ struct ResonanceSteamAudioContextConfig {
     int opencl_device_index = 0;
     bool context_validation = false;
     int context_simd_level = -1;
+    float hrtf_volume_db = 0.0f;
+    /// 0=None, 1=RMS — embedded default HRTF only.
+    int hrtf_normalization_type = 0;
+    int max_simulation_sources = resonance::kMaxSimulationSources;
     Ref<ResonanceSOFAAsset> hrtf_sofa_asset;
 };
 
@@ -36,6 +40,7 @@ class ResonanceSteamAudioContext {
     ResonanceSteamAudioContext& operator=(ResonanceSteamAudioContext&&) = delete;
 
     /// Initialize context and devices. reflection_type in config may be modified (TAN fallback).
+    /// config.scene_type is set to the effective tracer index (0=Default, 1=Embree, 2=Radeon) after device setup.
     /// Returns true on success.
     bool init(ResonanceSteamAudioContextConfig& config);
 

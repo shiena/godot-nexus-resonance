@@ -97,7 +97,7 @@ void ResonanceServerConfig::apply(const Dictionary& config,
         max_reverb_duration = 10.0f;
     simulation_cpu_cores_percent = config_float(config, "simulation_cpu_cores_percent", simulation_cpu_cores_percent);
     if (simulation_cpu_cores_percent <= 0.0f || simulation_cpu_cores_percent > 1.0f)
-        simulation_cpu_cores_percent = 0.05f;
+        simulation_cpu_cores_percent = resonance::kDefaultSimulationCpuCoresPercent;
     unsigned int nc = std::thread::hardware_concurrency();
     if (nc == 0)
         nc = 1;
@@ -151,6 +151,26 @@ void ResonanceServerConfig::apply(const Dictionary& config,
         occlusion_type = 0;
     if (occlusion_type > 1)
         occlusion_type = 1;
+    max_occlusion_samples = config_int(config, "max_occlusion_samples", max_occlusion_samples);
+    if (max_occlusion_samples < 1)
+        max_occlusion_samples = 1;
+    if (max_occlusion_samples > resonance::kMaxOcclusionSamplesUserMax)
+        max_occlusion_samples = resonance::kMaxOcclusionSamplesUserMax;
+    max_simulation_sources = config_int(config, "max_simulation_sources", max_simulation_sources);
+    if (max_simulation_sources < 8)
+        max_simulation_sources = 8;
+    if (max_simulation_sources > resonance::kMaxSimulationSourcesUserMax)
+        max_simulation_sources = resonance::kMaxSimulationSourcesUserMax;
+    hrtf_volume_db = config_float(config, "hrtf_volume_db", hrtf_volume_db);
+    if (hrtf_volume_db < resonance::kHRTFVolumeDBMin)
+        hrtf_volume_db = resonance::kHRTFVolumeDBMin;
+    if (hrtf_volume_db > resonance::kHRTFVolumeDBMax)
+        hrtf_volume_db = resonance::kHRTFVolumeDBMax;
+    hrtf_normalization_type = config_int(config, "hrtf_normalization_type", hrtf_normalization_type);
+    if (hrtf_normalization_type < 0)
+        hrtf_normalization_type = 0;
+    if (hrtf_normalization_type > 1)
+        hrtf_normalization_type = 1;
     config_sofa_asset(config, "hrtf_sofa_asset", hrtf_sofa_asset);
     reverb_binaural = config_bool(config, "reverb_binaural", reverb_binaural);
     use_virtual_surround = config_bool(config, "use_virtual_surround", use_virtual_surround);
@@ -185,6 +205,27 @@ void ResonanceServerConfig::apply(const Dictionary& config,
         pathing_vis_range = 1000.0f;
 
     pathing_normalize_eq = config_bool(config, "pathing_normalize_eq", pathing_normalize_eq);
+    pathing_num_vis_samples = config_int(config, "pathing_num_vis_samples", pathing_num_vis_samples);
+    if (pathing_num_vis_samples < 1)
+        pathing_num_vis_samples = resonance::kRuntimePathingDefaultNumVisSamples;
+    if (pathing_num_vis_samples > 16)
+        pathing_num_vis_samples = 16;
+    path_validation_enabled = config_bool(config, "path_validation_enabled", path_validation_enabled);
+    find_alternate_paths = config_bool(config, "find_alternate_paths", find_alternate_paths);
+    // Legacy: pathing_validation_ab_mode when new keys absent (old get_config() / hand-built dicts).
+    if (!config.has("path_validation_enabled") && !config.has("find_alternate_paths") && config.has("pathing_validation_ab_mode")) {
+        int ab = config_int(config, "pathing_validation_ab_mode", 0);
+        if (ab == 1) {
+            path_validation_enabled = true;
+            find_alternate_paths = false;
+        } else if (ab == 2) {
+            path_validation_enabled = false;
+            find_alternate_paths = false;
+        } else if (ab == 3) {
+            path_validation_enabled = true;
+            find_alternate_paths = true;
+        }
+    }
     if (config.has("scene_type"))
         scene_type = config_int(config, "scene_type", scene_type);
     else
@@ -238,6 +279,12 @@ void ResonanceServerConfig::apply(const Dictionary& config,
         simulation_update_interval = 0.0f;
     if (simulation_update_interval > 1.0f)
         simulation_update_interval = 1.0f;
+    direct_sim_interval = config_float(config, "direct_sim_interval", direct_sim_interval);
+    if (direct_sim_interval < 0.0f)
+        direct_sim_interval = 0.0f;
+    if (direct_sim_interval > 1.0f)
+        direct_sim_interval = 1.0f;
+    batch_source_updates = config_bool(config, "batch_source_updates", batch_source_updates);
 }
 
 } // namespace godot

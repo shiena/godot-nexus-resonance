@@ -21,9 +21,12 @@ const AUDIO_INST_LATE_RATE_ISSUE_PCT := 12.0
 const AUDIO_INST_MIN_MIX_CALLS_FOR_RATE := 200
 const AUDIO_INST_LATE_RATE_WARN_PCT := 2.5
 const AUDIO_INST_MAX_BLOCK_US_WARN := 15000
+## Scroll area height: viewport minus panel offset (y≈10), bottom gap, and panel content margins — not a fixed fraction of the window.
+const OVERLAY_SCROLL_HEIGHT_MIN_PX := 200.0
+const OVERLAY_SCROLL_HEIGHT_VIEWPORT_SUBTRACT_PX := 36.0
 
 var _panel: PanelContainer
-## Fixed-height clip host (ScrollContainer in this engine build has no usable custom_maximum_size).
+## Clip host sized to nearly full viewport height so the inner ScrollContainer can show all sections.
 var _scroll_host: Control
 var _outer_scroll: ScrollContainer
 var _vbox: VBoxContainer
@@ -53,7 +56,10 @@ func _on_viewport_size_changed() -> void:
 	var vp := get_viewport()
 	if not vp or not is_instance_valid(_scroll_host):
 		return
-	var h: float = maxf(200.0, vp.get_visible_rect().size.y * 0.65)
+	var vs: Vector2 = vp.get_visible_rect().size
+	var h: float = maxf(
+		OVERLAY_SCROLL_HEIGHT_MIN_PX, vs.y - OVERLAY_SCROLL_HEIGHT_VIEWPORT_SUBTRACT_PX
+	)
 	var w: float = 420.0
 	_scroll_host.custom_minimum_size = Vector2(w, h)
 	_scroll_host.size = Vector2(w, h)
@@ -97,7 +103,10 @@ func _build_ui() -> void:
 	var ch := COLOR_HINT
 	_hint_label.text = (
 		"[color=" + ch + "]Alt+1-3[/color] sections  [color=" + ch + "]Alt+R[/color] reset  "
-		+ "[color=" + ch + "]Alt+A[/color] audio details  [color=" + ch + "]Alt+E[/color] reverb expert"
+		+ "[color=" + ch + "]Alt+A[/color] audio details  [color=" + ch + "]Alt+E[/color] reverb expert\n"
+		+ "[color="
+		+ ch
+		+ "]Editor:[/color] Debugger → Profiler → [i]Scripts[/i]: [i]ResonanceRuntime[/i], this overlay, [i]ResonancePlayer[/i]; Monitors: [i]Nexus Resonance/…[/i]"
 	)
 	_vbox.add_child(_hint_label)
 
@@ -270,6 +279,32 @@ func _refresh_status() -> void:
 		server_txt = "initialized" if sim_ok else "initialized — [color=%s]waiting for geometry[/color]" % COLOR_WARNING
 	parts.append("[color=%s]Server: %s[/color]" % [server_line_col, server_txt])
 
+	var tree := get_tree()
+	var rt: Node = tree.get_first_node_in_group("resonance_runtime") if tree else null
+	var mtu := 0
+	if rt:
+		var v: Variant = rt.get("main_thread_last_tick_usec")
+		mtu = int(v) if v != null else 0
+	parts.append(
+		(
+			"[color=%s]Main thread:[/color] [i]ResonanceRuntime._process[/i] last tick [color=%s]%d µs[/color]"
+			% [COLOR_NEUTRAL, COLOR_NEUTRAL, mtu]
+		)
+	)
+	if init_ok and srv.has_method("get_simulation_worker_timing"):
+		var wtim: Dictionary = srv.get_simulation_worker_timing()
+		var w_d := int(wtim.get("us_run_direct", 0))
+		var w_r := int(wtim.get("us_run_reflections", 0))
+		var w_p := int(wtim.get("us_run_pathing", 0))
+		var w_s := int(wtim.get("us_sync_fetch", 0))
+		var w_sum := w_d + w_r + w_p + w_s
+		parts.append(
+			(
+				"[color=%s]Worker (last tick, µs):[/color] direct=%d refl=%d path=%d sync=%d [color=%s](Σ %d)[/color]"
+				% [COLOR_NEUTRAL, w_d, w_r, w_p, w_s, COLOR_HINT, w_sum]
+			)
+		)
+
 	_status_label.text = "\n".join(parts)
 
 
@@ -364,6 +399,10 @@ func _classify_player_instrumentation(
 	var zero_input := int(inst.get("zero_input_count", 0))
 	var silent := int(inst.get("silent_output_blocks", 0))
 	var last_rms := float(inst.get("last_output_rms", 0.0))
+	var path_sh_rms := float(inst.get("pathing_sh_rms", 0.0))
+	var path_sh_energy := float(inst.get("pathing_sh_energy", 0.0))
+	var path_out_rms := float(inst.get("pathing_out_rms", 0.0))
+	var path_sh_order := int(inst.get("pathing_sh_order", -1))
 
 	var badge := "[color=%s]OK[/color]" % COLOR_OK
 	if is_issue:
@@ -393,8 +432,22 @@ func _classify_player_instrumentation(
 	)
 	detail_lines.append(
 		(
-			"  [color=%s]proc[/color] pass=%d rmiss=%d silent=%d zero_in=%d rms=%.4f psync=%d  %s"
+			"  [color=%s]proc[/color] passthru=%d rmiss=%d silent=%d zero_in=%d rms=%.4f psync=%d  %s"
 			% [COLOR_NEUTRAL, passthrough, reverb_miss, silent, zero_input, last_rms, param_syncs, badge]
+		)
+	)
+	# GDScript % formatting has no printf %e; invalid specifiers leave literals in the string.
+	var path_energy_str: String = String.num_scientific(path_sh_energy)
+	detail_lines.append(
+		(
+			"  [color=%s]pathing[/color] sh_rms=%s sh_energy=%s out_rms=%s order=%d"
+			% [
+				COLOR_NEUTRAL,
+				String.num(path_sh_rms, 4),
+				path_energy_str,
+				String.num(path_out_rms, 4),
+				path_sh_order,
+			]
 		)
 	)
 
@@ -526,8 +579,11 @@ func _refresh_reverb_bus() -> void:
 	var eff_proc: int = ri.get("effect_process_calls", 0)
 	var eff_ok: int = ri.get("effect_success", 0)
 	var eff_null: int = ri.get("effect_mixer_null", 0)
-	var eff_rate := (100.0 * eff_ok / eff_proc) if eff_proc > 0 else 0.0
+	# Convolution/TAN use ReflectionMixer on the bus. Parametric/Hybrid have no mixer — wet signal is mixed inside ResonancePlayer.
+	var parametric_or_hybrid := refl_type == 1 or refl_type == 2
 	var eff_col := COLOR_OK if eff_ok > 0 and eff_null == 0 else COLOR_WARNING
+	if parametric_or_hybrid and eff_null > 0 and eff_ok == 0:
+		eff_col = COLOR_NEUTRAL
 
 	var fetch_lock := int(ri.get("fetch_lock_ok", 0))
 	var fetch_hit := int(ri.get("fetch_cache_hit", 0))
@@ -539,10 +595,15 @@ func _refresh_reverb_bus() -> void:
 	)
 
 	var compact: PackedStringArray = []
+	var mixer_lbl := "ok" if mixer_ok else "missing"
+	var mixer_col := COLOR_OK if mixer_ok else COLOR_WARNING
+	if parametric_or_hybrid and not mixer_ok:
+		mixer_lbl = "n/a (player output)"
+		mixer_col = COLOR_NEUTRAL
 	compact.append(
 		(
-			"[color=%s]Mixer:[/color] %s  [color=%s]feeds=%d[/color]"
-			% [COLOR_NEUTRAL, "ok" if mixer_ok else "missing", COLOR_OK if mixer_ok else COLOR_WARNING, feeds]
+			"[color=%s]Mixer:[/color] [color=%s]%s[/color]  [color=%s]feeds=%d[/color]"
+			% [COLOR_NEUTRAL, mixer_col, mixer_lbl, COLOR_NEUTRAL, feeds]
 		)
 	)
 	compact.append(
@@ -551,12 +612,48 @@ func _refresh_reverb_bus() -> void:
 			% [COLOR_NEUTRAL, eff_col, eff_ok, eff_proc, eff_null, ri.get("effect_output_peak", 0.0)]
 		)
 	)
+	if parametric_or_hybrid:
+		compact.append(
+			(
+				"[color=%s]Bus effect:[/color] silent by design — use [color=%s]ResonancePlayer[/color] RMS / signal levels for wet audio."
+				% [COLOR_HINT, COLOR_NEUTRAL]
+			)
+		)
 	compact.append(
 		(
 			"[color=%s]Fetch reverb:[/color] [color=%s]cache miss %.1f%%[/color] (hit=%d miss=%d lock_ok=%d)"
 			% [COLOR_NEUTRAL, miss_col, miss_pct, fetch_hit, fetch_miss, fetch_lock]
 		)
 	)
+	if srv.has_method("get_pathing_instrumentation"):
+		var pi: Dictionary = srv.get_pathing_instrumentation()
+		var sim_attempt: int = int(pi.get("sim_attempt", 0))
+		var sim_ran: int = int(pi.get("sim_ran", 0))
+		var sim_seh: int = int(pi.get("sim_seh_fail", 0))
+		var skip_l: int = int(pi.get("sim_skip_listener", 0))
+		var skip_cd: int = int(pi.get("sim_skip_cooldown", 0))
+		var sh_ok: int = int(pi.get("fetch_sh_ok", 0))
+		var sh_null: int = int(pi.get("fetch_sh_null", 0))
+		var p_miss: int = int(pi.get("player_fetch_miss", 0))
+		var p_ap: int = int(pi.get("player_applied", 0))
+		var p_gate: int = int(pi.get("player_gate", 0))
+		var path_col := (
+			COLOR_OK
+			if sim_ran > 0 and sh_ok > 0 and p_miss == 0
+			else (COLOR_WARNING if sim_ran > 0 or sh_ok > 0 else COLOR_NEUTRAL)
+		)
+		if sim_attempt > 0 and sim_ran == 0:
+			path_col = COLOR_ERROR
+		if sim_seh > 0 and sim_ran == 0:
+			path_col = COLOR_ERROR
+		if p_miss > 0 and sh_null > 0:
+			path_col = COLOR_ERROR
+		compact.append(
+			(
+				"[color=%s]Pathing:[/color] [color=%s]attempt=%d ran=%d seh_fail=%d[/color] skip_L=%d skip_cd=%d | sh_ok=%d sh_null=%d | player gate=%d applied=%d miss=%d"
+				% [COLOR_NEUTRAL, path_col, sim_attempt, sim_ran, sim_seh, skip_l, skip_cd, sh_ok, sh_null, p_gate, p_ap, p_miss]
+			)
+		)
 
 	var runtimes := get_tree().get_nodes_in_group("resonance_runtime")
 	if not runtimes.is_empty():
@@ -613,6 +710,51 @@ func _refresh_reverb_bus() -> void:
 	expert.append(
 		"fetch lock_ok=%d hit=%d miss=%d" % [fetch_lock, fetch_hit, fetch_miss]
 	)
+	if srv.has_method("get_pathing_instrumentation"):
+		var pi2: Dictionary = srv.get_pathing_instrumentation()
+		expert.append(
+			(
+				"pathing fetch: early=%d lock_ok=%d src_null=%d sh_ok=%d sh_null=%d bad_order=%d cache_hit=%d cache_miss=%d"
+				% [
+					int(pi2.get("fetch_early_exit", 0)),
+					int(pi2.get("fetch_lock_ok", 0)),
+					int(pi2.get("fetch_src_null", 0)),
+					int(pi2.get("fetch_sh_ok", 0)),
+					int(pi2.get("fetch_sh_null", 0)),
+					int(pi2.get("fetch_sh_bad_order", 0)),
+					int(pi2.get("fetch_cache_hit", 0)),
+					int(pi2.get("fetch_cache_miss", 0)),
+				]
+			)
+		)
+		expert.append(
+			(
+				"pathing sim: attempt=%d ran=%d seh_fail=%d skip_listener=%d skip_cooldown=%d | listener_valid=%s cooldown=%d ran_this_tick=%s"
+				% [
+					int(pi2.get("sim_attempt", 0)),
+					int(pi2.get("sim_ran", 0)),
+					int(pi2.get("sim_seh_fail", 0)),
+					int(pi2.get("sim_skip_listener", 0)),
+					int(pi2.get("sim_skip_cooldown", 0)),
+					pi2.get("pending_listener_valid", true),
+					int(pi2.get("pathing_crash_cooldown", 0)),
+					pi2.get("pathing_ran_this_tick", false),
+				]
+			)
+		)
+	if srv.has_method("get_simulation_worker_timing"):
+		var wtim: Dictionary = srv.get_simulation_worker_timing()
+		expert.append(
+			(
+				"worker last tick us: direct=%d refl=%d path=%d sync_fetch=%d"
+				% [
+					int(wtim.get("us_run_direct", 0)),
+					int(wtim.get("us_run_reflections", 0)),
+					int(wtim.get("us_run_pathing", 0)),
+					int(wtim.get("us_sync_fetch", 0)),
+				]
+			)
+		)
 	if not runtimes.is_empty():
 		var rt2: Node = runtimes[0]
 		var ai2 = rt2.get("activator_instrumentation")

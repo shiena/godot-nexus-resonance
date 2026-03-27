@@ -17,10 +17,11 @@ func test_get_audio_data_dir_default_is_audio_data():
 
 
 func test_get_audio_data_dir_uses_project_setting_when_configured():
-	if not ProjectSettings.has_setting("audio/nexus_resonance/bake/output_dir"):
-		pass_test("output_dir not in Project Settings - plugin may not have loaded")
+	const KEY := "nexus/resonance/bake/default_output_directory"
+	if not ProjectSettings.has_setting(KEY):
+		pass_test("default_output_directory not in Project Settings - plugin may not have loaded")
 		return
-	var configured: String = ProjectSettings.get_setting("audio/nexus_resonance/bake/output_dir", "")
+	var configured: String = ProjectSettings.get_setting(KEY, "")
 	var result: String = ResonancePaths.get_audio_data_dir()
 	if configured.is_empty():
 		assert_eq(result, ResonancePaths.PATH_AUDIO_DATA, "empty setting should fall back to default")

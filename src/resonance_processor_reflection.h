@@ -54,8 +54,10 @@ class ResonanceReflectionProcessor {
 
     /// Bypass mixer: apply convolution with mixer=null, output in internal buffer.
     /// Returns pointer to sa_temp_out_buffer (ambisonic) for external decode. Valid until next process call.
-    /// Note: reverb_gain is NOT applied here (caller applies attenuation/transmission/air to reverb mix level separately).
-    void process_mix_direct(const IPLAudioBuffer& in_buffer, const IPLReflectionEffectParams& reverb_params);
+    /// Ramps reflections_mix_level on downmixed mono before apply (Unity Steam Audio spatializer parity).
+    /// Caller scales wet to final mix by reverb_gain only; reflections_mix_level is encoded in the ramped input.
+    void process_mix_direct(const IPLAudioBuffer& in_buffer, const IPLReflectionEffectParams& reverb_params,
+                            float prev_reflections_mix_level, float reflections_mix_level);
     IPLAudioBuffer* get_direct_output_buffer() { return &sa_temp_out_buffer; }
     bool is_parametric() const { return reflection_type == resonance::kReflectionParametric; }
 };

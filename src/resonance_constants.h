@@ -8,7 +8,7 @@ namespace resonance {
 
 /// Version string (centralized; override via NEXUS_RESONANCE_VERSION when building)
 #ifndef NEXUS_RESONANCE_VERSION
-#define NEXUS_RESONANCE_VERSION "0.9.7"
+#define NEXUS_RESONANCE_VERSION "0.9.8"
 #endif
 constexpr const char* kVersion = NEXUS_RESONANCE_VERSION;
 
@@ -47,8 +47,13 @@ constexpr int kBakeDefaultNumThreads = 2;
 constexpr float kBakePathingDefaultVisRange = 500.0f;
 constexpr float kBakePathingDefaultPathRange = 100.0f;
 constexpr int kBakePathingDefaultNumSamples = 16;
+/// Default for IPLSimulationSettings::numVisSamples at runtime when pathing is on (1–16). Bake uses kBakePathingDefaultNumSamples.
+constexpr int kRuntimePathingDefaultNumVisSamples = 4;
 constexpr float kBakePathingDefaultRadius = 0.5f;
 constexpr float kBakePathingDefaultThreshold = 0.1f;
+
+/// Default fraction of CPU cores for Steam Audio simulation threads (ResonanceRuntimeConfig.simulation_cpu_cores_percent).
+constexpr float kDefaultSimulationCpuCoresPercent = 0.15f;
 
 /// Simulator shared inputs (duration and irradianceMinDistance)
 constexpr float kSimulatorSharedInputsDuration = 2.0f;
@@ -94,10 +99,14 @@ constexpr float kBakedEndpointRadius = 10000.0f;
 /// Number of samples in attenuation callback curve (linear/custom modes)
 constexpr int kAttenuationCurveSamples = 64;
 
-/// Steam Audio simulator: max occlusion samples per source
+/// Steam Audio simulator: max occlusion samples per source (default / config baseline)
 constexpr int kMaxOcclusionSamples = 64;
-/// Steam Audio simulator: max concurrent simulated sources
+/// Steam Audio simulator: max concurrent simulated sources (default / config baseline)
 constexpr int kMaxSimulationSources = 32;
+/// Upper clamp for user-configured max occlusion samples (ResonanceRuntimeConfig)
+constexpr int kMaxOcclusionSamplesUserMax = 128;
+/// Upper clamp for user-configured max simulation sources (ResonanceRuntimeConfig / TAN)
+constexpr int kMaxSimulationSourcesUserMax = 128;
 /// API limit: max probe batches (HandleManager overflow protection; documented for user)
 constexpr int kMaxProbeBatches = 1024;
 /// API limit: max probes per ResonanceProbeVolume (prevents excessive bake time/memory)
@@ -110,8 +119,10 @@ constexpr int kTransmissionFreqIndependent = 0;
 constexpr int kTransmissionFreqDependent = 1;
 /// Default occlusion samples for new sources
 constexpr int kDefaultOcclusionSamples = 64;
-/// Default transmission rays for new sources
+/// Default transmission rays for new sources (server / create_source_handle)
 constexpr int kDefaultTransmissionRays = 32;
+/// Default [code]max_transmission_surfaces[/code] when reading ResonancePlayerConfig (inspector default)
+constexpr int kDefaultPlayerConfigTransmissionRays = 16;
 
 /// FNV-1a 64-bit offset basis (for probe data hashing)
 constexpr uint64_t kFNVOffsetBasis = 14695981039346656037ULL;
@@ -129,7 +140,7 @@ inline uint64_t fnv1a_hash(const uint8_t* data, size_t size) {
 /// Inter-callback time threshold (us) above which _mix is counted as "late" for dropout diagnostics
 constexpr uint64_t kLateMixThresholdUs = 15000;
 
-/// Ticks to skip RunPathing after SEH crash (reduces exception storm)
+/// Worker ticks to skip iplSimulatorRunPathing after a caught SEH fault (Windows; reduces repeated AV)
 constexpr int kPathingCrashCooldownTicks = 5;
 
 /// Runtime reflection types (ResonanceServer reflection_type, Steam Audio IPL mapping)

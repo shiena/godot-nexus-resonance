@@ -139,12 +139,20 @@ void ResonanceReflectionProcessor::process_mix(const IPLAudioBuffer& in_buffer,
 }
 
 void ResonanceReflectionProcessor::process_mix_direct(const IPLAudioBuffer& in_buffer,
-                                                      const IPLReflectionEffectParams& reverb_params) {
+                                                      const IPLReflectionEffectParams& reverb_params,
+                                                      float prev_reflections_mix_level,
+                                                      float reflections_mix_level) {
     if (!(init_flags & ReflectionInitFlags::REFLECTIONEFFECT) || !(init_flags & ReflectionInitFlags::BUFFERS) || !reflection_effect)
         return;
 
     // IPL API has non-const param; input is read-only
     iplAudioBufferDownmix(context, const_cast<IPLAudioBuffer*>(&in_buffer), &sa_mono_buffer);
+
+    if (sa_mono_buffer.data && sa_mono_buffer.data[0]) {
+        float p = resonance::sanitize_audio_float(prev_reflections_mix_level);
+        float c = resonance::sanitize_audio_float(reflections_mix_level);
+        resonance::apply_volume_ramp(p, c, frame_size, sa_mono_buffer.data[0]);
+    }
 
     IPLReflectionEffectParams params = reverb_params;
     if (params.irSize <= 0)

@@ -8,7 +8,7 @@
 namespace godot {
 
 /// HRTF SOFA file as Resource with volume and normalization.
-/// Use with ResonanceRuntimeConfig.hrtf_sofa_asset for custom HRTFs with gain/norm control.
+/// Use with ResonanceRuntimeConfig.hrtf_sofa_assets (list) for custom HRTFs with gain/norm control.
 class ResonanceSOFAAsset : public Resource {
     GDCLASS(ResonanceSOFAAsset, Resource)
 

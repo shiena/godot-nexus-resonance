@@ -10,6 +10,7 @@
 #include "resonance_player.h"
 #include "resonance_probe_data.h"
 #include "resonance_probe_volume.h"
+#include "resonance_runtime_node.h"
 #include "resonance_server.h"
 #include "resonance_sofa_asset.h"
 #include "resonance_static_geometry.h"
@@ -28,6 +29,7 @@ void initialize_nexus_resonance_module(godot::ModuleInitializationLevel p_level)
     if (p_level == godot::MODULE_INITIALIZATION_LEVEL_SCENE) {
         // Core Classes
         ClassDB::register_class<ResonanceServer>();
+        ClassDB::register_class<ResonanceRuntime>();
         ClassDB::register_class<ResonanceFMODBridge>();
         ClassDB::register_class<ResonanceMaterial>();
         ClassDB::register_class<ResonanceGeometryAsset>();

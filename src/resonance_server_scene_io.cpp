@@ -1,13 +1,33 @@
 #include "resonance_constants.h"
+#include "resonance_geometry.h"
 #include "resonance_geometry_asset.h"
+#include "resonance_scene_manager.h"
 #include "resonance_server.h"
 #include "resonance_utils.h"
 #include <godot_cpp/classes/engine.hpp>
+#include <godot_cpp/classes/main_loop.hpp>
+#include <godot_cpp/classes/node.hpp>
 #include <godot_cpp/classes/project_settings.hpp>
+#include <godot_cpp/classes/scene_tree.hpp>
+#include <godot_cpp/classes/viewport.hpp>
+#include <godot_cpp/classes/window.hpp>
 #include <godot_cpp/variant/char_string.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
 using namespace godot;
+
+namespace {
+
+void refresh_geometry_recursive(Node* node) {
+    if (!node)
+        return;
+    if (ResonanceGeometry* geom = Object::cast_to<ResonanceGeometry>(node))
+        geom->refresh_geometry();
+    for (int i = 0; i < node->get_child_count(); ++i)
+        refresh_geometry_recursive(node->get_child(i));
+}
+
+} // namespace
 
 void ResonanceServer::notify_geometry_changed_assume_locked(int triangle_delta) {
     if (!_ctx())
@@ -23,6 +43,12 @@ void ResonanceServer::notify_geometry_changed(int triangle_delta) {
         return;
     std::lock_guard<std::mutex> lock(simulation_mutex);
     notify_geometry_changed_assume_locked(triangle_delta);
+}
+
+void ResonanceServer::mark_scene_commit_pending_assume_locked() {
+    if (!_ctx())
+        return;
+    scene_dirty.store(true, std::memory_order_release);
 }
 
 void ResonanceServer::save_scene_data(String filename) {
@@ -46,8 +72,9 @@ void ResonanceServer::save_scene_obj(String file_base_name) {
     if (!abs_path.ends_with(".obj")) {
         abs_path = abs_path + ".obj";
     }
-    CharString path = abs_path.utf8();
-    iplSceneSaveOBJ(scene, path.get_data());
+    Error write_err = ResonanceSceneManager::save_phonon_scene_obj_atomic(scene, abs_path);
+    if (write_err != OK)
+        UtilityFunctions::push_warning("Nexus Resonance: save_scene_obj failed (error " + String::num_int64(write_err) + ").");
     Engine* eng = Engine::get_singleton();
     if (eng && eng->is_editor_hint()) {
         UtilityFunctions::print_rich("[color=cyan]Nexus Resonance:[/color] Scene exported to OBJ (base: " + file_base_name + ").");
@@ -57,8 +84,34 @@ void ResonanceServer::save_scene_obj(String file_base_name) {
 void ResonanceServer::load_scene_data(String filename) {
     if (!_ctx() || !simulator)
         return;
-    std::lock_guard<std::mutex> lock(simulation_mutex);
-    scene_manager_.load_scene_data(_ctx(), &scene, simulator, _scene_type(), _embree(), _radeon(), filename, &global_triangle_count);
+    bool loaded = false;
+    {
+        std::lock_guard<std::mutex> lock(simulation_mutex);
+        loaded = scene_manager_.load_scene_data(_ctx(), &scene, simulator, _scene_type(), _embree(), _radeon(), filename, &global_triangle_count);
+    }
+    if (loaded)
+        call_deferred("_deferred_refresh_all_geometry_after_scene_load");
+}
+
+void ResonanceServer::refresh_all_geometry_from_scene_tree() {
+    Engine* eng = Engine::get_singleton();
+    if (!eng)
+        return;
+    MainLoop* ml = eng->get_main_loop();
+    SceneTree* tree = Object::cast_to<SceneTree>(ml);
+    if (!tree)
+        return;
+    Window* win = tree->get_root();
+    if (!win)
+        return;
+    // SceneTree root is Window (extends Viewport -> Node); use Node entry for traversal.
+    Node* root = static_cast<Node*>(static_cast<Viewport*>(win));
+    refresh_geometry_recursive(root);
+}
+
+void ResonanceServer::_deferred_refresh_all_geometry_after_scene_load() {
+    refresh_all_geometry_from_scene_tree();
+    reset_spatial_audio_warmup_passes();
 }
 
 Error ResonanceServer::export_static_scene_to_asset(Node* scene_root, const String& p_path) {

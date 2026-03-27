@@ -98,7 +98,8 @@ func ensure_resonance_meshes_dir() -> bool:
 	return true
 
 
-## Schedules OBJ reimport on next frame to avoid progress_dialog errors (Godot forum #123523).
+## Schedules OBJ reimport after a few frames so the filesystem sees closed files, without calling
+## scan() first (scan + reimport_files duplicates the "reimport" task and triggers progress_dialog errors).
 func _request_obj_reimport(paths: PackedStringArray) -> void:
 	if paths.is_empty():
 		return
@@ -108,8 +109,22 @@ func _request_obj_reimport(paths: PackedStringArray) -> void:
 	var tree = base.get_tree()
 	if not tree:
 		return
-	var fs = editor_interface.get_resource_filesystem()
-	tree.process_frame.connect(func(): fs.reimport_files(paths), CONNECT_ONE_SHOT)
+	_defer_obj_reimport_frames_left(paths, 2)
+
+
+func _defer_obj_reimport_frames_left(paths: PackedStringArray, frames_left: int) -> void:
+	var base = editor_interface.get_base_control()
+	if not base:
+		return
+	var tree = base.get_tree()
+	if not tree:
+		return
+	if frames_left <= 0:
+		editor_interface.get_resource_filesystem().reimport_files(paths)
+		return
+	tree.process_frame.connect(
+		func(): _defer_obj_reimport_frames_left(paths, frames_left - 1), CONNECT_ONE_SHOT
+	)
 
 
 func collect_scene_paths_for_obj(node: Node, out: Dictionary) -> void:
@@ -203,6 +218,7 @@ func _export_static_scenes_batch(paths: PackedStringArray) -> Dictionary:
 			continue
 		var base_name: String = str(path).get_file().get_basename()
 		var save_path: String = ResonancePaths.get_audio_data_dir() + base_name + "_static.tres"
+		ResonanceSceneUtils.warn_static_scenes_without_asset_covering_geometry(inst)
 		var err: int = srv.export_static_scene_to_asset(inst, save_path)
 		inst.queue_free()
 		if err == OK:
@@ -244,7 +260,6 @@ func _export_static_scenes_obj_batch(paths: PackedStringArray) -> Dictionary:
 		else:
 			skipped += 1
 	if exported > 0:
-		editor_interface.get_resource_filesystem().scan()
 		_request_obj_reimport(obj_paths)
 	return {"exported": exported, "skipped": skipped}
 
@@ -330,6 +345,7 @@ func export_active_scene(_unused: Variant = null) -> void:
 			return
 	if static_scene_node and static_scene_node.static_scene_asset:
 		static_scene_node.static_scene_asset = null
+	ResonanceSceneUtils.warn_static_scenes_without_asset_covering_geometry(root)
 	var err: int = srv.export_static_scene_to_asset(root, save_path)
 	if err != OK:
 		ResonanceEditorDialogs.show_critical(
@@ -427,8 +443,6 @@ func export_scene_obj(_unused: Variant = null) -> void:
 			tr(UIStrings.DIALOG_EXPORT_FAILED_TITLE)
 		)
 		return
-	editor_interface.get_resource_filesystem().scan()
-	# Defer reimport to avoid progress_dialog errors (Godot forum #123523)
 	_request_obj_reimport(PackedStringArray([save_base + ".obj"]))
 	ResonanceEditorDialogs.show_success_toast(
 		editor_interface, tr(UIStrings.INFO_SCENE_OBJ_EXPORTED) % (save_base + ".obj")

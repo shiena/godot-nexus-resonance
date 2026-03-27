@@ -1,5 +1,6 @@
 #include "resonance_processor_path.h"
 #include "resonance_log.h"
+#include "resonance_math.h"
 #include "resonance_server.h"
 #include <algorithm>
 #include <cstring>
@@ -63,7 +64,8 @@ void ResonancePathProcessor::cleanup() {
     init_flags = PathInitFlags::NONE;
 }
 
-void ResonancePathProcessor::process(const IPLAudioBuffer& in_buffer, const IPLPathEffectParams& params, IPLAudioBuffer& out_buffer) {
+void ResonancePathProcessor::process(const IPLAudioBuffer& in_buffer, const IPLPathEffectParams& params, IPLAudioBuffer& out_buffer,
+                                     float path_mix_ramp_start, float path_mix_ramp_end) {
     if (!(init_flags & PathInitFlags::PATHEFFECT) || !(init_flags & PathInitFlags::BUFFERS) || !path_effect || !params.shCoeffs)
         return;
     if (!in_buffer.data || !out_buffer.data || out_buffer.numSamples < frame_size)
@@ -71,6 +73,9 @@ void ResonancePathProcessor::process(const IPLAudioBuffer& in_buffer, const IPLP
 
     // IPL API has non-const param; input is read-only
     iplAudioBufferDownmix(context, const_cast<IPLAudioBuffer*>(&in_buffer), &internal_mono_buffer);
+    if (internal_mono_buffer.data && internal_mono_buffer.data[0]) {
+        resonance::apply_volume_ramp(path_mix_ramp_start, path_mix_ramp_end, frame_size, internal_mono_buffer.data[0]);
+    }
 
     IPLPathEffectParams effective_params = params;
     for (int i = 0; i < IPL_NUM_BANDS; i++) {

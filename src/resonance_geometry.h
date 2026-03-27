@@ -70,6 +70,14 @@ class ResonanceGeometry : public Node3D {
     /// Call to re-register geometry with the server (e.g. after server init in editor baking)
     void refresh_geometry();
 
+    /// Register/unregister ray-reflection debug triangles only (RayTraceDebugContext). Does not rebuild
+    /// IPL static/instanced meshes — avoids Embree losing dynamic occlusion when toggling F3 overlay.
+    void sync_reflection_debug_viz();
+
+    /// World transform mapping mesh vertex space to global space: this node's global when using
+    /// geometry_override, else parent MeshInstance3D global. Matches static scene export.
+    Transform3D get_mesh_bake_transform() const;
+
     /// Clear mesh references without releasing (call before reinit; scene release handles cleanup)
     void discard_meshes_before_scene_release();
 

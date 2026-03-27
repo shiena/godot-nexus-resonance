@@ -8,6 +8,8 @@
 #include "resonance_utils.h"
 #include <cstdint>
 #include <godot_cpp/classes/array_mesh.hpp>
+#include <godot_cpp/classes/mesh_instance3d.hpp>
+#include <godot_cpp/classes/node.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/project_settings.hpp>
 #include <godot_cpp/classes/resource_saver.hpp>
@@ -17,6 +19,34 @@
 #include <vector>
 
 using namespace godot;
+
+static bool steam_audio_verbose_logs() {
+    ProjectSettings* ps = ProjectSettings::get_singleton();
+    if (!ps)
+        return false;
+    const String key = String(resonance::kProjectSettingsResonancePrefix) + "logger/steam_audio_verbose";
+    return ps->has_setting(key) && ps->get_setting(key).booleanize();
+}
+
+static const char* ipl_scene_type_label(IPLSceneType t) {
+    switch (t) {
+        case IPL_SCENETYPE_EMBREE:
+            return "Embree";
+        case IPL_SCENETYPE_RADEONRAYS:
+            return "RadeonRays";
+        case IPL_SCENETYPE_CUSTOM:
+            return "Custom";
+        default:
+            return "Default";
+    }
+}
+
+static void log_dynamic_instanced_mesh_registered(ResonanceServer* server, int tri_count) {
+    if (!steam_audio_verbose_logs() || !server)
+        return;
+    ResonanceLog::info(String("ResonanceGeometry: dynamic InstancedMesh registered (scene_type=") + ipl_scene_type_label(server->get_scene_type()) +
+                       ", triangles=" + String::num_int64(tri_count) + ").");
+}
 
 static IPLMaterial get_default_ipl_material() {
     IPLMaterial m{};
@@ -73,6 +103,22 @@ static bool parse_mesh_to_ipl(const Ref<Mesh>& mesh, const Transform3D& xform,
         }
     }
     return !out_triangles.empty();
+}
+
+/// When ResonanceDynamicGeometry sits next to a glTF/instance subtree (parent is Node3D, not MeshInstance3D),
+/// geometry_override matches the visual mesh but vertices are in mesh space — use that MeshInstance3D's global transform.
+static MeshInstance3D* find_mesh_instance_using_mesh(Node* node, const Ref<Mesh>& mesh, int depth_left) {
+    if (!node || mesh.is_null() || depth_left < 0)
+        return nullptr;
+    MeshInstance3D* mi = Object::cast_to<MeshInstance3D>(node);
+    if (mi && mi->get_mesh() == mesh)
+        return mi;
+    for (int i = 0; i < node->get_child_count(); i++) {
+        MeshInstance3D* found = find_mesh_instance_using_mesh(node->get_child(i), mesh, depth_left - 1);
+        if (found)
+            return found;
+    }
+    return nullptr;
 }
 
 ResonanceGeometry::ResonanceGeometry() {}
@@ -197,6 +243,25 @@ void ResonanceGeometry::set_export_all_children(bool p_export) {
 
 bool ResonanceGeometry::get_export_all_children() const {
     return export_all_children;
+}
+
+Transform3D ResonanceGeometry::get_mesh_bake_transform() const {
+    if (geometry_override.is_valid()) {
+        MeshInstance3D* parent_mi = Object::cast_to<MeshInstance3D>(get_parent());
+        if (parent_mi && parent_mi->get_mesh() == geometry_override)
+            return parent_mi->get_global_transform();
+        Node* par = get_parent();
+        if (par) {
+            MeshInstance3D* found = find_mesh_instance_using_mesh(par, geometry_override, 64);
+            if (found)
+                return found->get_global_transform();
+        }
+        return get_global_transform();
+    }
+    MeshInstance3D* mi = Object::cast_to<MeshInstance3D>(get_parent());
+    if (mi)
+        return mi->get_global_transform();
+    return get_global_transform();
 }
 
 void ResonanceGeometry::_update_viz_geometry_override() {
@@ -363,7 +428,7 @@ void ResonanceGeometry::_create_meshes() {
     }
     server_init_retry_count_ = 0;
 
-    Transform3D xform = dynamic_object ? Transform3D() : node3d->get_global_transform();
+    Transform3D xform = dynamic_object ? Transform3D() : get_mesh_bake_transform();
 
     if (use_asset_path) {
         auto lock = server->scoped_simulation_lock();
@@ -418,7 +483,7 @@ void ResonanceGeometry::_create_meshes() {
 
         IPLInstancedMeshSettings instSettings{};
         instSettings.subScene = sub_scene;
-        instSettings.transform = ResonanceUtils::to_ipl_matrix(node3d->get_global_transform());
+        instSettings.transform = ResonanceUtils::to_ipl_matrix(get_mesh_bake_transform());
 
         if (iplInstancedMeshCreate(server->get_scene_handle(), &instSettings, &instanced_mesh) != IPL_STATUS_SUCCESS) {
             ResonanceLog::error("ResonanceGeometry: iplInstancedMeshCreate failed (asset path).");
@@ -430,6 +495,7 @@ void ResonanceGeometry::_create_meshes() {
         } else {
             iplInstancedMeshAdd(instanced_mesh, server->get_scene_handle());
             triangle_count = mesh_asset->get_triangle_count();
+            log_dynamic_instanced_mesh_registered(server, triangle_count);
         }
     } else {
         // --- Runtime mesh parsing: parse outside lock to reduce lock duration ---
@@ -473,7 +539,7 @@ void ResonanceGeometry::_create_meshes() {
 
                         IPLInstancedMeshSettings instSettings{};
                         instSettings.subScene = sub_scene;
-                        instSettings.transform = ResonanceUtils::to_ipl_matrix(node3d->get_global_transform());
+                        instSettings.transform = ResonanceUtils::to_ipl_matrix(get_mesh_bake_transform());
 
                         if (iplInstancedMeshCreate(server->get_scene_handle(), &instSettings, &instanced_mesh) != IPL_STATUS_SUCCESS) {
                             ResonanceLog::error("ResonanceGeometry: iplInstancedMeshCreate failed (dynamic).");
@@ -485,6 +551,7 @@ void ResonanceGeometry::_create_meshes() {
                         } else {
                             iplInstancedMeshAdd(instanced_mesh, server->get_scene_handle());
                             triangle_count += (int)ipl_triangles.size();
+                            log_dynamic_instanced_mesh_registered(server, (int)ipl_triangles.size());
                         }
                     } else {
                         ResonanceLog::error("ResonanceGeometry: iplStaticMeshCreate failed (dynamic).");
@@ -506,7 +573,7 @@ void ResonanceGeometry::_create_meshes() {
             }
 
             if (triangle_count > 0 && server->wants_debug_reflection_viz()) {
-                Transform3D tr = dynamic_object ? node3d->get_global_transform() : Transform3D();
+                Transform3D tr = dynamic_object ? get_mesh_bake_transform() : Transform3D();
                 IPLMatrix4x4 ipl_xform = ResonanceUtils::to_ipl_matrix(tr);
                 debug_mesh_id = server->register_debug_mesh(ipl_vertices, ipl_triangles, ipl_mat_indices.data(), &ipl_xform, &mat_settings);
                 resonance::debug_log_raw("resonance_geometry:register_debug", "mesh_registered", triangle_count, debug_mesh_id);
@@ -523,24 +590,21 @@ void ResonanceGeometry::_update_dynamic_transform() {
     if (!instanced_mesh)
         return;
 
-    Node* parent = get_parent();
-    Node3D* node3d = Object::cast_to<Node3D>(parent);
-    if (!node3d)
-        return;
-
     ResonanceServer* server = ResonanceServer::get_singleton();
     if (!server)
         return;
 
-    IPLMatrix4x4 mat = ResonanceUtils::to_ipl_matrix(node3d->get_global_transform());
+    IPLMatrix4x4 mat = ResonanceUtils::to_ipl_matrix(get_mesh_bake_transform());
 
+    // Parity with Steam Audio Unity "Dynamic Object": one exported rigid mesh in the global scene as an instanced
+    // mesh; root transform updates each move. iplInstancedMeshUpdateTransform must be followed by iplSceneCommit
+    // before iplSimulatorRunPathing (worker does commit when scene_dirty). Transform-only notify_geometry_changed(0)
+    // was throttled (geometry_update_throttle); always mark commit pending so path validation sees current dynamic occlusion.
     {
         auto lock = server->scoped_simulation_lock();
         iplInstancedMeshUpdateTransform(instanced_mesh, server->get_scene_handle(), mat);
+        server->mark_scene_commit_pending_assume_locked();
     }
-
-    // Notify dirty (0 delta means count didn't change, but position did -> needs Commit)
-    server->notify_geometry_changed(0);
 }
 
 static void _propagate_recursive(Node* from, const Ref<ResonanceMaterial>& mat, const Ref<Mesh>& geom_override) {
@@ -684,6 +748,83 @@ Error ResonanceGeometry::export_dynamic_mesh_to_asset(const String& p_path) {
     return save_err;
 }
 
+void ResonanceGeometry::sync_reflection_debug_viz() {
+    ResonanceServer* server = ResonanceServer::get_singleton();
+    if (!server || !server->is_initialized())
+        return;
+
+    const auto clear_debug_registration = [&]() {
+        if (debug_mesh_id < 0)
+            return;
+        auto lock = server->scoped_simulation_lock();
+        server->unregister_debug_mesh(debug_mesh_id);
+        debug_mesh_id = -1;
+    };
+
+    if (!server->wants_debug_reflection_viz()) {
+        clear_debug_registration();
+        return;
+    }
+
+    Node* parent = get_parent();
+    Node3D* node3d = Object::cast_to<Node3D>(parent);
+    if (!node3d || !node3d->is_visible_in_tree()) {
+        clear_debug_registration();
+        return;
+    }
+
+    if (!dynamic_object && (!Engine::get_singleton() || !Engine::get_singleton()->is_editor_hint())) {
+        Node* root = this;
+        while (root->get_parent())
+            root = root->get_parent();
+        if (_scene_has_static_scene_asset(root)) {
+            clear_debug_registration();
+            return;
+        }
+    }
+
+    const bool use_asset_path = dynamic_object && mesh_asset.is_valid() && mesh_asset->is_valid();
+    if (use_asset_path) {
+        clear_debug_registration();
+        return;
+    }
+
+    MeshInstance3D* mesh_instance = Object::cast_to<MeshInstance3D>(parent);
+    Ref<Mesh> mesh_for_geom;
+    if (geometry_override.is_valid()) {
+        mesh_for_geom = geometry_override;
+    } else if (mesh_instance) {
+        mesh_for_geom = mesh_instance->get_mesh();
+    }
+    if (mesh_for_geom.is_null()) {
+        clear_debug_registration();
+        return;
+    }
+
+    Transform3D xform = dynamic_object ? Transform3D() : get_mesh_bake_transform();
+    std::vector<IPLVector3> ipl_vertices;
+    std::vector<IPLTriangle> ipl_triangles;
+    std::vector<IPLint32> ipl_mat_indices;
+    if (!parse_mesh_to_ipl(mesh_for_geom, xform, ipl_vertices, ipl_triangles, ipl_mat_indices)) {
+        clear_debug_registration();
+        return;
+    }
+
+    IPLMaterial mat_settings = material.is_valid() ? material->get_ipl_material() : get_default_ipl_material();
+
+    {
+        auto lock = server->scoped_simulation_lock();
+        if (debug_mesh_id >= 0) {
+            server->unregister_debug_mesh(debug_mesh_id);
+            debug_mesh_id = -1;
+        }
+        Transform3D tr = dynamic_object ? get_mesh_bake_transform() : Transform3D();
+        IPLMatrix4x4 ipl_xform = ResonanceUtils::to_ipl_matrix(tr);
+        debug_mesh_id = server->register_debug_mesh(ipl_vertices, ipl_triangles, ipl_mat_indices.data(), &ipl_xform, &mat_settings);
+        resonance::debug_log_raw("resonance_geometry:sync_reflection_debug_viz", "mesh_registered", (int)ipl_triangles.size(), debug_mesh_id);
+    }
+}
+
 void ResonanceGeometry::refresh_geometry() {
     _create_meshes();
 }
@@ -762,6 +903,8 @@ void ResonanceGeometry::_bind_methods() {
     ClassDB::bind_method(D_METHOD("set_material", "p_material"), &ResonanceGeometry::set_material);
     ClassDB::bind_method(D_METHOD("get_material"), &ResonanceGeometry::get_material);
     ClassDB::bind_method(D_METHOD("refresh_geometry"), &ResonanceGeometry::refresh_geometry);
+    ClassDB::bind_method(D_METHOD("sync_reflection_debug_viz"), &ResonanceGeometry::sync_reflection_debug_viz);
+    ClassDB::bind_method(D_METHOD("get_mesh_bake_transform"), &ResonanceGeometry::get_mesh_bake_transform);
     ClassDB::bind_method(D_METHOD("_deferred_retry_create_meshes"), &ResonanceGeometry::_deferred_retry_create_meshes);
     ClassDB::bind_method(D_METHOD("discard_meshes_before_scene_release"), &ResonanceGeometry::discard_meshes_before_scene_release);
     ClassDB::bind_method(D_METHOD("set_dynamic", "p_dynamic"), &ResonanceGeometry::set_dynamic);

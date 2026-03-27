@@ -5,11 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),  
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.8] - 2026-03-26
+
+### Added
+
+- **ResonanceRuntimeConfig** - HRTF volume (dB) and normalization (None/RMS) for the embedded default HRTF; **SOFA list** (`hrtf_sofa_assets`) plus `hrtf_sofa_selected_index`; **max occlusion samples** and **max simulation sources** caps; **context validation** toggle exposed in the inspector and passed through `get_config()` to the native engine.
+- **Smoother occlusion & transmission** - `ResonancePlayerConfig.playback_coeff_smoothing_time` (seconds; `0` = off) reduces harsh jumps at geometry boundaries.
+- **Export** - Nested `ResonanceStaticScene` with its own asset is no longer merged again into the parent static export (fewer duplicates for instanced sub-scenes). Baked probe `.tres` paths include scene location so identical volume names under different branches collide less often.
+- **Debug & monitors** - Custom **Nexus Resonance** performance monitors in **Debugger → Monitors**  
+`ResonanceServer.get_simulation_worker_timing()` and reverb-bus expert counters expose the same worker breakdown.
+
+### Changed
+
+- **ResonanceRuntimeConfig** - Removed redundant `hrtf_sofa_asset`; use `hrtf_sofa_assets` only (e.g. one element for a single SOFA file).
+- **Pathing wet level** - Aligns with Steam Audio Unity/FMOD spatialize: no extra multiply by `reverb_pathing_attenuation` (distance is already in baked path SH). `pathing_mix_level` ramps the **mono input** before `iplPathEffectApply`, not the stereo output.
+- **Reflections & pathing level** - Mix ramps within each audio block; overall level and fade-in behavior may differ slightly from 0.9.7.
+- **Defaults** - Simulation CPU budget default **15%** (was 5%). Runtime **path validation** defaults **on** and **find alternate paths** **off** on `ResonanceRuntimeConfig`; per-source **Use Global | Disabled | Enabled** via `path_validation_override` / `find_alternate_paths_override` on `ResonancePlayerConfig` (replaces bool player fields and removes `pathing_validation_ab_mode`). `apply_hrtf_to_pathing` defaults to **Use Global**. `max_transmission_surfaces` default **16**. Distance attenuation: "**Disabled" added**.
+
+### Fixed
+
+- **Editor – ResonanceRuntime Doc-Button was opening the Documentation of "Node"**. This is sadly a breaking change. Use **Change Type** or recreate the node.
+- **Debug OBJ export** - No more duplicate reimport tasks / broken progress; files are written atomically.
+- **Geometry vs. export** - Runtime static/dynamic acoustic meshes use the same world rules as export (`geometry_override` vs parent `MeshInstance3D`), fixing wrong placement or scale (with assets imported with Nexus Importer).
+- **ResonancePlayer** - Volume db is now functional. Multiplies signals from Steam Audio.
+
 ## [0.9.7] - 2026-03-24
 
 ### Fixed
 
-- **Crash when loading another scene or reloading audio settings while sound is playing** — especially reported on Linux after changing ray-tracer options (e.g. Embree) and switching levels: the game could quit with a native crash. You can change scenes and let the engine restart audio without losing stability; spatialized playback and convolution reverb recover cleanly instead of taking the process down.
+- **Crash when loading another scene or reloading audio settings while sound is playing** - especially reported on Linux after changing ray-tracer options (e.g. Embree) and switching levels: the game could quit with a native crash. You can change scenes and let the engine restart audio without losing stability; spatialized playback and convolution reverb recover cleanly instead of taking the process down.
 
 ## [0.9.6] - 2026-03-23
 

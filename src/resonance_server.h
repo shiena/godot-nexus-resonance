@@ -80,8 +80,8 @@ class ResonanceServer : public Object {
         bool air_absorption_enabled = true;
         bool use_sim_distance_attenuation = false;
         float min_distance = 1.0f;
-        bool path_validation_enabled = true;
-        bool find_alternate_paths = true;
+        bool path_validation_enabled = false;
+        bool find_alternate_paths = false;
         int occlusion_samples = 64;
         int num_transmission_rays = 32;
         int baked_data_variation = 0;
@@ -90,6 +90,10 @@ class ResonanceServer : public Object {
         int32_t pathing_probe_batch_handle = -1;
         int reflections_enabled_override = -1;
         int pathing_enabled_override = -1;
+        /// -1 = use global ResonanceServer occlusion_type; 0 = raycast; 1 = volumetric.
+        int occlusion_type_override = -1;
+        bool simulation_occlusion_enabled = true;
+        bool simulation_transmission_enabled = true;
         bool valid = false;
     };
 
@@ -133,6 +137,43 @@ class ResonanceServer : public Object {
     std::atomic<uint64_t> instrumentation_fetch_cache_hit{0};
     /// Crackling debug: try_lock missed, cache empty, returned false
     std::atomic<uint64_t> instrumentation_fetch_cache_miss{0};
+    /// Pathing: fetch_pathing_params returned immediately (bad handle, no context, or pathing off)
+    std::atomic<uint64_t> instrumentation_pathing_fetch_early_exit{0};
+    /// Pathing: audio thread acquired simulation_mutex for pathing fetch
+    std::atomic<uint64_t> instrumentation_pathing_fetch_lock_ok{0};
+    /// Pathing: lock ok but source handle had no IPLSource
+    std::atomic<uint64_t> instrumentation_pathing_fetch_src_null{0};
+    /// Pathing: lock ok, copied valid SH pathing coefficients
+    std::atomic<uint64_t> instrumentation_pathing_fetch_sh_ok{0};
+    /// Pathing: lock ok, iplSourceGetOutputs PATHING but shCoeffs null
+    std::atomic<uint64_t> instrumentation_pathing_fetch_sh_null{0};
+    /// Pathing: lock ok, shCoeffs set but order/sh_count invalid (unstable pointer path skipped)
+    std::atomic<uint64_t> instrumentation_pathing_fetch_sh_bad_order{0};
+    /// Pathing: try_lock failed, served from pathing cache
+    std::atomic<uint64_t> instrumentation_pathing_fetch_cache_hit{0};
+    /// Pathing: try_lock failed, no cache entry for handle
+    std::atomic<uint64_t> instrumentation_pathing_fetch_cache_miss{0};
+    /// Pathing: worker entered RunPathing (before SEH-wrapped or direct iplSimulatorRunPathing)
+    std::atomic<uint64_t> instrumentation_pathing_sim_attempt{0};
+    /// Pathing: iplSimulatorRunPathing completed successfully this worker tick
+    std::atomic<uint64_t> instrumentation_pathing_sim_ran{0};
+    /// Pathing: Windows SEH caught a fault inside iplSimulatorRunPathing (cooldown applied)
+    std::atomic<uint64_t> instrumentation_pathing_sim_seh_fail{0};
+    /// Pathing: heavy tick skipped RunPathing — pending_listener_valid false
+    std::atomic<uint64_t> instrumentation_pathing_sim_skip_listener{0};
+    /// Pathing: heavy tick skipped RunPathing — crash cooldown active
+    std::atomic<uint64_t> instrumentation_pathing_sim_skip_cooldown{0};
+    /// ResonancePlayer: entered pathing mix branch (global pathing on, enable_reverb, pathing_mix > 0)
+    std::atomic<uint64_t> instrumentation_pathing_player_gate{0};
+    /// ResonancePlayer: fetch_pathing_params succeeded and path effect applied
+    std::atomic<uint64_t> instrumentation_pathing_player_applied{0};
+    /// ResonancePlayer: gate passed but fetch_pathing_params false (no audio this block)
+    std::atomic<uint64_t> instrumentation_pathing_player_fetch_miss{0};
+    /// Last simulation worker tick only: microseconds (profiling). Cleared when worker idle.
+    std::atomic<uint64_t> instrumentation_worker_us_run_direct{0};
+    std::atomic<uint64_t> instrumentation_worker_us_run_reflections{0};
+    std::atomic<uint64_t> instrumentation_worker_us_run_pathing{0};
+    std::atomic<uint64_t> instrumentation_worker_us_sync_fetch{0};
     /// Convolution debug: process_mix called for convolution with ir==null (should not happen)
     std::atomic<uint64_t> reverb_convolution_feed_ir_null{0};
     /// Convolution debug: min reverb_gain seen when feeding (attenuation * transmission * air_abs)
@@ -167,7 +208,7 @@ class ResonanceServer : public Object {
     int ambisonic_order = 1;
     float max_reverb_duration = 2.0f;
     int simulation_threads = 1;                 // Computed from simulation_cpu_cores_percent
-    float simulation_cpu_cores_percent = 0.05f; // 0-1 fraction of CPU cores for raytracing
+    float simulation_cpu_cores_percent = resonance::kDefaultSimulationCpuCoresPercent; // 0-1 fraction of CPU cores for simulation
     int max_rays = 4096;
     int max_bounces = 4;
     float reverb_influence_radius = 10000.0f;
@@ -181,9 +222,14 @@ class ResonanceServer : public Object {
     float hybrid_reverb_transition_time = 1.0f;
     float hybrid_reverb_overlap_percent = 0.25f; // 0.0-1.0 (25% from config)
     // Transmission type: 0 = FreqIndependent, 1 = FreqDependent
-    int transmission_type = 0;
+    int transmission_type = 1;
     // Occlusion type: 0 = Raycast, 1 = Volumetric
     int occlusion_type = 1;
+    int max_occlusion_samples = resonance::kMaxOcclusionSamples;
+    int max_simulation_sources = resonance::kMaxSimulationSources;
+    float hrtf_volume_db = 0.0f;
+    /// 0=None, 1=RMS for embedded default HRTF; SOFA uses asset norm_type.
+    int hrtf_normalization_type = 0;
     // Custom HRTF: ResonanceSOFAAsset with volume/norm. Null = default embedded HRTF.
     Ref<ResonanceSOFAAsset> hrtf_sofa_asset;
     // Use HRTF for reverb Ambisonic decode (better spatialization)
@@ -199,6 +245,10 @@ class ResonanceServer : public Object {
     float pathing_vis_threshold = 0.1f;
     float pathing_vis_range = 100.0f;
     bool pathing_normalize_eq = true;
+    int pathing_num_vis_samples = resonance::kRuntimePathingDefaultNumVisSamples;
+    /// Defaults when ResonancePlayerConfig path validation / find-alternate uses Use Global (-1).
+    bool path_validation_enabled = true;
+    bool find_alternate_paths = false;
     // Optional custom deviation model for pathing (freq-dependent attenuation around corners). nullptr = default (UTD).
     IPLDeviationModel _pathing_deviation_model{};
     bool _pathing_deviation_callback_enabled = false;
@@ -283,11 +333,32 @@ class ResonanceServer : public Object {
     std::mutex pathing_cache_mutex_;
     std::atomic<bool> pathing_cache_dirty_{false};
 
+    // Direct simulation outputs (occlusion, etc.): ResonancePlayer::_process calls get_source_occlusion_data every frame
+    // from the main thread. It must not block on simulation_mutex while the worker holds it during RunReflections.
+    struct CachedOcclusionData {
+        OcclusionData data{};
+        bool valid = false;
+    };
+    std::unordered_map<int32_t, CachedOcclusionData> occlusion_cache_read_;
+    std::unordered_map<int32_t, CachedOcclusionData> occlusion_cache_write_;
+    std::mutex occlusion_cache_mutex_;
+    std::atomic<bool> occlusion_cache_dirty_{false};
+
     // Threading
     // Lock order (must be respected to avoid deadlock): simulation_mutex before pathing_vis_mutex;
     // simulation_mutex before _pathing_deviation_mutex; probe_batch_registry_.mutex_ before simulation_mutex.
-    // Thread contexts: fetch_reverb_params/fetch_pathing_params = Audio-Thread; update_source, ProbeBatch APIs = Main-Thread;
-    // _pathing_vis_callback, distance_attenuation_callback = Worker/simulation context.
+    // Thread contexts: fetch_reverb_params/fetch_pathing_params/get_source_occlusion_data = Audio-Thread (simulation_mutex via try_lock);
+    // update_source, ProbeBatch APIs = Main-Thread; _pathing_vis_callback, distance_attenuation_callback = Worker/simulation context.
+    //
+    // Shutdown / reinit (IPL handle lifetime):
+    // - is_shutting_down_flag is set only for process exit (destructor, shutdown()); reinit_audio_engine uses _shutdown_steam_audio
+    //   without flipping it — rely on _ctx() == nullptr after teardown for API early-outs.
+    // - _shutdown_steam_audio: stop worker (join), then take simulation_mutex for all simulator/scene/source teardown so audio try_lock
+    //   cannot interleave Run* with release. Drain probe batches from the simulator, destroy every IPLSource (SourceManager) before
+    //   iplSimulatorRelease, then release scene/meshes. Finally _drain_ipl_context_clients_before_context_destroy() under
+    //   AudioServer::lock (clears ResonanceAudioEffect mixer state) before iplContextRelease.
+    // - ResonanceAudioEffect::_process checks is_initialized() && !is_shutting_down() before touching IPL; registered clients run
+    //   cleanup while the audio engine is locked so buffers are not used past context destroy.
     std::mutex simulation_mutex;
     std::thread worker_thread;
     std::mutex worker_mutex;
@@ -303,6 +374,38 @@ class ResonanceServer : public Object {
     float simulation_update_interval = 0.1f; // Seconds (0.1 = 100ms default)
     float simulation_update_time_elapsed = 0.0f;
     std::atomic<bool> reflections_pathing_requested{false};
+    /// When > 0, worker may skip RunDirect on non-heavy ticks until this much time has passed (see tick()).
+    float direct_sim_interval = 0.0f;
+    float direct_sim_time_elapsed = 0.0f;
+    std::atomic<bool> worker_run_direct_next{true};
+
+    struct PendingSourceUpdate {
+        Vector3 position{};
+        float radius = 1.0f;
+        Vector3 source_forward{0, 0, -1};
+        Vector3 source_up{0, 1, 0};
+        float directivity_weight = 0.0f;
+        float directivity_power = 1.0f;
+        bool air_absorption_enabled = true;
+        bool use_sim_distance_attenuation = false;
+        float min_distance = 1.0f;
+        bool path_validation_enabled = false;
+        bool find_alternate_paths = false;
+        int occlusion_samples = 64;
+        int num_transmission_rays = 32;
+        int baked_data_variation = 0;
+        Vector3 baked_endpoint_center{};
+        float baked_endpoint_radius = 0.0f;
+        int32_t pathing_probe_batch_handle = -1;
+        int reflections_enabled_override = -1;
+        int pathing_enabled_override = -1;
+        int occlusion_type_override = -1;
+        bool simulation_occlusion_enabled = true;
+        bool simulation_transmission_enabled = true;
+    };
+    bool batch_source_updates = true;
+    std::mutex source_update_batch_mutex_;
+    std::unordered_map<int32_t, PendingSourceUpdate> source_update_batch_;
 
     // Listener: double-buffer same as mixer (main writes [1], audio/worker read [0])
     IPLCoordinateSpace3 listener_coords_[2]{};
@@ -315,8 +418,11 @@ class ResonanceServer : public Object {
     /// Handles of sources added before their first RunReflections; skip getOutputs(REFLECTIONS) until cleared
     std::unordered_set<int32_t> reflections_pending_handles_;
     std::mutex reflections_pending_mutex_;
-    /// Ticks to skip RunPathing after SEH crash (reduces exception storm)
+    /// Ticks to skip RunPathing after Windows SEH catch (reduces repeated access violations)
     std::atomic<int> pathing_crash_cooldown{0};
+    /// Extra retains from iplProbeBatchRetain in _update_source_internal; released after iplSimulatorRunPathing.
+    /// Requires simulation_mutex (same lock as SetInputs / worker sim).
+    std::vector<IPLProbeBatch> pathing_probe_batches_pending_release_;
     /// One-time warning when pathing enabled but no pathing data (avoids log spam)
     bool pathing_no_data_warned = false;
 
@@ -342,6 +448,11 @@ class ResonanceServer : public Object {
 
     /// Requires simulation_mutex. Used during shutdown when is_shutting_down blocks destroy_source_handle.
     void _destroy_source_handle_under_simulation_lock(int32_t handle);
+    /// Requires simulation_mutex.
+    void _drain_pathing_probe_batch_releases();
+    /// Requires simulation_mutex. Pushes iplSourceGetOutputs into reverb/pathing/occlusion caches so the audio thread
+    /// can serve fetch_* without acquiring simulation_mutex (try_lock was always failing during long RunReflections).
+    void _worker_sync_fetch_caches();
 
     // Internal Methods
     void _apply_config(Dictionary config);
@@ -350,6 +461,7 @@ class ResonanceServer : public Object {
     void _init_internal();
     void _init_context_and_devices();
     bool _init_scene_and_simulator();
+    void _deferred_refresh_all_geometry_after_scene_load();
     void _start_worker_thread();
     void _shutdown_steam_audio();
     /// Call registered IPL clients to free buffers/effects while context is still valid (AudioServer::lock).
@@ -371,7 +483,10 @@ class ResonanceServer : public Object {
                                  int baked_data_variation, Vector3 baked_endpoint_center, float baked_endpoint_radius,
                                  int32_t pathing_probe_batch_handle = -1,
                                  int reflections_enabled_override = -1,
-                                 int pathing_enabled_override = -1);
+                                 int pathing_enabled_override = -1,
+                                 int occlusion_type_override = -1,
+                                 bool simulation_occlusion_enabled = true,
+                                 bool simulation_transmission_enabled = true);
 
     int _get_bake_num_rays() const;
     int _get_bake_num_bounces() const;
@@ -477,6 +592,14 @@ class ResonanceServer : public Object {
     Dictionary get_reverb_bus_instrumentation() const;
     /// Reset reverb bus instrumentation counters for crackling debug. Call to clear and re-observe.
     void reset_reverb_bus_instrumentation();
+    /// Pathing pipeline counters: worker RunPathing, fetch_pathing_params, player mix gate. See get_pathing_instrumentation().
+    Dictionary get_pathing_instrumentation() const;
+    void reset_pathing_instrumentation();
+    /// Last worker tick: microseconds in RunDirect / RunReflections / RunPathing / _worker_sync_fetch_caches (profiling).
+    Dictionary get_simulation_worker_timing() const;
+    void record_pathing_player_gate_enter();
+    void record_pathing_player_applied();
+    void record_pathing_player_fetch_miss();
     /// Called by ResonancePlayer when it feeds the reflection mixer (Convolution only).
     void record_mixer_feed() { reverb_mixer_feed_count.fetch_add(1, std::memory_order_relaxed); }
     /// Call when feeding mixer for convolution; ir_non_null, reverb_gain, input_rms (mono before gain)
@@ -503,6 +626,8 @@ class ResonanceServer : public Object {
     void set_bake_pipeline_pathing(bool p_pathing);
     void save_scene_data(String filename);
     void load_scene_data(String filename);
+    /// Walks the active SceneTree and calls ResonanceGeometry::refresh_geometry on each geometry node. Main thread; use after load_scene_data replaces the Phonon scene so instanced meshes and handles are rebuilt.
+    void refresh_all_geometry_from_scene_tree();
     /// Export static ResonanceGeometry (dynamic=false) under scene_root to merged asset. Returns OK on success. Standalone; no server required.
     Error export_static_scene_to_asset(Node* scene_root, const String& p_path);
     /// Export static ResonanceGeometry from scene to OBJ+MTL (Editor or Runtime). Path without extension.
@@ -581,11 +706,14 @@ class ResonanceServer : public Object {
     bool use_virtual_surround_output() const { return use_virtual_surround; }
     bool get_hrtf_interpolation_bilinear() const { return hrtf_interpolation_bilinear; }
     bool is_pathing_enabled() const { return pathing_enabled; }
+    /// Runtime defaults when ResonancePlayerConfig uses Use Global (-1).
+    bool get_default_path_validation_enabled() const { return path_validation_enabled; }
+    bool get_default_find_alternate_paths() const { return find_alternate_paths; }
     /// Set custom pathing deviation model (C++ only). For default/UTD pass nullptr. Call clear_pathing_deviation_callback() to reset.
     void set_pathing_deviation_callback(IPLDeviationCallback callback, void* userData);
     void clear_pathing_deviation_callback();
     void set_pathing_enabled(bool p_enabled) { pathing_enabled = p_enabled; }
-    /// True when RunPathing ran this tick; false when it crashed/skipped.
+    /// True when RunPathing ran this tick; false when skipped (listener invalid / cooldown). Uncaught fault in Phonon still terminates the process.
     bool did_pathing_run_this_tick() const { return pathing_ran_this_tick.load(); }
 
     // Calculations
@@ -597,6 +725,9 @@ class ResonanceServer : public Object {
     void notify_geometry_changed(int triangle_delta);
     /// Same as notify_geometry_changed but caller already holds simulation_mutex (e.g. _clear_meshes_impl).
     void notify_geometry_changed_assume_locked(int triangle_delta);
+    /// Mark that iplSceneCommit is required before the next simulation step. Caller must hold simulation_mutex.
+    /// Used for dynamic instanced-mesh transform updates (no triangle count change); not subject to geometry_update_throttle.
+    void mark_scene_commit_pending_assume_locked();
     void update_listener(Vector3 pos, Vector3 dir, Vector3 up);
     void set_listener_valid(bool valid);
     /// Notify that the audio listener has changed. Call when listener is created or swapped (e.g. Splitscreen, VR).
@@ -613,8 +744,8 @@ class ResonanceServer : public Object {
                        bool air_absorption_enabled = true,
                        bool use_sim_distance_attenuation = false,
                        float min_distance = 1.0f,
-                       bool path_validation_enabled = true,
-                       bool find_alternate_paths = true,
+                       bool path_validation_enabled = false,
+                       bool find_alternate_paths = false,
                        int occlusion_samples = 64,
                        int num_transmission_rays = 32,
                        int baked_data_variation = 0,
@@ -622,7 +753,57 @@ class ResonanceServer : public Object {
                        float baked_endpoint_radius = 0.0f,
                        int32_t pathing_probe_batch_handle = -1,
                        int reflections_enabled_override = -1,
-                       int pathing_enabled_override = -1);
+                       int pathing_enabled_override = -1,
+                       int occlusion_type_override = -1,
+                       bool simulation_occlusion_enabled = true,
+                       bool simulation_transmission_enabled = true);
+    /// Same as update_source; returns false if simulation_mutex is held (worker in RunReflections, etc.).
+    bool try_update_source(int32_t handle, Vector3 position, float radius,
+                           Vector3 source_forward = Vector3(0, 0, -1),
+                           Vector3 source_up = Vector3(0, 1, 0),
+                           float directivity_weight = 0.0f,
+                           float directivity_power = 1.0f,
+                           bool air_absorption_enabled = true,
+                           bool use_sim_distance_attenuation = false,
+                           float min_distance = 1.0f,
+                           bool path_validation_enabled = false,
+                           bool find_alternate_paths = false,
+                           int occlusion_samples = 64,
+                           int num_transmission_rays = 32,
+                           int baked_data_variation = 0,
+                           Vector3 baked_endpoint_center = Vector3(0, 0, 0),
+                           float baked_endpoint_radius = 0.0f,
+                           int32_t pathing_probe_batch_handle = -1,
+                           int reflections_enabled_override = -1,
+                           int pathing_enabled_override = -1,
+                           int occlusion_type_override = -1,
+                           bool simulation_occlusion_enabled = true,
+                           bool simulation_transmission_enabled = true);
+    /// Queue a source update to apply under one simulation_mutex lock when [method flush_pending_source_updates] runs (main thread).
+    void enqueue_source_update(int32_t handle, Vector3 position, float radius,
+                               Vector3 source_forward = Vector3(0, 0, -1),
+                               Vector3 source_up = Vector3(0, 1, 0),
+                               float directivity_weight = 0.0f,
+                               float directivity_power = 1.0f,
+                               bool air_absorption_enabled = true,
+                               bool use_sim_distance_attenuation = false,
+                               float min_distance = 1.0f,
+                               bool path_validation_enabled = false,
+                               bool find_alternate_paths = false,
+                               int occlusion_samples = 64,
+                               int num_transmission_rays = 32,
+                               int baked_data_variation = 0,
+                               Vector3 baked_endpoint_center = Vector3(0, 0, 0),
+                               float baked_endpoint_radius = 0.0f,
+                               int32_t pathing_probe_batch_handle = -1,
+                               int reflections_enabled_override = -1,
+                               int pathing_enabled_override = -1,
+                               int occlusion_type_override = -1,
+                               bool simulation_occlusion_enabled = true,
+                               bool simulation_transmission_enabled = true);
+    /// Apply all [method enqueue_source_update] entries (try_lock; re-queues on failure). Call once per frame after [method tick] when batching is on.
+    void flush_pending_source_updates();
+    bool uses_batch_source_updates() const { return batch_source_updates; }
     /// Set attenuation callback data for Linear/Curve modes. Call before update_source when attenuation_mode is 1 or 2.
     void set_source_attenuation_callback_data(int32_t handle, int attenuation_mode, float min_distance, float max_distance, const PackedFloat32Array& curve_samples);
     /// Clear attenuation callback data when switching to Inverse mode.

@@ -21,7 +21,7 @@ struct ResonanceServerConfig {
 
     // Simulation
     int simulation_threads = 1;
-    float simulation_cpu_cores_percent = 0.05f;
+    float simulation_cpu_cores_percent = resonance::kDefaultSimulationCpuCoresPercent;
     int max_rays = 4096;
     int max_bounces = 4;
     float reverb_influence_radius = 10000.0f;
@@ -34,10 +34,17 @@ struct ResonanceServerConfig {
     int default_reflections_mode = 0;
     float hybrid_reverb_transition_time = 1.0f;
     float hybrid_reverb_overlap_percent = 0.25f;
-    int transmission_type = 0;
+    int transmission_type = 1;
     int occlusion_type = 1;
+    /// IPLSimulationSettings::maxNumOcclusionSamples (cap for volumetric occlusion)
+    int max_occlusion_samples = resonance::kMaxOcclusionSamples;
+    /// IPLSimulationSettings::maxNumSources (and TAN maxSources)
+    int max_simulation_sources = resonance::kMaxSimulationSources;
 
     // HRTF
+    float hrtf_volume_db = 0.0f;
+    /// 0=None (IPL_HRTFNORMTYPE_NONE), 1=RMS — applies to embedded default HRTF only; SOFA uses asset norm_type.
+    int hrtf_normalization_type = 0;
     Ref<ResonanceSOFAAsset> hrtf_sofa_asset;
     bool reverb_binaural = true;
     bool hrtf_interpolation_bilinear = false;
@@ -49,6 +56,12 @@ struct ResonanceServerConfig {
     float pathing_vis_threshold = 0.1f;
     float pathing_vis_range = 100.0f;
     bool pathing_normalize_eq = true;
+    /// Runtime pathing: IPL numVisSamples when pathing on (1–16). Independent of bake_pathing_num_samples.
+    int pathing_num_vis_samples = resonance::kRuntimePathingDefaultNumVisSamples;
+    /// Default when ResonancePlayerConfig uses Use Global (-1) for path validation (dynamic occlusion of baked paths).
+    bool path_validation_enabled = true;
+    /// Default when player uses Use Global (-1) for find-alternate-paths (requires validation on to take effect).
+    bool find_alternate_paths = false;
 
     // Ray tracer / OpenCL / Radeon Rays
     /// 0=Default (built-in Phonon), 1=Embree (Intel, faster CPU), 2=Radeon Rays (GPU)
@@ -81,6 +94,10 @@ struct ResonanceServerConfig {
     int geometry_update_throttle = 4;
     int simulation_tick_throttle = 1;
     float simulation_update_interval = 0.1f;
+    /// 0 = run iplSimulatorRunDirect every worker wake (default). >0 = at most once per this many seconds on non-heavy ticks.
+    float direct_sim_interval = 0.0f;
+    /// When true, ResonanceRuntime flushes pending source updates once per frame; players enqueue instead of try_update_source.
+    bool batch_source_updates = true;
 
     /// Apply config from Dictionary. Optional get_bake_pathing_param used for pathing_vis_* fallback when keys missing.
     /// config_int truncates FLOAT to int; use integer values from GDScript/JSON for exact results.

@@ -4,9 +4,10 @@
 		Volume for baked reverb probes. Place in scenes and bake to sample room acoustics.
 	</brief_description>
 	<description>
-		ResonanceProbeVolume defines a 3D region where Steam Audio bakes reverb data. Probes are placed according to generation_type and spacing. Use Bake Probes in the viewport toolbar (when selected) to compute reflection data, then optionally Bake Pathing for multi-path propagation. Probe Data is stored in the probe_data resource.
+		ResonanceProbeVolume defines a 3D region where Steam Audio bakes reverb data. Probes are placed according to generation_type and spacing. Use Bake Probes in the viewport toolbar (when selected) to compute reflection data, then optionally Bake Pathing for multi-path propagation. Probe Data is stored in the [member probe_data] resource.
+		[b]Bake settings documentation:[/b] reflection type, pathing, static source/listener, and quality options are documented on [url=#ResonanceBakeConfig]ResonanceBakeConfig[/url] (assign to [member bake_config]). Open that page from here; sub-resources have no class help in the inspector.
 
-		Note: Deleting a probe volume that is still referenced by ResonancePlayer.pathing_probe_volume can trigger a Godot engine error: "node_path.cpp:272 - Condition "!p_np.is_absolute()" is true". References are auto-cleared on deletion; if the error persists, clear pathing_probe_volume manually before deleting (Project > Tools > Nexus Resonance > Unlink Probe Volume References).
+		Note: Deleting a probe volume that is still referenced by [member ResonancePlayer.pathing_probe_volume] can trigger a Godot engine error: "node_path.cpp:272 - Condition "!p_np.is_absolute()" is true". References are auto-cleared on deletion; if the error persists, clear pathing_probe_volume manually before deleting (Project > Tools > Nexus Resonance > Unlink Probe Volume References).
 	</description>
 	<tutorials>
 	</tutorials>
@@ -66,7 +67,7 @@
 	</methods>
 	<members>
 		<member name="bake_config" type="ResonanceBakeConfig" setter="set_bake_config" getter="get_bake_config">
-			Per-volume bake configuration. When null, a default config is used. Assign a ResonanceBakeConfig for reflection type, pathing, static source/listener, and quality settings.
+			[url=#ResonanceBakeConfig]ResonanceBakeConfig[/url] per-volume bake configuration. When null, a default config is used. Full field reference on the linked page.
 		</member>
 		<member name="probe_data" type="ResonanceProbeData" setter="set_probe_data" getter="get_probe_data">
 			Resource storing baked probe data. Auto-created if empty. Save the scene after baking. Required for reverb at runtime.

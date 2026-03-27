@@ -24,6 +24,15 @@
 
 using namespace godot;
 
+namespace {
+/// Godot does not apply AudioStreamPlayer3D volume to GDExtension AudioStreamPlayback::_mix buffers; match editor Volume here.
+float owner_volume_linear(const ResonancePlayer* owner) {
+    if (!owner)
+        return 1.0f;
+    return resonance::sanitize_audio_float(owner->get_volume_linear());
+}
+} // namespace
+
 /// Apply reverb distance falloff: when distance >= rmd gain becomes 0; between fade_start and rmd, linear fade.
 static float apply_reverb_distance_falloff(float gain, float distance, float rmd) {
     if (rmd <= 0.0f || distance <= 0.0f)
@@ -158,6 +167,8 @@ void ResonanceInternalPlayback::_cleanup_steam_audio() {
 
     prev_direct_weight = 1.0f;
     prev_conv_reverb_gain = -1.0f;
+    prev_parametric_reflections_mix_level_ = 1.0f;
+    prev_pathing_mix_level_ = 1.0f;
     input_started = false;
 }
 
@@ -247,6 +258,8 @@ void ResonanceInternalPlayback::_process_steam_audio_block() {
     ResonanceServer* srv = ResonanceServer::get_singleton();
     if (!context || !srv || !srv->is_initialized())
         return;
+
+    const float node_vol = owner_volume_linear(owner_player_);
     if (!sa_in_buffer.data || !sa_in_buffer.data[0] || !sa_in_buffer.data[1])
         return;
     if (!sa_direct_out_buffer.data || !sa_direct_out_buffer.data[0] || !sa_direct_out_buffer.data[1])
@@ -295,9 +308,14 @@ void ResonanceInternalPlayback::_process_steam_audio_block() {
         float dbg_reverb = 0.0f;
         float dbg_path = 0.0f;
 
+        instrumentation_last_pathing_sh_rms.store(0.0f, std::memory_order_relaxed);
+        instrumentation_last_pathing_sh_energy.store(0.0f, std::memory_order_relaxed);
+        instrumentation_last_pathing_out_rms.store(0.0f, std::memory_order_relaxed);
+        instrumentation_last_pathing_order.store(-1, std::memory_order_relaxed);
+
         // 3. Run Direct Processor (srv already validated by process-entry guards)
-        int trans_type = srv->get_transmission_type();
-        bool hrtf_bilinear = srv->get_hrtf_interpolation_bilinear();
+        int trans_type = params_current.direct_effect_transmission_type;
+        bool hrtf_bilinear = params_current.direct_effect_hrtf_bilinear;
         direct_processor.process(
             params_current.use_ambisonics_encode,
             sa_in_buffer, sa_direct_out_buffer,
@@ -349,10 +367,12 @@ void ResonanceInternalPlayback::_process_steam_audio_block() {
                 if (refl_type == resonance::kReflectionConvolution || refl_type == resonance::kReflectionTan) {
                     IPLReflectionMixer mixer = srv->get_reflection_mixer_handle();
                     if (mixer) {
-                        // Apply reflections_mix_level (Unity applies this before mixer feed; we were missing it)
-                        float conv_reverb_gain = resonance::sanitize_audio_float(reverb_gain * params_current.reflections_mix_level);
+                        // Apply reflections_mix_level before convolution mixer feed.
+                        float conv_reverb_gain = resonance::sanitize_audio_float(reverb_gain * params_current.reflections_mix_level * node_vol);
                         dbg_reverb = conv_reverb_gain;
-                        // Mono RMS of input (downmix: avg of channels) for convolution debug
+                        // Mono RMS of input for reverb-bus instrumentation (editor / template_debug only; see DEBUG_ENABLED in godot-cpp).
+                        float input_rms = 0.0f;
+#ifdef DEBUG_ENABLED
                         float sum_sq = 0.0f;
                         int nch = sa_in_buffer.numChannels;
                         if (nch > 0 && sa_in_buffer.data) {
@@ -364,7 +384,8 @@ void ResonanceInternalPlayback::_process_steam_audio_block() {
                                 sum_sq += mono * mono;
                             }
                         }
-                        float input_rms = (frame_size_ > 0) ? std::sqrt(sum_sq / static_cast<float>(frame_size_)) : 0.0f;
+                        input_rms = (frame_size_ > 0) ? std::sqrt(sum_sq / static_cast<float>(frame_size_)) : 0.0f;
+#endif
                         srv->record_convolution_feed(reverb_params.ir != nullptr, conv_reverb_gain, input_rms);
                         auto lock = srv->scoped_mixer_lock();
                         reflection_processor.process_mix(sa_in_buffer, reverb_params, mixer, conv_reverb_gain, prev_conv_reverb_gain);
@@ -373,7 +394,9 @@ void ResonanceInternalPlayback::_process_steam_audio_block() {
                     }
                 } else {
                     reverb_to_player_output = true;
-                    reflection_processor.process_mix_direct(sa_in_buffer, reverb_params);
+                    reflection_processor.process_mix_direct(sa_in_buffer, reverb_params,
+                                                            prev_parametric_reflections_mix_level_, params_current.reflections_mix_level);
+                    prev_parametric_reflections_mix_level_ = params_current.reflections_mix_level;
                 }
             } else {
                 instrumentation_reverb_miss_blocks.fetch_add(1, std::memory_order_relaxed);
@@ -419,7 +442,8 @@ void ResonanceInternalPlayback::_process_steam_audio_block() {
         if (reverb_to_player_output) {
             IPLAudioBuffer* reverb_buf = reflection_processor.get_direct_output_buffer();
             if (reverb_buf && reverb_buf->data) {
-                float refl_mix = resonance::sanitize_audio_float(reverb_gain * params_current.reflections_mix_level);
+                // reflections_mix_level was ramped on mono before iplReflectionEffectApply.
+                float refl_mix = resonance::sanitize_audio_float(reverb_gain);
                 dbg_reverb = refl_mix;
                 _add_reverb_to_output(reverb_buf, refl_mix, params_current.reverb_split_output);
             }
@@ -427,7 +451,10 @@ void ResonanceInternalPlayback::_process_steam_audio_block() {
 
         // Add Pathing (multi-path sound propagation around obstacles).
         // Pathing only when enable_reverb is true – pathing is indirect sound (reflections); requires reverb to be active.
+        // Mix level: ramp on mono input before iplPathEffectApply (Steam Audio Unity/FMOD). Do not multiply wet by
+        // reverb_pathing_attenuation — path SH already include per-path distance attenuation in the simulation.
         if (srv && srv->is_pathing_enabled() && params_current.enable_reverb && params_current.pathing_mix_level > 0.0f) {
+            srv->record_pathing_player_gate_enter();
             IPLPathEffectParams path_params{};
             bool use_pathing = srv->fetch_pathing_params(current_source_handle, path_params);
             if (use_pathing) {
@@ -436,16 +463,46 @@ void ResonanceInternalPlayback::_process_steam_audio_block() {
                     path_params.hrtf = nullptr;
                     path_params.binaural = IPL_FALSE;
                 }
-                path_processor.process(sa_in_buffer, path_params, sa_path_out_buffer);
-                float path_gain = apply_reverb_distance_falloff(
-                    params_current.reverb_pathing_attenuation * params_current.pathing_mix_level,
-                    params_current.distance, srv->get_reverb_max_distance());
-                dbg_path = path_gain;
-                for (int i = 0; i < frame_size_; i++) {
-                    sa_final_mix_buffer.data[0][i] += sa_path_out_buffer.data[0][i] * path_gain;
-                    sa_final_mix_buffer.data[1][i] += sa_path_out_buffer.data[1][i] * path_gain;
+                const int32_t path_order = path_params.order;
+                instrumentation_last_pathing_order.store(path_order, std::memory_order_relaxed);
+                if (path_params.shCoeffs && path_order >= 0) {
+                    const int n = (path_order + 1) * (path_order + 1);
+                    double sum_sq = 0.0;
+                    for (int i = 0; i < n; i++) {
+                        const double c = static_cast<double>(path_params.shCoeffs[i]);
+                        sum_sq += c * c;
+                    }
+                    const float energy = static_cast<float>(sum_sq);
+                    const float sh_rms = (n > 0) ? static_cast<float>(std::sqrt(sum_sq / static_cast<double>(n))) : 0.0f;
+                    instrumentation_last_pathing_sh_energy.store(energy, std::memory_order_relaxed);
+                    instrumentation_last_pathing_sh_rms.store(sh_rms, std::memory_order_relaxed);
                 }
+                if (sa_path_out_buffer.data[0])
+                    memset(sa_path_out_buffer.data[0], 0, frame_size_ * sizeof(float));
+                if (sa_path_out_buffer.data[1])
+                    memset(sa_path_out_buffer.data[1], 0, frame_size_ * sizeof(float));
+                path_processor.process(sa_in_buffer, path_params, sa_path_out_buffer, prev_pathing_mix_level_,
+                                       params_current.pathing_mix_level);
+                float path_sum_sq = 0.0f;
+                for (int i = 0; i < frame_size_; i++) {
+                    const float pl = sa_path_out_buffer.data[0][i];
+                    const float pr = sa_path_out_buffer.data[1][i];
+                    path_sum_sq += pl * pl + pr * pr;
+                }
+                const float path_out_rms = (frame_size_ > 0) ? std::sqrt(path_sum_sq / (2.0f * static_cast<float>(frame_size_))) : 0.0f;
+                instrumentation_last_pathing_out_rms.store(path_out_rms, std::memory_order_relaxed);
+                dbg_path = resonance::sanitize_audio_float(params_current.pathing_mix_level);
+                for (int i = 0; i < frame_size_; i++) {
+                    sa_final_mix_buffer.data[0][i] += sa_path_out_buffer.data[0][i];
+                    sa_final_mix_buffer.data[1][i] += sa_path_out_buffer.data[1][i];
+                }
+                prev_pathing_mix_level_ = params_current.pathing_mix_level;
+                srv->record_pathing_player_applied();
+            } else {
+                srv->record_pathing_player_fetch_miss();
             }
+        } else {
+            prev_pathing_mix_level_ = params_current.pathing_mix_level;
         }
 
         debug_signal_direct.store(dbg_direct, std::memory_order_relaxed);
@@ -456,12 +513,18 @@ void ResonanceInternalPlayback::_process_steam_audio_block() {
         debug_signal_direct.store(1.0f, std::memory_order_relaxed);
         debug_signal_reverb.store(0.0f, std::memory_order_relaxed);
         debug_signal_pathing.store(0.0f, std::memory_order_relaxed);
+        instrumentation_last_pathing_sh_rms.store(0.0f, std::memory_order_relaxed);
+        instrumentation_last_pathing_sh_energy.store(0.0f, std::memory_order_relaxed);
+        instrumentation_last_pathing_out_rms.store(0.0f, std::memory_order_relaxed);
+        instrumentation_last_pathing_order.store(-1, std::memory_order_relaxed);
         instrumentation_passthrough_blocks.fetch_add(1, std::memory_order_relaxed);
         memcpy(sa_final_mix_buffer.data[0], sa_in_buffer.data[0], frame_size_ * sizeof(float));
         memcpy(sa_final_mix_buffer.data[1], sa_in_buffer.data[1], frame_size_ * sizeof(float));
 
         // Reset Ramps if we lost source, so next time it fades in cleanly
         prev_direct_weight = 1.0f;
+        prev_parametric_reflections_mix_level_ = 1.0f;
+        prev_pathing_mix_level_ = 1.0f;
     }
 
     // Safety: clamp output to prevent NaN/overflow from processing bugs
@@ -470,7 +533,7 @@ void ResonanceInternalPlayback::_process_steam_audio_block() {
         sa_final_mix_buffer.data[1][i] = std::clamp(sa_final_mix_buffer.data[1][i], -1.0f, 1.0f);
     }
 
-    // Instrumentation: output RMS and silent-block detection
+    // Instrumentation: output RMS and silent-block detection (pre–node volume; matches ring samples)
     float sum_sq = 0.0f;
     for (int i = 0; i < frame_size_; i++) {
         float l = sa_final_mix_buffer.data[0][i];
@@ -498,7 +561,9 @@ void ResonanceInternalPlayback::get_instrumentation_snapshot(uint64_t& out_input
                                                              uint64_t& out_passthrough_blocks, uint64_t& out_reverb_miss_blocks, uint64_t& out_max_block_time_us,
                                                              uint64_t& out_late_mix, uint64_t& out_param_syncs, uint64_t& out_zero_input,
                                                              int32_t& out_mix_frames_min, int32_t& out_mix_frames_max,
-                                                             uint64_t& out_silent_blocks, float& out_last_rms) const {
+                                                             uint64_t& out_silent_blocks, float& out_last_rms,
+                                                             float& out_pathing_sh_rms, float& out_pathing_sh_energy, float& out_pathing_out_rms,
+                                                             int32_t& out_pathing_order) const {
     out_input_dropped = instrumentation_input_dropped.load(std::memory_order_relaxed);
     out_output_underrun = instrumentation_output_underrun.load(std::memory_order_relaxed);
     out_output_blocked = instrumentation_output_blocked.load(std::memory_order_relaxed);
@@ -514,6 +579,10 @@ void ResonanceInternalPlayback::get_instrumentation_snapshot(uint64_t& out_input
     out_mix_frames_max = instrumentation_mix_frames_max.load(std::memory_order_relaxed);
     out_silent_blocks = instrumentation_silent_output_blocks.load(std::memory_order_relaxed);
     out_last_rms = instrumentation_last_output_rms_q8.load(std::memory_order_relaxed) / 256.0f;
+    out_pathing_sh_rms = instrumentation_last_pathing_sh_rms.load(std::memory_order_relaxed);
+    out_pathing_sh_energy = instrumentation_last_pathing_sh_energy.load(std::memory_order_relaxed);
+    out_pathing_out_rms = instrumentation_last_pathing_out_rms.load(std::memory_order_relaxed);
+    out_pathing_order = instrumentation_last_pathing_order.load(std::memory_order_relaxed);
 }
 
 void ResonanceInternalPlayback::get_debug_signal_levels(float& out_direct, float& out_reverb, float& out_pathing) const {
@@ -537,9 +606,10 @@ int32_t ResonanceInternalPlayback::read_reverb_frames(AudioFrame* buffer, int32_
     }
     output_ring_reverb_l.read(temp_reverb_buffer_l.data(), to_read);
     output_ring_reverb_r.read(temp_reverb_buffer_r.data(), to_read);
+    const float v_rev = owner_volume_linear(owner_player_);
     for (int32_t i = 0; i < to_read; i++) {
-        buffer[i].left = temp_reverb_buffer_l[i];
-        buffer[i].right = temp_reverb_buffer_r[i];
+        buffer[i].left = temp_reverb_buffer_l[i] * v_rev;
+        buffer[i].right = temp_reverb_buffer_r[i] * v_rev;
     }
     for (int32_t i = to_read; i < frames; i++) {
         buffer[i].left = 0.0f;
@@ -563,6 +633,10 @@ void ResonanceInternalPlayback::reset_instrumentation() {
     instrumentation_mix_frames_min.store(std::numeric_limits<int32_t>::max(), std::memory_order_relaxed);
     instrumentation_mix_frames_max.store(0, std::memory_order_relaxed);
     instrumentation_silent_output_blocks.store(0, std::memory_order_relaxed);
+    instrumentation_last_pathing_sh_rms.store(0.0f, std::memory_order_relaxed);
+    instrumentation_last_pathing_sh_energy.store(0.0f, std::memory_order_relaxed);
+    instrumentation_last_pathing_out_rms.store(0.0f, std::memory_order_relaxed);
+    instrumentation_last_pathing_order.store(-1, std::memory_order_relaxed);
 }
 
 int32_t ResonanceInternalPlayback::_mix(AudioFrame* buffer, double rate_scale, int32_t frames) {
@@ -611,12 +685,13 @@ int32_t ResonanceInternalPlayback::_mix(AudioFrame* buffer, double rate_scale, i
         }
         int available = (int)output_ring_l.get_available_read();
         int to_copy = (frames < available) ? frames : available;
+        const float v_tail = owner_volume_linear(owner_player_);
         for (int i = 0; i < to_copy; i++) {
             float l, r;
             output_ring_l.read(&l, 1);
             output_ring_r.read(&r, 1);
-            buffer[i].left = l;
-            buffer[i].right = r;
+            buffer[i].left = l * v_tail;
+            buffer[i].right = r * v_tail;
         }
         for (int i = to_copy; i < frames; i++) {
             buffer[i].left = 0.0f;
@@ -629,9 +704,10 @@ int32_t ResonanceInternalPlayback::_mix(AudioFrame* buffer, double rate_scale, i
         _lazy_init_steam_audio(0);
         // If init failed (e.g. out of memory or no context), fallback to passthrough
         if (!is_initialized) {
+            const float v = owner_volume_linear(owner_player_);
             for (int i = 0; i < samples_read; i++) {
-                buffer[i].left = mixed_frames[i].x;
-                buffer[i].right = mixed_frames[i].y;
+                buffer[i].left = mixed_frames[i].x * v;
+                buffer[i].right = mixed_frames[i].y * v;
             }
             return samples_read;
         }
@@ -670,13 +746,14 @@ int32_t ResonanceInternalPlayback::_mix(AudioFrame* buffer, double rate_scale, i
         instrumentation_output_underrun.fetch_add((uint64_t)(samples_to_output - valid_copy), std::memory_order_relaxed);
     }
 
+    const float v_out = owner_volume_linear(owner_player_);
     for (int i = 0; i < valid_copy; i++) {
         float l = 0.0f;
         float r = 0.0f;
         output_ring_l.read(&l, 1);
         output_ring_r.read(&r, 1);
-        buffer[i].left = l;
-        buffer[i].right = r;
+        buffer[i].left = l * v_out;
+        buffer[i].right = r * v_out;
     }
 
     for (int i = valid_copy; i < samples_to_output; i++) {
@@ -690,6 +767,8 @@ int32_t ResonanceInternalPlayback::_mix(AudioFrame* buffer, double rate_scale, i
 void ResonanceInternalPlayback::_start(double from_pos) {
     input_started = false;
     prev_conv_reverb_gain = -1.0f;
+    prev_parametric_reflections_mix_level_ = 1.0f;
+    prev_pathing_mix_level_ = 1.0f;
     direct_processor.reset_for_new_playback();
     if (base_playback.is_valid())
         base_playback->start(from_pos);
@@ -714,6 +793,7 @@ void ResonanceInternalStream::set_base_stream(const Ref<AudioStream>& p_stream) 
 Ref<AudioStreamPlayback> ResonanceInternalStream::_instantiate_playback() const {
     Ref<ResonanceInternalPlayback> playback;
     playback.instantiate();
+    playback->set_owner_player(stream_owner_);
     if (base_stream.is_valid())
         playback->set_base_playback(base_stream->instantiate_playback());
     return playback;
@@ -809,7 +889,14 @@ void ResonancePlayer::_refresh_config_cache() {
     config_cache_.min_distance = _config_float("min_distance", 1.0f);
     config_cache_.max_distance = _config_float("max_distance", 500.0f);
     config_cache_.source_radius = _config_float("source_radius", 1.0f);
-    config_cache_.attenuation_mode = _config_int("attenuation_mode", 0);
+    const bool legacy_dist_sim = _config_bool("distance_attenuation_simulation_enabled", true);
+    int am = _config_int("attenuation_mode", 0);
+    if (am == 0 && !legacy_dist_sim)
+        am = ATTENUATION_INVERSE_NO_SIM;
+    if (am < ATTENUATION_INVERSE || am > ATTENUATION_INVERSE_NO_SIM)
+        am = ATTENUATION_INVERSE;
+    config_cache_.attenuation_mode = am;
+    config_cache_.linear_curve_use_sim_distance_attenuation = legacy_dist_sim;
     config_cache_.attenuation_curve = _config_curve("attenuation_curve", Ref<Curve>());
     config_cache_.air_absorption_enabled = _config_bool("air_absorption_enabled", true);
     config_cache_.air_absorption_input = _config_int("air_absorption_input", 0);
@@ -822,8 +909,23 @@ void ResonancePlayer::_refresh_config_cache() {
     config_cache_.directivity_power = _config_float("directivity_power", 1.0f);
     config_cache_.spatial_blend = _config_float("spatial_blend", 1.0f);
     config_cache_.use_ambisonics_encode = _config_bool("use_ambisonics_encode", false);
-    config_cache_.path_validation_enabled = _config_bool("path_validation_enabled", true);
-    config_cache_.find_alternate_paths = _config_bool("find_alternate_paths", true);
+    auto read_tri_state = [this](const char* override_key, const char* legacy_bool_key) -> int {
+        if (!player_config.is_valid())
+            return -1;
+        Variant v_ov = player_config->get(StringName(override_key));
+        if (v_ov.get_type() != Variant::NIL) {
+            int o = (int)v_ov;
+            if (o < -1 || o > 1)
+                o = -1;
+            return o;
+        }
+        Variant v_leg = player_config->get(StringName(legacy_bool_key));
+        if (v_leg.get_type() != Variant::NIL)
+            return (bool)v_leg ? 1 : 0;
+        return -1;
+    };
+    config_cache_.path_validation_override = read_tri_state("path_validation_override", "path_validation_enabled");
+    config_cache_.find_alternate_paths_override = read_tri_state("find_alternate_paths_override", "find_alternate_paths");
     config_cache_.reflections_type = _config_int("reflections_type", -1);
     config_cache_.reflections_enabled = _config_int("reflections_enabled", -1);
     config_cache_.pathing_enabled_override = _config_int("pathing_enabled_override", -1);
@@ -838,7 +940,7 @@ void ResonancePlayer::_refresh_config_cache() {
     config_cache_.transmission_high = _config_float("transmission_high", 1.0f);
     config_cache_.directivity_value = _config_float("directivity_value", 1.0f);
     config_cache_.occlusion_samples = _config_int("occlusion_samples", resonance::kDefaultOcclusionSamples);
-    config_cache_.max_transmission_surfaces = _config_int("max_transmission_surfaces", resonance::kMaxSimulationSources);
+    config_cache_.max_transmission_surfaces = _config_int("max_transmission_surfaces", resonance::kDefaultPlayerConfigTransmissionRays);
     config_cache_.direct_mix_level = _config_float("direct_mix_level", 1.0f);
     config_cache_.reflections_mix_level = _config_float("reflections_mix_level", 1.0f);
     config_cache_.pathing_mix_level = _config_float("pathing_mix_level", 1.0f);
@@ -848,7 +950,29 @@ void ResonancePlayer::_refresh_config_cache() {
     config_cache_.reflections_delay = _config_int("reflections_delay", -1);
     config_cache_.perspective_override = _config_int("perspective_correction_override", -1);
     config_cache_.perspective_factor = _config_float("perspective_factor", 1.0f);
+    config_cache_.playback_parameter_min_interval = _config_float("playback_parameter_min_interval", 0.0f);
+    config_cache_.playback_parameter_min_move = _config_float("playback_parameter_min_move", 0.0f);
+    config_cache_.playback_coeff_smoothing_time = _config_float("playback_coeff_smoothing_time", 0.0f);
+    config_cache_.simulation_occlusion_enabled = _config_bool("simulation_occlusion_enabled", true);
+    config_cache_.simulation_transmission_enabled = _config_bool("simulation_transmission_enabled", true);
+    config_cache_.occlusion_type_override = _config_int("occlusion_type_override", -1);
+    if (config_cache_.occlusion_type_override < -1 || config_cache_.occlusion_type_override > 1)
+        config_cache_.occlusion_type_override = -1;
+    config_cache_.transmission_type_override = _config_int("transmission_type_override", -1);
+    if (config_cache_.transmission_type_override < -1 || config_cache_.transmission_type_override > 1)
+        config_cache_.transmission_type_override = -1;
+    config_cache_.hrtf_interpolation_override = _config_int("hrtf_interpolation_override", -1);
+    if (config_cache_.hrtf_interpolation_override < -1 || config_cache_.hrtf_interpolation_override > 1)
+        config_cache_.hrtf_interpolation_override = -1;
     config_cache_valid_ = true;
+}
+
+bool ResonancePlayer::_steam_sim_distance_attenuation_enabled(const ConfigCache& c) {
+    if (c.attenuation_mode == ATTENUATION_INVERSE_NO_SIM)
+        return false;
+    if (c.attenuation_mode == ATTENUATION_INVERSE)
+        return true;
+    return c.linear_curve_use_sim_distance_attenuation;
 }
 
 void ResonancePlayer::_ready() {
@@ -891,10 +1015,10 @@ void ResonancePlayer::_ensure_config_valid() {
 
 void ResonancePlayer::_ensure_config_and_apply_source(int32_t pathing_batch) {
     _ensure_config_valid();
-    _apply_update_source(pathing_batch);
+    _apply_update_source(pathing_batch, false);
 }
 
-void ResonancePlayer::_apply_update_source(int32_t pathing_batch) {
+void ResonancePlayer::_apply_update_source(int32_t pathing_batch, bool defer_if_sim_mutex_busy) {
     ResonanceServer* srv = ResonanceServer::get_singleton();
     if (!srv || source_handle < 0)
         return;
@@ -903,7 +1027,10 @@ void ResonancePlayer::_apply_update_source(int32_t pathing_batch) {
     Transform3D gt = get_global_transform();
     Vector3 forward = -gt.basis.get_column(2);
     Vector3 up = gt.basis.get_column(1);
-    const bool use_sim_attenuation = true;
+    const bool use_sim_attenuation = _steam_sim_distance_attenuation_enabled(c);
+    const int occ_type_ov = c.occlusion_type_override;
+    const bool sim_occ = c.simulation_occlusion_enabled;
+    const bool sim_tx = c.simulation_transmission_enabled;
 
     int baked_var = 0;
     if (c.reflections_type == -1) {
@@ -936,13 +1063,38 @@ void ResonancePlayer::_apply_update_source(int32_t pathing_batch) {
     }
 
     const bool sim_air_absorption = c.air_absorption_enabled && (c.air_absorption_input == 0);
-    srv->update_source(source_handle, get_global_position(), c.source_radius,
-                       forward, up, c.directivity_weight, c.directivity_power, sim_air_absorption,
-                       use_sim_attenuation, c.min_distance,
-                       c.path_validation_enabled, c.find_alternate_paths,
-                       c.occlusion_samples, c.max_transmission_surfaces,
-                       baked_var, baked_center, resonance::kBakedEndpointRadius,
-                       pathing_batch, c.reflections_enabled, c.pathing_enabled_override);
+    const bool eff_path_validation = (c.path_validation_override == -1) ? srv->get_default_path_validation_enabled() : (c.path_validation_override != 0);
+    const bool eff_find_alternate = (c.find_alternate_paths_override == -1) ? srv->get_default_find_alternate_paths() : (c.find_alternate_paths_override != 0);
+    if (defer_if_sim_mutex_busy) {
+        if (srv->uses_batch_source_updates()) {
+            srv->enqueue_source_update(source_handle, get_global_position(), c.source_radius,
+                                       forward, up, c.directivity_weight, c.directivity_power, sim_air_absorption,
+                                       use_sim_attenuation, c.min_distance,
+                                       eff_path_validation, eff_find_alternate,
+                                       c.occlusion_samples, c.max_transmission_surfaces,
+                                       baked_var, baked_center, resonance::kBakedEndpointRadius,
+                                       pathing_batch, c.reflections_enabled, c.pathing_enabled_override,
+                                       occ_type_ov, sim_occ, sim_tx);
+        } else {
+            srv->try_update_source(source_handle, get_global_position(), c.source_radius,
+                                   forward, up, c.directivity_weight, c.directivity_power, sim_air_absorption,
+                                   use_sim_attenuation, c.min_distance,
+                                   eff_path_validation, eff_find_alternate,
+                                   c.occlusion_samples, c.max_transmission_surfaces,
+                                   baked_var, baked_center, resonance::kBakedEndpointRadius,
+                                   pathing_batch, c.reflections_enabled, c.pathing_enabled_override,
+                                   occ_type_ov, sim_occ, sim_tx);
+        }
+    } else {
+        srv->update_source(source_handle, get_global_position(), c.source_radius,
+                           forward, up, c.directivity_weight, c.directivity_power, sim_air_absorption,
+                           use_sim_attenuation, c.min_distance,
+                           eff_path_validation, eff_find_alternate,
+                           c.occlusion_samples, c.max_transmission_surfaces,
+                           baked_var, baked_center, resonance::kBakedEndpointRadius,
+                           pathing_batch, c.reflections_enabled, c.pathing_enabled_override,
+                           occ_type_ov, sim_occ, sim_tx);
+    }
 }
 
 void ResonancePlayer::_setup_attenuation(ResonanceServer* srv) {
@@ -966,7 +1118,7 @@ void ResonancePlayer::_setup_attenuation(ResonanceServer* srv) {
                 curve_samples[i] = (i == 0) ? 1.0f : 0.0f;
         }
         srv->set_source_attenuation_callback_data(source_handle, c.attenuation_mode, c.min_distance, c.max_distance, curve_samples);
-    } else if (c.attenuation_mode == ATTENUATION_INVERSE) {
+    } else if (c.attenuation_mode == ATTENUATION_INVERSE || c.attenuation_mode == ATTENUATION_INVERSE_NO_SIM) {
         PackedFloat32Array empty_curve;
         srv->set_source_attenuation_callback_data(source_handle, 0, c.min_distance, c.max_distance, empty_curve);
     }
@@ -993,6 +1145,8 @@ void ResonancePlayer::_compute_attenuation(float dist, const OcclusionData& occ_
     out_attenuation = 1.0f;
     if (c.attenuation_mode == ATTENUATION_INVERSE) {
         out_attenuation = occ_data.distance_attenuation;
+    } else if (c.attenuation_mode == ATTENUATION_INVERSE_NO_SIM) {
+        out_attenuation = 1.0f;
     } else if (c.attenuation_mode == ATTENUATION_LINEAR) {
         if (dist <= c.min_distance)
             out_attenuation = 1.0f;
@@ -1019,6 +1173,11 @@ void ResonancePlayer::_compute_attenuation(float dist, const OcclusionData& occ_
         if (inverse_ref > 1.0f)
             inverse_ref = 1.0f;
         if (out_attenuation > inverse_ref)
+            out_reverb_pathing_attenuation = inverse_ref;
+        // Linear/curve direct gain hits 0 beyond max_distance; do not zero parametric/pathing wet the same way —
+        // they still represent energy that should decay with distance (inverse_ref), not snap off (fixes silent mix
+        // with pathing_applied and fetch hits while listener is past direct max_distance).
+        if (out_attenuation <= 0.0f && inverse_ref > 0.0f)
             out_reverb_pathing_attenuation = inverse_ref;
     }
 }
@@ -1089,10 +1248,24 @@ PlaybackParameters ResonancePlayer::_build_playback_params(const Vector3& listen
     new_params.reflections_eq[2] = c.reflections_eq_high;
     new_params.reflections_delay = c.reflections_delay;
     new_params.reverb_split_output = reverb_split_output_;
+    int eff_tx_type = resonance::kTransmissionFreqIndependent;
+    bool eff_hrtf_bi = false;
+    if (srv) {
+        eff_tx_type = srv->get_transmission_type();
+        eff_hrtf_bi = srv->get_hrtf_interpolation_bilinear();
+    }
+    if (c.transmission_type_override == resonance::kTransmissionFreqIndependent || c.transmission_type_override == resonance::kTransmissionFreqDependent)
+        eff_tx_type = c.transmission_type_override;
+    new_params.direct_effect_transmission_type = eff_tx_type;
+    if (c.hrtf_interpolation_override == 0)
+        eff_hrtf_bi = false;
+    else if (c.hrtf_interpolation_override == 1)
+        eff_hrtf_bi = true;
+    new_params.direct_effect_hrtf_bilinear = eff_hrtf_bi;
     return new_params;
 }
 
-void ResonancePlayer::_process_config_and_pathing(ResonanceServer* srv) {
+void ResonancePlayer::_prepare_source_for_simulation(ResonanceServer* srv) {
     _ensure_config_valid();
     config_cache_frame_countdown--;
 
@@ -1112,20 +1285,31 @@ void ResonancePlayer::_process_config_and_pathing(ResonanceServer* srv) {
             set_pathing_probe_volume(NodePath());
         }
     }
-    _apply_update_source(pathing_batch);
+    _apply_update_source(pathing_batch, true);
 }
 
-void ResonancePlayer::_sync_player_debug_drawer(double delta, ResonanceServer* srv, const ResonanceDebugData& dbg_data, bool hud_active) {
-    if (exclude_from_debug_)
-        return;
-    const bool occ = srv && srv->is_debug_occlusion_enabled();
-    const bool ref = srv && srv->is_debug_reflections_enabled();
-    debug_drawer.process(delta, dbg_data, occ, ref, get_name(), hud_active);
+bool ResonancePlayer::_playback_lod_should_apply_playback_params(double delta, bool debug_hud_active, const Vector3& source_pos) {
+    if (debug_hud_active)
+        return true;
+    const ConfigCache& c = config_cache_;
+    const float iv = c.playback_parameter_min_interval;
+    const float mv = c.playback_parameter_min_move;
+    if (iv <= 0.0f && mv <= 0.0f)
+        return true;
+    playback_lod_time_since_full_ += delta;
+    const bool hit_time = (iv > 0.0f) && (playback_lod_time_since_full_ >= static_cast<double>(iv));
+    const float mv_sq = mv * mv;
+    const bool hit_move = (mv > 0.0f) &&
+        (!playback_lod_have_anchor_ || (source_pos - playback_lod_anchor_pos_).length_squared() >= mv_sq);
+    if (!hit_time && !hit_move)
+        return false;
+    playback_lod_time_since_full_ = 0.0;
+    playback_lod_have_anchor_ = true;
+    playback_lod_anchor_pos_ = source_pos;
+    return true;
 }
 
-void ResonancePlayer::_push_playback_parameters_from_simulation(ResonanceServer* srv, ResonanceDebugData* opt_debug_out) {
-    _process_config_and_pathing(srv);
-
+void ResonancePlayer::_apply_playback_params_from_simulation(ResonanceServer* srv, ResonanceDebugData* opt_debug_out, double delta_seconds) {
     const ConfigCache& c = config_cache_;
     Viewport* vp = get_viewport();
     Vector3 listener_pos;
@@ -1150,7 +1334,54 @@ void ResonancePlayer::_push_playback_parameters_from_simulation(ResonanceServer*
     float tx_low = (c.transmission_input == 1) ? CLAMP(c.transmission_low, 0.0f, 1.0f) : occ_data.transmission[0];
     float tx_mid = (c.transmission_input == 1) ? CLAMP(c.transmission_mid, 0.0f, 1.0f) : occ_data.transmission[1];
     float tx_high = (c.transmission_input == 1) ? CLAMP(c.transmission_high, 0.0f, 1.0f) : occ_data.transmission[2];
+    if (c.occlusion_input == 0 && !c.simulation_occlusion_enabled)
+        occ_val = 1.0f;
+    if (c.transmission_input == 0 && !c.simulation_transmission_enabled) {
+        tx_low = 1.0f;
+        tx_mid = 1.0f;
+        tx_high = 1.0f;
+    }
     float directivity_val = (c.directivity_input == 1) ? CLAMP(c.directivity_value, 0.0f, 1.0f) : occ_data.directivity;
+
+    const float tau = c.playback_coeff_smoothing_time;
+    const bool smooth_occ = (tau > 0.0f) && (c.occlusion_input == 0);
+    const bool smooth_tx = (tau > 0.0f) && (c.transmission_input == 0);
+    if (smooth_occ || smooth_tx) {
+        const bool reinit = !coeff_smooth_initialized_ || (coeff_smooth_source_handle_ != source_handle);
+        if (reinit) {
+            if (smooth_occ)
+                coeff_smooth_occ_ = occ_val;
+            if (smooth_tx) {
+                coeff_smooth_tx_[0] = tx_low;
+                coeff_smooth_tx_[1] = tx_mid;
+                coeff_smooth_tx_[2] = tx_high;
+            }
+            coeff_smooth_initialized_ = true;
+            coeff_smooth_source_handle_ = source_handle;
+        } else {
+            float alpha = 1.0f;
+            if (delta_seconds > 0.0 && std::isfinite(static_cast<double>(tau)) && tau > 0.0f) {
+                const double t = std::max(static_cast<double>(tau), 1.0e-6);
+                alpha = 1.0f - static_cast<float>(std::exp(-delta_seconds / t));
+            }
+            if (smooth_occ)
+                coeff_smooth_occ_ += alpha * (occ_val - coeff_smooth_occ_);
+            if (smooth_tx) {
+                coeff_smooth_tx_[0] += alpha * (tx_low - coeff_smooth_tx_[0]);
+                coeff_smooth_tx_[1] += alpha * (tx_mid - coeff_smooth_tx_[1]);
+                coeff_smooth_tx_[2] += alpha * (tx_high - coeff_smooth_tx_[2]);
+            }
+        }
+        if (smooth_occ)
+            occ_val = std::clamp(coeff_smooth_occ_, 0.0f, 1.0f);
+        if (smooth_tx) {
+            tx_low = std::clamp(coeff_smooth_tx_[0], 0.0f, 1.0f);
+            tx_mid = std::clamp(coeff_smooth_tx_[1], 0.0f, 1.0f);
+            tx_high = std::clamp(coeff_smooth_tx_[2], 0.0f, 1.0f);
+        }
+    } else {
+        coeff_smooth_initialized_ = false;
+    }
 
     IPLReflectionEffectParams ignored_params{};
     bool has_reverb = srv->fetch_reverb_params(source_handle, ignored_params);
@@ -1187,6 +1418,19 @@ void ResonancePlayer::_push_playback_parameters_from_simulation(ResonanceServer*
     }
 }
 
+void ResonancePlayer::_sync_player_debug_drawer(double delta, ResonanceServer* srv, const ResonanceDebugData& dbg_data, bool hud_active) {
+    if (exclude_from_debug_)
+        return;
+    const bool occ = srv && srv->is_debug_occlusion_enabled();
+    const bool ref = srv && srv->is_debug_reflections_enabled();
+    debug_drawer.process(delta, dbg_data, occ, ref, get_name(), hud_active);
+}
+
+void ResonancePlayer::_push_playback_parameters_from_simulation(ResonanceServer* srv, ResonanceDebugData* opt_debug_out, double delta_seconds) {
+    _prepare_source_for_simulation(srv);
+    _apply_playback_params_from_simulation(srv, opt_debug_out, delta_seconds);
+}
+
 void ResonancePlayer::_deferred_push_playback_parameters() {
     Engine* eng = Engine::get_singleton();
     if (eng && eng->is_editor_hint())
@@ -1196,7 +1440,7 @@ void ResonancePlayer::_deferred_push_playback_parameters() {
     ResonanceServer* srv = ResonanceServer::get_singleton();
     if (!srv || !srv->is_simulating() || source_handle < 0)
         return;
-    _push_playback_parameters_from_simulation(srv, nullptr);
+    _push_playback_parameters_from_simulation(srv, nullptr, 0.0);
 }
 
 void ResonancePlayer::_process(double delta) {
@@ -1239,8 +1483,17 @@ void ResonancePlayer::_process(double delta) {
         return;
     }
 
+    _prepare_source_for_simulation(srv);
+    _ensure_config_valid();
+    const bool coeff_smooth_active = (config_cache_.playback_coeff_smoothing_time > 0.0f) &&
+        ((config_cache_.occlusion_input == 0) || (config_cache_.transmission_input == 0));
+    const bool apply_playback = _playback_lod_should_apply_playback_params(delta, show_debug_hud, get_global_position()) || coeff_smooth_active;
+
     ResonanceDebugData dbg_data;
-    _push_playback_parameters_from_simulation(srv, &dbg_data);
+    if (apply_playback)
+        _apply_playback_params_from_simulation(srv, &dbg_data, delta);
+    else
+        dbg_data = debug_overlay_last_data_;
 
     // --- DEBUG DRAWING ---
     ResonanceInternalPlayback* res_pb = _get_resonance_playback();
@@ -1252,8 +1505,10 @@ void ResonancePlayer::_process(double delta) {
         dbg_data.signal_pathing = 0.0f;
     }
 
-    debug_overlay_last_data_ = dbg_data;
-    debug_overlay_has_last_data_ = true;
+    if (apply_playback) {
+        debug_overlay_last_data_ = dbg_data;
+        debug_overlay_has_last_data_ = true;
+    }
     _sync_player_debug_drawer(delta, srv, dbg_data, show_debug_hud);
 }
 
@@ -1271,11 +1526,15 @@ void ResonancePlayer::_update_stream_setup() {
     if (!player_config.is_valid())
         return;
     Ref<AudioStream> cur = get_stream();
-    if (cur.is_valid() && cur->get_class() == "ResonanceInternalStream")
+    if (cur.is_valid() && cur->get_class() == "ResonanceInternalStream") {
+        if (ResonanceInternalStream* ris = Object::cast_to<ResonanceInternalStream>(cur.ptr()))
+            ris->set_stream_owner(this);
         return;
+    }
     if (cur.is_valid()) {
         internal_stream.instantiate();
         internal_stream->set_base_stream(cur);
+        internal_stream->set_stream_owner(this);
         set_stream(internal_stream);
     }
 }
@@ -1297,6 +1556,10 @@ void ResonancePlayer::play_stream(double from_pos) {
 }
 
 void ResonancePlayer::stop() {
+    playback_lod_have_anchor_ = false;
+    playback_lod_time_since_full_ = 0.0;
+    coeff_smooth_initialized_ = false;
+    coeff_smooth_source_handle_ = -1;
     Node* reverb_child = get_node_or_null(NodePath("ResonanceReverbOutput"));
     if (reverb_child && reverb_child->is_class("AudioStreamPlayer")) {
         if (AudioStreamPlayer* rp = Object::cast_to<AudioStreamPlayer>(reverb_child))
@@ -1370,9 +1633,12 @@ Dictionary ResonancePlayer::get_audio_instrumentation() {
         int32_t mix_frames_min = std::numeric_limits<int32_t>::max(), mix_frames_max = 0;
         uint64_t silent_blocks = 0;
         float last_rms = 0.0f;
+        float path_sh_rms = 0.0f, path_sh_energy = 0.0f, path_out_rms = 0.0f;
+        int32_t path_order = -1;
         res_pb->get_instrumentation_snapshot(input_dropped, output_underrun, output_blocked, mix_calls, blocks,
                                              passthrough, reverb_miss, max_block_us, late_mix, param_syncs, zero_input,
-                                             mix_frames_min, mix_frames_max, silent_blocks, last_rms);
+                                             mix_frames_min, mix_frames_max, silent_blocks, last_rms,
+                                             path_sh_rms, path_sh_energy, path_out_rms, path_order);
         d["input_dropped"] = (int64_t)input_dropped;
         d["output_underrun"] = (int64_t)output_underrun;
         d["output_blocked"] = (int64_t)output_blocked;
@@ -1388,6 +1654,10 @@ Dictionary ResonancePlayer::get_audio_instrumentation() {
         d["mix_frames_max"] = (int)mix_frames_max;
         d["silent_output_blocks"] = (int64_t)silent_blocks;
         d["last_output_rms"] = last_rms;
+        d["pathing_sh_rms"] = path_sh_rms;
+        d["pathing_sh_energy"] = path_sh_energy;
+        d["pathing_out_rms"] = path_out_rms;
+        d["pathing_sh_order"] = (int)path_order;
     }
     return d;
 }
@@ -1418,4 +1688,5 @@ void ResonancePlayer::_bind_methods() {
     BIND_ENUM_CONSTANT(ATTENUATION_INVERSE);
     BIND_ENUM_CONSTANT(ATTENUATION_LINEAR);
     BIND_ENUM_CONSTANT(ATTENUATION_CUSTOM_CURVE);
+    BIND_ENUM_CONSTANT(ATTENUATION_INVERSE_NO_SIM);
 }

@@ -40,11 +40,37 @@
 				Notifies the server of geometry change (triangle count delta). Called when dynamic geometry is added/removed.
 			</description>
 		</method>
+		<method name="refresh_all_geometry_from_scene_tree">
+			<return type="void" />
+			<description>
+				Traverses the active scene tree and calls [method ResonanceGeometry.refresh_geometry] on every [ResonanceGeometry] node. Call from the main thread after [method load_scene_data] replaces the Phonon scene (the server also schedules this automatically when a load succeeds). Rebuilds [ResonanceDynamicGeometry] instanced meshes and static runtime handles so occlusion, reflections, and pathing see the new scene.
+			</description>
+		</method>
+		<method name="load_scene_data">
+			<return type="void" />
+			<param index="0" name="filename" type="String" />
+			<description>
+				Loads serialized Steam Audio scene data from disk into the runtime scene. On success, defers [method refresh_all_geometry_from_scene_tree] so [ResonanceDynamicGeometry] and other geometry nodes re-register against the new IPL scene.
+			</description>
+		</method>
+		<method name="save_scene_data">
+			<return type="void" />
+			<param index="0" name="filename" type="String" />
+			<description>
+				Saves the current Steam Audio scene to a serialized file ([code]IPL_SCENETYPE_DEFAULT[/code] only; see Steam Audio docs).
+			</description>
+		</method>
 		<method name="tick">
 			<return type="void" />
 			<param index="0" name="delta" type="float" />
 			<description>
 				Advances simulation (pathing, reflections). Called each frame by ResonanceRuntime.
+			</description>
+		</method>
+		<method name="get_simulation_worker_timing" qualifiers="const">
+			<return type="Dictionary" />
+			<description>
+				Returns profiling timings from the [b]last[/b] simulation worker tick only (microseconds): [code]us_run_direct[/code], [code]us_run_reflections[/code], [code]us_run_pathing[/code], [code]us_sync_fetch[/code] ([code]_worker_sync_fetch_caches[/code]). Reflections/pathing entries are 0 when that step did not run. Use [code]us_run_pathing[/code] to compare pathing cost when tuning [member ResonanceRuntimeConfig.pathing_num_vis_samples], [member ResonanceRuntimeConfig.simulation_update_interval], and player path validation / alternate paths. Shown in the debug overlay Reverb Bus expert section. Cleared by [method reset_pathing_instrumentation].
 			</description>
 		</method>
 		<method name="set_listener_valid">

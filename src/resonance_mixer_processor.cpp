@@ -132,9 +132,10 @@ void ResonanceMixerProcessor::cleanup() {
 void ResonanceMixerProcessor::_write_stereo_to_audio_frames(float* left, float* right, AudioFrame* out_frames, int frame_count) {
     if (!left || !right || !out_frames || frame_count <= 0)
         return;
+    // Stereo samples are already sanitized via _sanitize_audio_buffer(&sa_stereo_buffer) on both call paths.
     for (int i = 0; i < frame_count; i++) {
-        out_frames[i].left += resonance::sanitize_audio_float(left[i]);
-        out_frames[i].right += resonance::sanitize_audio_float(right[i]);
+        out_frames[i].left += left[i];
+        out_frames[i].right += right[i];
     }
 }
 

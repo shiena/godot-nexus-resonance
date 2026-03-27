@@ -16,5 +16,5 @@ func test_defaults_are_sensible():
 
 func test_attenuation_mode_valid_range():
 	var pc = ResonancePlayerConfig.create_default()
-	assert_gte(pc.attenuation_mode, 0, "attenuation_mode should be 0-2")
-	assert_lte(pc.attenuation_mode, 2, "attenuation_mode should be 0-2")
+	assert_gte(pc.attenuation_mode, 0, "attenuation_mode should be 0-3")
+	assert_lte(pc.attenuation_mode, 3, "attenuation_mode should be 0-3")

@@ -4,7 +4,7 @@
 		Per-source configuration for ResonancePlayer. Link for reusable presets.
 	</brief_description>
 	<description>
-		Per-source configuration for ResonancePlayer. Assign from ResonancePlayer as player_config for reusable presets. Save as .tres for sharing across scenes. Falls back to member vars when null. Structure aligned with Steam Audio Source for compatibility. pathing_probe_volume stays on the player node (scene-specific).
+		Per-source configuration for ResonancePlayer. Assign from ResonancePlayer as player_config for reusable presets. Save as .tres for sharing across scenes. Falls back to member vars when null. pathing_probe_volume stays on the player node (scene-specific).
 	</description>
 	<tutorials>
 	</tutorials>
@@ -38,7 +38,7 @@
 			Max distance (meters) for attenuation.
 		</member>
 		<member name="attenuation_mode" type="int" default="0">
-			Inverse (0), Linear (1), or Curve (2).
+			Inverse (0) = Steam inverse distance on the direct path. Linear (1), Curve (2), or Disabled (3): simulator **distance attenuation** off on the direct path (unity LOS gain until occlusion/transmission/air apply)—not muting the source. Older resources could use [code]distance_attenuation_simulation_enabled = false[/code] with mode 0 — that migrates to mode 3 at runtime.
 		</member>
 		<member name="attenuation_curve" type="Curve" default="null">
 			Custom attenuation curve. Used when attenuation_mode is Curve.
@@ -92,10 +92,19 @@
 			Directivity attenuation (0-1). Only when directivity_input is User Defined.
 		</member>
 		<member name="spatial_blend" type="float" default="1.0">
-			Blend between unspatialized (0) and fully 3D spatialized (1).
+			Blends output between 2D (0, stereo panning without HRTF on the dry path) and full 3D spatial audio (1). Intermediate values mix both (e.g. UI vs world-attached sources).
 		</member>
 		<member name="use_ambisonics_encode" type="bool" default="false">
 			Encode point source to Ambisonics before binaural.
+		</member>
+		<member name="playback_parameter_min_interval" type="float" default="0.0">
+			Minimum seconds between full playback-parameter updates. 0 = every frame (subject to other gating).
+		</member>
+		<member name="playback_parameter_min_move" type="float" default="0.0">
+			Minimum source movement (meters) to trigger a full update when combined with playback_parameter_min_interval.
+		</member>
+		<member name="playback_coeff_smoothing_time" type="float" default="0.0">
+			Exponential smoothing time constant (seconds) for simulation-derived occlusion and transmission. 0 = off. When greater than 0, playback parameters are pushed every frame while smoothing applies. Only Simulation Defined occlusion/transmission.
 		</member>
 		<member name="reflections_type" type="int" default="-1">
 			Reflections simulation: -1=Use Global (baked reverb), 0=Realtime, 1=Baked Reverb, 2=Baked Static Source, 3=Baked Static Listener.
@@ -112,11 +121,8 @@
 		<member name="pathing_enabled_override" type="int" default="-1">
 			Enable pathing for this source. -1=Use Global, 0=Disabled, 1=Enabled.
 		</member>
-		<member name="apply_hrtf_to_reflections" type="int" default="-1">
-			Apply HRTF to reflections for this source. -1=Use Global, 0=Disabled, 1=Enabled.
-		</member>
-		<member name="apply_hrtf_to_pathing" type="int" default="-1">
-			Apply HRTF to pathing for this source. -1=Use Global, 0=Disabled, 1=Enabled.
+		<member name="simulation_occlusion_enabled" type="bool" default="true">
+			When [code]false[/code], occlusion rays are not simulated; use User Defined [member occlusion_input] and [member occlusion_value] for manual occlusion.
 		</member>
 		<member name="occlusion_input" type="int" default="0">
 			Occlusion source: 0=Simulation (physics), 1=User Defined (use occlusion_value).
@@ -124,8 +130,14 @@
 		<member name="occlusion_value" type="float" default="1.0">
 			Occlusion attenuation (0-1). Only when occlusion_input is User Defined.
 		</member>
+		<member name="occlusion_type_override" type="int" default="-1">
+			-1 = use [url=#ResonanceRuntimeConfig]ResonanceRuntimeConfig[/url] [member ResonanceRuntimeConfig.occlusion_type]. 0 = Raycast. 1 = Volumetric ([member occlusion_samples]). Applies when using simulation occlusion.
+		</member>
 		<member name="occlusion_samples" type="int" default="64">
-			Number of rays per source for volumetric occlusion (1-64).
+			Rays per source for volumetric occlusion (1–64, Steam Audio [code]numOcclusionSamples[/code]). Used when [member ResonanceRuntimeConfig.occlusion_type] is Volumetric. Higher = more stable occlusion fraction near boundaries; not the same as [member ResonanceRuntimeConfig.transmission_type] (FreqIndependent/FreqDependent).
+		</member>
+		<member name="simulation_transmission_enabled" type="bool" default="true">
+			When [code]false[/code], transmission through geometry is not simulated; use User Defined [member transmission_input] for manual bands.
 		</member>
 		<member name="transmission_input" type="int" default="0">
 			Transmission source: 0=Simulation, 1=User Defined (use transmission low/mid/high).
@@ -139,14 +151,17 @@
 		<member name="transmission_high" type="float" default="1.0">
 			High-band transmission (0-1). Only when transmission_input is User Defined.
 		</member>
-		<member name="max_transmission_surfaces" type="int" default="32">
-			Max surfaces for sound transmission through walls (1-256).
+		<member name="transmission_type_override" type="int" default="-1">
+			-1 = use runtime transmission type. 0 = frequency-independent. 1 = frequency-dependent (3-band), for the direct effect only.
 		</member>
-		<member name="path_validation_enabled" type="bool" default="true">
-			Validate baked pathing data each frame.
+		<member name="max_transmission_surfaces" type="int" default="16">
+			Max surfaces along the transmission path from listener (1–256; Steam Audio [code]numTransmissionRays[/code]). Limits depth of stacked surfaces on the path, not lateral blending between materials at an edge.
 		</member>
-		<member name="find_alternate_paths" type="bool" default="true">
-			Search for alternate paths when baked path is occluded.
+		<member name="path_validation_override" type="int" default="-1">
+			Path validation (dynamic occlusion of baked paths). [code]-1[/code] = Use Global ([member ResonanceRuntimeConfig.path_validation_enabled]). [code]0[/code] = Disabled. [code]1[/code] = Enabled. Costs scale with [member ResonanceRuntimeConfig.pathing_num_vis_samples] and ray tracer; tune [member ResonanceRuntimeConfig.simulation_update_interval] and use [method ResonanceServer.get_simulation_worker_timing] for [code]us_run_pathing[/code].
+		</member>
+		<member name="find_alternate_paths_override" type="int" default="-1">
+			Find alternate paths when a baked path is occluded. [code]-1[/code] = Use Global ([member ResonanceRuntimeConfig.find_alternate_paths]). [code]0[/code] = Disabled. [code]1[/code] = Enabled. Only effective when path validation is on for this source. Very CPU-heavy — tune [member ResonanceRuntimeConfig.simulation_update_interval] and [member ResonanceRuntimeConfig.pathing_num_vis_samples] when enabling.
 		</member>
 		<member name="direct_mix_level" type="float" default="1.0">
 			Volume of the direct sound path (0-10).
@@ -168,6 +183,15 @@
 		</member>
 		<member name="reflections_delay" type="int" default="-1">
 			Samples before parametric part starts. -1 = use simulation value.
+		</member>
+		<member name="apply_hrtf_to_reflections" type="int" default="-1">
+			Apply HRTF to reflections (reverb) for this source. Shown under Spatialization in the inspector. -1=Use Global, 0=Disabled, 1=Enabled.
+		</member>
+		<member name="apply_hrtf_to_pathing" type="int" default="-1">
+			Apply HRTF to pathing for this source. Shown under Spatialization in the inspector. -1=Use Global ([member ResonanceRuntimeConfig.reverb_binaural]), 0=Disabled (less CPU), 1=Enabled.
+		</member>
+		<member name="hrtf_interpolation_override" type="int" default="-1">
+			-1 = use [member ResonanceRuntimeConfig.hrtf_interpolation_bilinear]. 0 = nearest HRTF (faster). 1 = bilinear (smoother motion).
 		</member>
 		<member name="perspective_correction_override" type="int" default="-1">
 			Per-source perspective correction. -1 = use global, 0 = disabled, 1 = enabled.

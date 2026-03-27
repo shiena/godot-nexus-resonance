@@ -4,7 +4,6 @@ class_name ResonancePlayerConfig
 
 ## Per-source configuration for ResonancePlayer. Link for reusable presets.
 ## Create or link in ResonancePlayer. Falls back to create_default() when null.
-## Structure aligned with Steam Audio Source for compatibility.
 
 # --- Distance / Attenuation ---
 @export_group("Distance")
@@ -13,8 +12,14 @@ class_name ResonancePlayerConfig
 ## Max distance (meters) for attenuation. Sound reaches minimum volume at this range.
 @export_range(1.0, 2000.0, 1.0) var max_distance: float = 500.0
 var _attenuation_mode: int = 0
-## Inverse = physics-based (1/distance). Linear = linear falloff. Curve = custom attenuation_curve.
-@export_enum("Inverse:0", "Linear:1", "Curve:2") var attenuation_mode: int:
+## Distance rolloff model. Inverse = Steam Audio inverse distance on the direct path. Disabled = inverse-style routing but **simulator distance attenuation is off** (unity LOS gain from the sim until occlusion/transmission/air apply)—not “mute the source”. Linear / Curve = min/max falloff. Legacy [code]distance_attenuation_simulation_enabled = false[/code] on older .tres with mode 0 still migrates to this value at runtime.
+@export_enum(
+	"Inverse:0",
+	"Linear:1",
+	"Curve:2",
+	"Disabled:3"
+)
+var attenuation_mode: int:
 	get:
 		return _attenuation_mode
 	set(v):
@@ -26,11 +31,11 @@ var _attenuation_mode: int = 0
 
 # --- Direct Sound ---
 @export_group("Direct Sound")
-## Radius of the sound source in meters. Affects occlusion and diffraction.
+## Radius of the sound source in meters (Steam Audio occlusion radius). Affects volumetric occlusion sampling and diffraction; slightly larger radius can reduce edge flicker when [member ResonanceRuntimeConfig.occlusion_type] is Volumetric.
 @export_range(0.1, 10.0, 0.1) var source_radius: float = 1.0
 var _air_absorption_enabled: bool = true
 ## Enable distance-based air absorption. Distant sounds appear muffled.
-@export var air_absorption_enabled: bool:
+@export var air_absorption_enabled: bool = true:
 	get:
 		return _air_absorption_enabled
 	set(v):
@@ -95,13 +100,24 @@ var _directivity_input: int = 0
 @export var reverb_bus_name: StringName = &"ResonanceReverb"
 ## Per-source binaural override. Use Global = follow RuntimeConfig.reverb_binaural. Disabled = panning. Enabled = force HRTF.
 @export_enum("Use Global:-1", "Disabled:0", "Enabled:1") var direct_binaural_override: int = -1
-## Blend between unspatialized (0) and fully 3D spatialized (1). Diegetic vs. non-diegetic mix.
+## Blends this node's output between 2D (0) and full 3D spatial audio (1). At 0 the sound is panned as stereo (no HRTF / room simulation on the dry path); at 1 Nexus Resonance drives full spatialization, occlusion, and bus routing like a normal 3D source. Values in between mix the two (useful for UI voices vs world-attached sources).
 @export_range(0.0, 1.0, 0.01) var spatial_blend: float = 1.0
 ## Encode point source to Ambisonics before binaural. For Ambisonic mix scenarios. Usually leave disabled.
 @export var use_ambisonics_encode: bool = false
 
+# --- Performance ---
+@export_group("Performance")
+## Minimum seconds between full playback-parameter updates (occlusion/reverb readback → [code]ResonanceInternalPlayback[/code]). 0 = every frame. E.g. 0.033 ≈ 30 Hz cap. Source simulation updates still run every frame (or batched).
+@export_range(0.0, 0.5, 0.005) var playback_parameter_min_interval: float = 0.0
+## Minimum source movement (meters) to trigger a full playback-parameter update when [member playback_parameter_min_interval] is also used; either condition can trigger. 0 = ignore movement-only gating (use interval only if set).
+@export_range(0.0, 50.0, 0.05) var playback_parameter_min_move: float = 0.0
+## Exponential smoothing time constant (seconds) for simulation-derived occlusion and transmission coefficients. 0 = off (instant). When greater than 0, playback parameters are pushed every frame while smoothing applies (higher CPU than [member playback_parameter_min_interval] alone). Only affects Simulation Defined occlusion/transmission, not User Defined.
+@export_range(0.0, 0.5, 0.005) var playback_coeff_smoothing_time: float = 0.0
+
 # --- Occlusion ---
 @export_group("Occlusion")
+## When off, occlusion is not simulated for this source; use User Defined [member occlusion_input] for manual occlusion.
+@export var simulation_occlusion_enabled: bool = true
 var _occlusion_input: int = 0
 ## Occlusion source: Simulation Defined = physics-based raycast. User Defined = use occlusion_value (script-controlled).
 @export_enum("Simulation Defined:0", "User Defined:1") var occlusion_input: int:
@@ -113,8 +129,12 @@ var _occlusion_input: int = 0
 			notify_property_list_changed()
 ## Occlusion attenuation (0-1). 0 = fully occluded, 1 = not occluded. Only when occlusion_input is User Defined.
 @export_range(0.0, 1.0, 0.01) var occlusion_value: float = 1.0
-## Number of rays per source for volumetric occlusion (1-64). Higher = smoother; lower = less CPU.
+## Overrides [member ResonanceRuntimeConfig.occlusion_type] for this source when using simulation occlusion. Raycast = single ray; Volumetric = sphere samples ([member occlusion_samples]).
+@export_enum("Use Global:-1", "Raycast:0", "Volumetric:1") var occlusion_type_override: int = -1
+## Number of rays per source for volumetric occlusion (1–64; Steam Audio [code]numOcclusionSamples[/code]). Used when runtime [member ResonanceRuntimeConfig.occlusion_type] is Volumetric. Higher values stabilize the occlusion fraction (less binary on/off) near geometry boundaries; lower = less CPU. Unrelated to [member ResonanceRuntimeConfig.transmission_type] (FreqIndependent vs FreqDependent on the direct effect). Default 64 is the simulator maximum.
 @export_range(1, 64, 1) var occlusion_samples: int = 64
+## When off, transmission through geometry is not simulated; use User Defined [member transmission_input] for manual bands.
+@export var simulation_transmission_enabled: bool = true
 var _transmission_input: int = 0
 ## Transmission source: Simulation Defined = physics-based. User Defined = use transmission low/mid/high (script-controlled).
 @export_enum("Simulation Defined:0", "User Defined:1") var transmission_input: int:
@@ -130,8 +150,15 @@ var _transmission_input: int = 0
 @export_range(0.0, 1.0, 0.01) var transmission_mid: float = 1.0
 ## High-band transmission (0-1). Only when transmission_input is User Defined.
 @export_range(0.0, 1.0, 0.01) var transmission_high: float = 1.0
-## Max surfaces for sound transmission through walls (1-256). Higher = more accuracy; lower = less CPU.
-@export_range(1, 256, 1) var max_transmission_surfaces: int = 32
+## Overrides runtime transmission mode for the direct effect only. Frequency independent = single coefficient; frequency dependent = three bands (see simulator transmission type).
+@export_enum(
+	"Use Global:-1",
+	"Frequency Independent:0",
+	"Frequency Dependent:1"
+)
+var transmission_type_override: int = -1
+## Max surfaces along the transmission path from listener (1–256; maps to Steam Audio [code]numTransmissionRays[/code]). Increase for deep stacks of walls along one ray; it does not blend two materials at a lateral edge.
+@export_range(1, 256, 1) var max_transmission_surfaces: int = 16
 
 # --- Reflections (per-source) ---
 @export_group("Reflections")
@@ -144,7 +171,7 @@ var _reflections_type: int = -1
 	"Baked Static Source:2",
 	"Baked Static Listener:3"
 )
-var reflections_type: int:
+var reflections_type: int = -1:
 	get:
 		return _reflections_type
 	set(v):
@@ -159,17 +186,13 @@ var reflections_type: int:
 @export_enum("Use Global:-1", "Disabled:0", "Enabled:1") var reflections_enabled: int = -1
 ## Enable pathing for this source. Use Global = follow runtime pathing_enabled.
 @export_enum("Use Global:-1", "Disabled:0", "Enabled:1") var pathing_enabled_override: int = -1
-## Apply HRTF to reflections (reverb) for this source. Use Global = follow runtime reverb_binaural.
-@export_enum("Use Global:-1", "Disabled:0", "Enabled:1") var apply_hrtf_to_reflections: int = -1
-## Apply HRTF to pathing for this source. Use Global = follow runtime reverb_binaural.
-@export_enum("Use Global:-1", "Disabled:0", "Enabled:1") var apply_hrtf_to_pathing: int = -1
 
 # --- Pathing ---
 @export_group("Pathing")
-## Validates baked pathing data each frame. Paths checked for occlusion by dynamic geometry.
-@export var path_validation_enabled: bool = true
-## When a baked path is occluded, real-time path finding searches for alternate routes.
-@export var find_alternate_paths: bool = true
+## Path validation: Use Global = [member ResonanceRuntimeConfig.path_validation_enabled]. Disabled / Enabled = force off or on for this source.
+@export_enum("Use Global:-1", "Disabled:0", "Enabled:1") var path_validation_override: int = -1
+## Find alternate paths when a baked path is occluded. Use Global = [member ResonanceRuntimeConfig.find_alternate_paths]. Only applies when path validation is effectively on. Very CPU-heavy.
+@export_enum("Use Global:-1", "Disabled:0", "Enabled:1") var find_alternate_paths_override: int = -1
 
 # --- Mix Levels ---
 @export_group("Mix Levels")
@@ -193,9 +216,15 @@ var reflections_type: int:
 
 # --- Spatialization ---
 @export_group("Spatialization")
+## Apply HRTF to reflections (reverb) for this source. Use Global = follow runtime reverb_binaural.
+@export_enum("Use Global:-1", "Disabled:0", "Enabled:1") var apply_hrtf_to_reflections: int = -1
+## Apply HRTF to pathing for this source. Use Global = follow runtime reverb_binaural. Disabled/Enabled force off or on; disabling saves CPU.
+@export_enum("Use Global:-1", "Disabled:0", "Enabled:1") var apply_hrtf_to_pathing: int = -1
+## HRTF table lookup: nearest (faster) vs bilinear (smoother motion). Use Global = [member ResonanceRuntimeConfig.hrtf_interpolation_bilinear].
+@export_enum("Use Global:-1", "Nearest:0", "Bilinear:1") var hrtf_interpolation_override: int = -1
 var _perspective_correction_override: int = -1
 ## Per-source perspective correction. Use Global = follow RuntimeConfig. Disabled = off. Enabled = force on for this source.
-@export_enum("Use Global:-1", "Disabled:0", "Enabled:1") var perspective_correction_override: int:
+@export_enum("Use Global:-1", "Disabled:0", "Enabled:1") var perspective_correction_override: int = -1:
 	get:
 		return _perspective_correction_override
 	set(v):
