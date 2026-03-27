@@ -166,10 +166,10 @@ class ResonanceInternalPlayback : public AudioStreamPlayback {
     std::atomic<float> instrumentation_last_pathing_sh_energy{0.0f};
     std::atomic<float> instrumentation_last_pathing_out_rms{0.0f};
     std::atomic<int32_t> instrumentation_last_pathing_order{-1}; // -1 = n/a this block
-    std::atomic<float> debug_signal_direct{0.0f};                                             // Effective direct gain (for Debug Sources display)
-    std::atomic<float> debug_signal_reverb{0.0f};                                             // Effective reverb gain (for Debug Sources display)
-    std::atomic<float> debug_signal_pathing{0.0f}; // pathing_mix_level (input ramp end; no distance attenuation on wet)
-    std::chrono::steady_clock::time_point last_mix_time_;                                     // For inter-callback timing (audio thread only)
+    std::atomic<float> debug_signal_direct{0.0f};                // Effective direct gain (for Debug Sources display)
+    std::atomic<float> debug_signal_reverb{0.0f};                // Effective reverb gain (for Debug Sources display)
+    std::atomic<float> debug_signal_pathing{0.0f};               // pathing_mix_level (input ramp end; no distance attenuation on wet)
+    std::chrono::steady_clock::time_point last_mix_time_;        // For inter-callback timing (audio thread only)
 
     void _lazy_init_steam_audio(int sampling_rate);                                            // Lazy init to avoid overhead if not needed
     void _cleanup_steam_audio();                                                               // Cleanup all resources
@@ -280,9 +280,9 @@ class ResonancePlayer : public AudioStreamPlayer3D {
     GDCLASS(ResonancePlayer, AudioStreamPlayer3D)
   public:
     enum AttenuationMode {
-        ATTENUATION_INVERSE,         // Physics based (1/dist), Steam distance attenuation on
-        ATTENUATION_LINEAR,          // Linear falloff to 0 at max_dist
-        ATTENUATION_CUSTOM_CURVE,    // User defined curve
+        ATTENUATION_INVERSE,        // Physics based (1/dist), Steam distance attenuation on
+        ATTENUATION_LINEAR,         // Linear falloff to 0 at max_dist
+        ATTENUATION_CUSTOM_CURVE,   // User defined curve
         ATTENUATION_INVERSE_NO_SIM, // Inverse-style mix: no Steam distance attenuation (full LOS gain from sim)
     };
 

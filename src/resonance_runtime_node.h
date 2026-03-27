@@ -9,10 +9,10 @@ namespace godot {
 class ResonanceRuntime : public Node {
     GDCLASS(ResonanceRuntime, Node)
 
-protected:
+  protected:
     static void _bind_methods();
 
-public:
+  public:
     ResonanceRuntime() = default;
 };
 

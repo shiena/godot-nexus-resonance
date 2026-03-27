@@ -8,9 +8,9 @@
 #include "resonance_utils.h"
 #include <cstdint>
 #include <godot_cpp/classes/array_mesh.hpp>
+#include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
 #include <godot_cpp/classes/node.hpp>
-#include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/project_settings.hpp>
 #include <godot_cpp/classes/resource_saver.hpp>
 #include <godot_cpp/classes/standard_material3d.hpp>
@@ -30,14 +30,14 @@ static bool steam_audio_verbose_logs() {
 
 static const char* ipl_scene_type_label(IPLSceneType t) {
     switch (t) {
-        case IPL_SCENETYPE_EMBREE:
-            return "Embree";
-        case IPL_SCENETYPE_RADEONRAYS:
-            return "RadeonRays";
-        case IPL_SCENETYPE_CUSTOM:
-            return "Custom";
-        default:
-            return "Default";
+    case IPL_SCENETYPE_EMBREE:
+        return "Embree";
+    case IPL_SCENETYPE_RADEONRAYS:
+        return "RadeonRays";
+    case IPL_SCENETYPE_CUSTOM:
+        return "Custom";
+    default:
+        return "Default";
     }
 }
 

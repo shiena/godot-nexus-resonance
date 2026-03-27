@@ -1300,7 +1300,7 @@ bool ResonancePlayer::_playback_lod_should_apply_playback_params(double delta, b
     const bool hit_time = (iv > 0.0f) && (playback_lod_time_since_full_ >= static_cast<double>(iv));
     const float mv_sq = mv * mv;
     const bool hit_move = (mv > 0.0f) &&
-        (!playback_lod_have_anchor_ || (source_pos - playback_lod_anchor_pos_).length_squared() >= mv_sq);
+                          (!playback_lod_have_anchor_ || (source_pos - playback_lod_anchor_pos_).length_squared() >= mv_sq);
     if (!hit_time && !hit_move)
         return false;
     playback_lod_time_since_full_ = 0.0;
@@ -1486,7 +1486,7 @@ void ResonancePlayer::_process(double delta) {
     _prepare_source_for_simulation(srv);
     _ensure_config_valid();
     const bool coeff_smooth_active = (config_cache_.playback_coeff_smoothing_time > 0.0f) &&
-        ((config_cache_.occlusion_input == 0) || (config_cache_.transmission_input == 0));
+                                     ((config_cache_.occlusion_input == 0) || (config_cache_.transmission_input == 0));
     const bool apply_playback = _playback_lod_should_apply_playback_params(delta, show_debug_hud, get_global_position()) || coeff_smooth_active;
 
     ResonanceDebugData dbg_data;

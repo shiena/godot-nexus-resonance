@@ -3,10 +3,10 @@
 #include "resonance_server.h"
 #include "resonance_utils.h"
 #include <cstring>
-#include <utility>
-#include <vector>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
+#include <utility>
+#include <vector>
 
 using namespace godot;
 
@@ -368,9 +368,9 @@ void ResonanceServer::_worker_sync_fetch_caches() {
                 }
                 bool use_hybrid_type = (reflection_type == resonance::kReflectionHybrid && has_convolution && has_parametric);
                 out_params.type = (reflection_type == resonance::kReflectionParametric) ? IPL_REFLECTIONEFFECTTYPE_PARAMETRIC : (reflection_type == resonance::kReflectionHybrid && use_hybrid_type) ? IPL_REFLECTIONEFFECTTYPE_HYBRID
-                                                                                                                                    : (reflection_type == resonance::kReflectionHybrid)                      ? IPL_REFLECTIONEFFECTTYPE_PARAMETRIC
-                                                                                                                                    : (reflection_type == resonance::kReflectionTan)                         ? IPL_REFLECTIONEFFECTTYPE_TAN
-                                                                                                                                                                                                             : IPL_REFLECTIONEFFECTTYPE_CONVOLUTION;
+                                                                                                                            : (reflection_type == resonance::kReflectionHybrid)                      ? IPL_REFLECTIONEFFECTTYPE_PARAMETRIC
+                                                                                                                            : (reflection_type == resonance::kReflectionTan)                         ? IPL_REFLECTIONEFFECTTYPE_TAN
+                                                                                                                                                                                                     : IPL_REFLECTIONEFFECTTYPE_CONVOLUTION;
                 if (reflection_type == resonance::kReflectionTan)
                     out_params.tanDevice = _tan();
                 if (reflection_type == resonance::kReflectionParametric && has_parametric) {

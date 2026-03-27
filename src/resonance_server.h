@@ -207,7 +207,7 @@ class ResonanceServer : public Object {
     int frame_size = resonance::kGodotDefaultFrameSize; // Steam Audio block size (256/512/1024). Matched to Godot mix callback for best perf.
     int ambisonic_order = 1;
     float max_reverb_duration = 2.0f;
-    int simulation_threads = 1;                 // Computed from simulation_cpu_cores_percent
+    int simulation_threads = 1;                                                        // Computed from simulation_cpu_cores_percent
     float simulation_cpu_cores_percent = resonance::kDefaultSimulationCpuCoresPercent; // 0-1 fraction of CPU cores for simulation
     int max_rays = 4096;
     int max_bounces = 4;

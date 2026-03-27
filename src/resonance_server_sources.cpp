@@ -4,9 +4,9 @@
 #include "resonance_server.h"
 #include "resonance_utils.h"
 #include <cstdint>
+#include <godot_cpp/variant/utility_functions.hpp>
 #include <mutex>
 #include <vector>
-#include <godot_cpp/variant/utility_functions.hpp>
 
 using namespace godot;
 
