@@ -73,6 +73,11 @@ func _init() -> void:
 			_categories_enabled[cat] = true
 
 
+func _ready() -> void:
+	# ProjectSettings and plugin-registered keys are guaranteed after entering the tree.
+	_load_category_defaults()
+
+
 func _process(_delta: float) -> void:
 	if not _output_to_file:
 		return
@@ -85,16 +90,17 @@ func _process(_delta: float) -> void:
 
 
 func _load_category_defaults() -> void:
-	if not ProjectSettings.has_setting(PROJECT_PREFIX + "categories_enabled"):
-		return
-	var v = ProjectSettings.get_setting(PROJECT_PREFIX + "categories_enabled")
-	if v is Dictionary:
-		if v.is_empty():
-			for cat in ALL_CATEGORIES:
-				_categories_enabled[cat] = true
-		else:
-			for k in v:
-				_categories_enabled[StringName(str(k))] = bool(v[k])
+	if ProjectSettings.has_setting(PROJECT_PREFIX + "categories_enabled"):
+		var v = ProjectSettings.get_setting(PROJECT_PREFIX + "categories_enabled")
+		if v is Dictionary:
+			if v.is_empty():
+				for cat in ALL_CATEGORIES:
+					_categories_enabled[cat] = true
+			else:
+				for k in v:
+					_categories_enabled[StringName(str(k))] = bool(v[k])
+	if ProjectSettings.has_setting(PROJECT_PREFIX + "output_to_debug"):
+		_output_to_debug = ProjectSettings.get_setting(PROJECT_PREFIX + "output_to_debug")
 	if ProjectSettings.has_setting(PROJECT_PREFIX + "output_to_file"):
 		_output_to_file = ProjectSettings.get_setting(PROJECT_PREFIX + "output_to_file")
 	if ProjectSettings.has_setting(PROJECT_PREFIX + "file_path"):
@@ -145,11 +151,11 @@ func _add_to_buffer(entry: Dictionary) -> void:
 
 
 func _output_to_debug_console(category: StringName, message: String, data: Dictionary) -> void:
-	var prefix := "[color=cyan][Nexus Resonance][%s][/color] " % String(category)
-	var full_msg := prefix + message
-	if not data.is_empty():
-		full_msg += " " + str(data)
-	print_rich(full_msg)
+	var data_suffix := "" if data.is_empty() else " " + str(data)
+	# Use print_rich so the line appears as normal log output in the Output dock; category is visible without BBCode too.
+	print_rich("[color=cyan][Nexus Resonance][%s][/color] %s%s" % [String(category), message, data_suffix])
+	# Plain duplicate: some filters or remote runs only surface standard print() reliably.
+	print("[Nexus Resonance][%s] %s%s" % [String(category), message, data_suffix])
 
 
 func _write_to_file(entry: Dictionary) -> void:

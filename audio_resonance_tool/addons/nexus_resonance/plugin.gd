@@ -15,9 +15,6 @@ const RESONANCE_PROBE_VOLUME_INSPECTOR_SCRIPT = "res://addons/nexus_resonance/ed
 const RESONANCE_EXPORT_HANDLER_SCRIPT = "res://addons/nexus_resonance/editor/resonance_export_handler.gd"
 const RESONANCE_EXPORT_PLUGIN_SCRIPT = "res://addons/nexus_resonance/editor/nexus_resonance_export_plugin.gd"
 const RESONANCE_FMOD_EVENT_EMITTER_INSPECTOR_SCRIPT = "res://addons/nexus_resonance/editor/resonance_fmod_event_emitter_inspector.gd"
-const RESONANCE_RUNTIME_SCRIPT = "res://addons/nexus_resonance/scripts/resonance_runtime.gd"
-const RESONANCE_RUNTIME_ICON = "res://addons/nexus_resonance/ui/icons/resonance_config_icon.svg"
-
 const ResonanceSceneUtils = preload("res://addons/nexus_resonance/scripts/resonance_scene_utils.gd")
 const UIStrings = preload("res://addons/nexus_resonance/scripts/resonance_ui_strings.gd")
 const ResonanceLoggerScript = preload("res://addons/nexus_resonance/scripts/resonance_logger.gd")
@@ -61,6 +58,7 @@ const LEGACY_SETTINGS_PREFIX := "audio/nexus_resonance/"
 func _enter_tree() -> void:
 	_migrate_legacy_project_settings()
 	_migrate_nexus_bake_output_dir()
+	_clear_obsolete_resonance_project_settings()
 	_clear_bus_project_settings()
 	_register_logger_project_settings()
 	_register_bake_project_settings()
@@ -71,6 +69,7 @@ func _migrate_legacy_project_settings() -> void:
 	var keys: Array[String] = [
 		"logger/categories_enabled",
 		"logger/output_to_file",
+		"logger/output_to_debug",
 		"logger/file_path",
 		"logger/steam_audio_verbose",
 		"bake_num_rays",
@@ -99,6 +98,12 @@ func _migrate_legacy_project_settings() -> void:
 		ProjectSettings.set_setting(new_bake, ProjectSettings.get_setting(legacy_bake))
 	if ProjectSettings.has_setting(legacy_bake):
 		ProjectSettings.clear(legacy_bake)
+
+
+func _clear_obsolete_resonance_project_settings() -> void:
+	var amb_order_key := SETTINGS_PREFIX + "bake_ambisonics_order"
+	if ProjectSettings.has_setting(amb_order_key):
+		ProjectSettings.clear(amb_order_key)
 
 
 func _migrate_nexus_bake_output_dir() -> void:
@@ -284,19 +289,10 @@ func _exit_tree() -> void:
 
 func _enable_plugin() -> void:
 	add_autoload_singleton("ResonanceLogger", LOGGER_AUTOLOAD_PATH)
-	if ClassDB.class_exists("ResonanceRuntime"):
-		add_custom_type(
-			"ResonanceRuntime",
-			"ResonanceRuntime",
-			load(RESONANCE_RUNTIME_SCRIPT) as Script,
-			load(RESONANCE_RUNTIME_ICON) as Texture2D
-		)
 	Callable(self, "_setup_audio_bus").call_deferred()
 
 
 func _disable_plugin() -> void:
-	if ClassDB.class_exists("ResonanceRuntime"):
-		remove_custom_type("ResonanceRuntime")
 	if Engine.has_singleton("ResonanceServer"):
 		var srv: Variant = Engine.get_singleton("ResonanceServer")
 		if srv and srv.has_method("clear_probe_batches"):
@@ -378,22 +374,42 @@ func _register_logger_project_settings() -> void:
 			"hint": PROPERTY_HINT_NONE,
 		}
 	)
+	if not ProjectSettings.has_setting(PREFIX + "output_to_debug"):
+		ProjectSettings.set_setting(PREFIX + "output_to_debug", true)
+	ProjectSettings.add_property_info(
+		{
+			"name": PREFIX + "output_to_debug",
+			"type": TYPE_BOOL,
+			"hint": PROPERTY_HINT_NONE,
+		}
+	)
 	if not ProjectSettings.has_setting(PREFIX + "output_to_file"):
 		ProjectSettings.set_setting(PREFIX + "output_to_file", false)
+	ProjectSettings.add_property_info(
+		{
+			"name": PREFIX + "output_to_file",
+			"type": TYPE_BOOL,
+			"hint": PROPERTY_HINT_NONE,
+		}
+	)
 	if not ProjectSettings.has_setting(PREFIX + "file_path"):
 		ProjectSettings.set_setting(PREFIX + "file_path", "user://nexus_resonance_log.ndjson")
+	ProjectSettings.add_property_info(
+		{
+			"name": PREFIX + "file_path",
+			"type": TYPE_STRING,
+			"hint": PROPERTY_HINT_NONE,
+		}
+	)
 	if not ProjectSettings.has_setting(PREFIX + "steam_audio_verbose"):
 		ProjectSettings.set_setting(PREFIX + "steam_audio_verbose", false)
-		(
-			ProjectSettings
-			. add_property_info(
-				{
-					"name": PREFIX + "steam_audio_verbose",
-					"type": TYPE_BOOL,
-					"hint": PROPERTY_HINT_NONE,
-				}
-			)
-		)
+	ProjectSettings.add_property_info(
+		{
+			"name": PREFIX + "steam_audio_verbose",
+			"type": TYPE_BOOL,
+			"hint": PROPERTY_HINT_NONE,
+		}
+	)
 
 
 func _register_bake_project_settings() -> void:

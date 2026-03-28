@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
+#include <godot_cpp/variant/vector3.hpp>
 
 using namespace godot;
 
@@ -236,6 +237,7 @@ void ResonanceServer::_bind_methods() {
     ClassDB::bind_method(D_METHOD("reset_spatial_audio_warmup_passes"), &ResonanceServer::reset_spatial_audio_warmup_passes);
     ClassDB::bind_method(D_METHOD("get_sample_rate"), &ResonanceServer::get_sample_rate);
     ClassDB::bind_method(D_METHOD("get_audio_frame_size"), &ResonanceServer::get_audio_frame_size);
+    ClassDB::bind_method(D_METHOD("get_direct_speaker_channels"), &ResonanceServer::get_direct_speaker_channels);
     ClassDB::bind_method(D_METHOD("get_audio_frame_size_was_auto"), &ResonanceServer::get_audio_frame_size_was_auto);
     ClassDB::bind_method(D_METHOD("consume_pending_reinit_frame_size"), &ResonanceServer::consume_pending_reinit_frame_size);
     ClassDB::bind_method(D_METHOD("update_listener", "pos", "dir", "up"), &ResonanceServer::update_listener);
@@ -277,6 +279,10 @@ void ResonanceServer::_bind_methods() {
     ClassDB::bind_method(D_METHOD("remove_probe_batch", "handle"), &ResonanceServer::remove_probe_batch);
     ClassDB::bind_method(D_METHOD("clear_probe_batches"), &ResonanceServer::clear_probe_batches);
     ClassDB::bind_method(D_METHOD("revalidate_probe_batches_with_config"), &ResonanceServer::revalidate_probe_batches_with_config);
+    ClassDB::bind_method(D_METHOD("editor_probe_data_get_num_probes", "dat"), &ResonanceServer::editor_probe_data_get_num_probes);
+    ClassDB::bind_method(D_METHOD("editor_probe_data_remove_probe", "dat", "index"), &ResonanceServer::editor_probe_data_remove_probe);
+    ClassDB::bind_method(D_METHOD("editor_probe_data_remove_baked_layer", "dat", "baked_data_type", "variation", "endpoint", "influence_radius"),
+                         &ResonanceServer::editor_probe_data_remove_baked_layer, DEFVAL(Vector3()), DEFVAL(0.0f));
 
     // Bind Setter/Getters
     ClassDB::bind_method(D_METHOD("set_debug_occlusion", "p_enabled"), &ResonanceServer::set_debug_occlusion);

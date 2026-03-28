@@ -12,6 +12,16 @@ namespace godot {
 
 namespace {
 
+bool project_steam_audio_verbose() {
+    ProjectSettings* ps = ProjectSettings::get_singleton();
+    if (!ps)
+        return false;
+    const String key = String(resonance::kProjectSettingsResonancePrefix) + "logger/steam_audio_verbose";
+    if (!ps->has_setting(key))
+        return false;
+    return ps->get_setting(key).booleanize();
+}
+
 void IPLCALL log_callback(IPLLogLevel level, const char* message) {
     String msg = "SteamAudio: " + String(message);
     if (level == IPL_LOGLEVEL_ERROR)
@@ -19,15 +29,13 @@ void IPLCALL log_callback(IPLLogLevel level, const char* message) {
     else if (level == IPL_LOGLEVEL_WARNING)
         UtilityFunctions::push_warning(msg);
     else if (level == IPL_LOGLEVEL_INFO || level == IPL_LOGLEVEL_DEBUG) {
-        ProjectSettings* ps = ProjectSettings::get_singleton();
-        const String verbose_key = String(resonance::kProjectSettingsResonancePrefix) + "logger/steam_audio_verbose";
-        if (ps && ps->has_setting(verbose_key) && ps->get_setting(verbose_key)) {
+        if (project_steam_audio_verbose())
             UtilityFunctions::print(msg);
-        }
     }
 }
 /// Valve Steam Audio (Unity docs): Radeon Rays and TrueAudio Next are supported on 64-bit Windows only.
 /// Avoid OpenCL device setup on Linux, macOS, Android, iOS, etc. to match that matrix and reduce driver crash risk.
+/// For `iplOpenCLDeviceCreateFromExisting` / Linux GPU experiments, see wiki ResonanceRuntime-and-RuntimeConfig.md.
 static bool opencl_radeon_tan_supported_host_os() {
 #if defined(_WIN32) && (defined(_M_X64) || defined(_M_AMD64) || defined(__x86_64__) || defined(__amd64__))
     return true;
@@ -230,6 +238,19 @@ bool ResonanceSteamAudioContext::init(ResonanceSteamAudioContextConfig& config) 
         config.scene_type = 1;
     else
         config.scene_type = 0;
+
+    if (project_steam_audio_verbose()) {
+        const char* tracer = "built-in (Default)";
+        if (config.scene_type == 1)
+            tracer = "Embree";
+        else if (config.scene_type == 2)
+            tracer = "Radeon Rays (OpenCL)";
+        const String verbose_msg = String("SteamAudio verbose: ") +
+                                   "IPL INFO/DEBUG lines are printed only when the Steam Audio library emits them; with the built-in ray tracer that is often almost never. "
+                                   "Extra Nexus geometry messages use the same setting (see Output). Effective ray tracer: " +
+                                   String(tracer) + "; context_validation=" + (config.context_validation ? "on" : "off") + ".";
+        UtilityFunctions::print(verbose_msg);
+    }
 
     return true;
 }

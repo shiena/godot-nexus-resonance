@@ -85,4 +85,26 @@ void ResonancePathProcessor::process(const IPLAudioBuffer& in_buffer, const IPLP
     iplPathEffectApply(path_effect, &effective_params, &internal_mono_buffer, &out_buffer);
 }
 
+int ResonancePathProcessor::get_tail_size_samples() const {
+    if (!(init_flags & PathInitFlags::PATHEFFECT) || !path_effect)
+        return 0;
+    return iplPathEffectGetTailSize(path_effect);
+}
+
+void ResonancePathProcessor::reset_effect() {
+    if (path_effect)
+        iplPathEffectReset(path_effect);
+}
+
+bool ResonancePathProcessor::process_tail(IPLAudioBuffer& out_stereo) {
+    if (!(init_flags & PathInitFlags::PATHEFFECT) || !(init_flags & PathInitFlags::BUFFERS) || !path_effect)
+        return false;
+    if (iplPathEffectGetTailSize(path_effect) <= 0)
+        return false;
+    if (!out_stereo.data || out_stereo.numSamples < frame_size)
+        return false;
+    iplPathEffectGetTail(path_effect, &out_stereo);
+    return true;
+}
+
 } // namespace godot

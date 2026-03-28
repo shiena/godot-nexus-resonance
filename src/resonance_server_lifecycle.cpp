@@ -149,6 +149,7 @@ void ResonanceServer::_apply_config(Dictionary config) {
     hrtf_sofa_asset = config_.hrtf_sofa_asset;
     reverb_binaural = config_.reverb_binaural;
     use_virtual_surround = config_.use_virtual_surround;
+    direct_speaker_channels = config_.direct_speaker_channels;
     hrtf_interpolation_bilinear = config_.hrtf_interpolation_bilinear;
     pathing_enabled = config_.pathing_enabled;
     pathing_vis_radius = config_.pathing_vis_radius;

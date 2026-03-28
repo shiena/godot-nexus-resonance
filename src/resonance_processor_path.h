@@ -43,6 +43,11 @@ class ResonancePathProcessor {
     /// Applies path_mix ramp on mono input after downmix (Steam Audio Unity/FMOD spatialize reference), then path effect.
     void process(const IPLAudioBuffer& in_buffer, const IPLPathEffectParams& params, IPLAudioBuffer& out_buffer,
                  float path_mix_ramp_start, float path_mix_ramp_end);
+
+    /// One frame of path tail (stereo spatialize out). Call while get_tail_size_samples() > 0.
+    bool process_tail(IPLAudioBuffer& out_stereo);
+    int get_tail_size_samples() const;
+    void reset_effect();
 };
 
 } // namespace godot

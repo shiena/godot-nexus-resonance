@@ -1,6 +1,8 @@
 # Nexus Resonance FMOD Bridge
 
-Nexus Resonance can act as a bridge between Steam Audio and FMOD Studio when used together with [fmod-gdextension](https://github.com/utopia-rise/fmod-gdextension). Setup involves several moving parts (Godot add-on, FMOD integration, and the Steam Audio FMOD plugin); follow the steps below.
+Nexus Resonance can act as a bridge between Steam Audio and FMOD Studio when used together with [fmod-gdextension](https://github.com/utopia-rise/fmod-gdextension). Setup involves several moving parts (Godot add-on, FMOD integration, and the Steam Audio FMOD plugin); follow the steps below.  
+  
+This is still experimental!
 
 ## Overview
 

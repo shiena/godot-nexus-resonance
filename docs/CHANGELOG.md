@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),  
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.9] - 2026-03-28
+
+### Added
+
+- **Richer reflection bakes** - Choose **ambisonics order** (1–3) on each probe volume’s **ResonanceBakeConfig**; change it and you’ll be prompted to re-bake when hashes no longer match.
+- **Surround speakers for direct sound** - Pick a **speaker layout** (mono through 7.1) in **ResonanceRuntimeConfig**. Without HRTF, surround can use ambisonics-based panning; with HRTF, binaural output is folded to stereo for the main player path. Changing layout needs **reinit audio engine** like other native audio settings.
+- **Probe volume maintenance** - Inspector section **Probe batch (advanced)**: remove a single probe by index, or drop baked **pathing** / **reflections (reverb)** layers when you want to trim data without a full probe re-bake (you may still need to bake again afterward).
+
+### Fixed
+
+- **Serialized Phonon scene I/O** - `**save_scene_data**` / `**load_scene_data**` resolve `**res://**` and `**user://**` through `**ProjectSettings.globalize_path**` before `**FileAccess**` open/exists checks, matching other export paths and avoiding platform-dependent relative-path surprises.
+- **Debug OBJ export staging** - Failed or incomplete atomic OBJ writes now remove `**_nexus_obj_staging**` contents (and the folder when empty) instead of leaving stale `.obj`/`.mtl` fragments; successful exports drop the empty staging directory as well.
+- **ResonanceLogger console** - Each log line is mirrored with `**print()`** in addition to `**print_rich()`** so messages show under standard Output filters; `**_ready()**` reloads logger project settings (and file output flags now load even if `categories_enabled` was missing). New Project Setting `**nexus/resonance/logger/output_to_debug**` (default on) toggles console mirroring.
+- **Steam Audio verbose** - Project setting is read with proper bool coercion; IPL INFO/DEBUG forwarding unchanged but **one summary line** is printed at context init when enabled so the option is visibly active. **Editor:** `steam_audio_verbose` is always re-registered in Project Settings (not only on first creation).
+- **Short sounds** - Parametric/hybrid reverb and pathing tails decay naturally after the dry signal ends, so one-shots can sound like they’re in the room instead of cutting off abruptly.
+- **ResonanceRuntime** (**breaking**) - The runtime node is a plain **Node** again (fixes a regression). Update scenes if you depended on the previous setup.
+
 ## [0.9.8] - 2026-03-26
 
 ### Added
@@ -323,7 +340,7 @@ New: "Export Dynamic Objects In All Scenes In Build".
 **Editor**
 
 - Toolbar (Tools → Nexus Resonance): Export Static Scene, Export Dynamic Meshes, Bake All Probe Volumes, Clear Probe Batches, Unlink Probe Volume References
-- Probe volume inspector: bake buttons, prerequisites checklist, preview settings
+- Probe volume inspector: bake workflow, prerequisites, optional probe batch cleanup (remove probes or baked layers)
 - Probe sphere gizmo for volume visualization
 - SOFA importer for HRTF files
 - Configurable bake parameters in Project Settings (`nexus/resonance/bake`_*)

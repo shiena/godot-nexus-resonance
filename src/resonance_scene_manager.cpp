@@ -36,6 +36,35 @@ IPLMaterial scene_export_default_ipl_material() {
     return m;
 }
 
+String globalize_scene_file_path(const String& filename) {
+    String path = filename;
+    ProjectSettings* ps = ProjectSettings::get_singleton();
+    if (ps && (path.begins_with("res://") || path.begins_with("user://")))
+        path = ps->globalize_path(path);
+    return path;
+}
+
+// Best-effort removal of _nexus_obj_staging contents and the directory itself.
+void clear_nexus_obj_staging_best_effort(const String& staging_dir, const String& staging_obj, const String& staging_mtl) {
+    if (FileAccess::file_exists(staging_obj))
+        DirAccess::remove_absolute(staging_obj);
+    if (FileAccess::file_exists(staging_mtl))
+        DirAccess::remove_absolute(staging_mtl);
+    if (!DirAccess::dir_exists_absolute(staging_dir))
+        return;
+    const PackedStringArray files = DirAccess::get_files_at(staging_dir);
+    for (int i = 0; i < files.size(); ++i)
+        DirAccess::remove_absolute(staging_dir.path_join(files[i]));
+    const PackedStringArray subdirs = DirAccess::get_directories_at(staging_dir);
+    for (int i = 0; i < subdirs.size(); ++i) {
+        const String d = subdirs[i];
+        if (!d.is_empty())
+            DirAccess::remove_absolute(staging_dir.path_join(d));
+    }
+    if (DirAccess::dir_exists_absolute(staging_dir))
+        DirAccess::remove_absolute(staging_dir);
+}
+
 } // namespace
 
 void ResonanceSceneManager::collect_static_geometry_recursive(Node* node, Node* export_root, std::vector<ResonanceGeometry*>& out) {
@@ -286,6 +315,7 @@ int ResonanceSceneManager::register_asset_debug_geometry(const Ref<ResonanceGeom
 }
 
 void ResonanceSceneManager::save_scene_data(IPLContext ctx, IPLScene scene, const String& filename) {
+    const String path = globalize_scene_file_path(filename);
     if (!ctx) {
         ResonanceLog::error("ResonanceSceneManager: Context is null (save_scene_data).");
         return;
@@ -310,16 +340,16 @@ void ResonanceSceneManager::save_scene_data(IPLContext ctx, IPLScene scene, cons
         return;
     }
 
-    Ref<FileAccess> file = FileAccess::open(filename, FileAccess::WRITE);
+    Ref<FileAccess> file = FileAccess::open(path, FileAccess::WRITE);
     if (file.is_valid()) {
         PackedByteArray pba;
         pba.resize((int64_t)size);
         memcpy(pba.ptrw(), data, size);
         file->store_buffer(pba);
         file->close();
-        UtilityFunctions::print_rich("[color=cyan]Nexus Resonance:[/color] Scene saved successfully to " + filename);
+        UtilityFunctions::print_rich("[color=cyan]Nexus Resonance:[/color] Scene saved successfully to " + path);
     } else {
-        UtilityFunctions::push_error("Nexus Resonance: Failed to open file for writing: ", filename);
+        UtilityFunctions::push_error("Nexus Resonance: Failed to open file for writing: ", path);
     }
     iplSerializedObjectRelease(&serializedObject);
 }
@@ -327,6 +357,7 @@ void ResonanceSceneManager::save_scene_data(IPLContext ctx, IPLScene scene, cons
 bool ResonanceSceneManager::load_scene_data(IPLContext ctx, IPLScene* out_scene, IPLSimulator sim,
                                             IPLSceneType scene_type, IPLEmbreeDevice embree, IPLRadeonRaysDevice radeon,
                                             const String& filename, int* out_global_triangle_count) {
+    const String path = globalize_scene_file_path(filename);
     if (!out_scene) {
         ResonanceLog::error("ResonanceSceneManager: out_scene is null (load_scene_data).");
         return false;
@@ -339,13 +370,13 @@ bool ResonanceSceneManager::load_scene_data(IPLContext ctx, IPLScene* out_scene,
         ResonanceLog::error("ResonanceSceneManager: Context is null (load_scene_data).");
         return false;
     }
-    if (!FileAccess::file_exists(filename)) {
-        UtilityFunctions::push_error("Nexus Resonance: File not found: ", filename);
+    if (!FileAccess::file_exists(path)) {
+        UtilityFunctions::push_error("Nexus Resonance: File not found: ", path);
         return false;
     }
-    Ref<FileAccess> file = FileAccess::open(filename, FileAccess::READ);
+    Ref<FileAccess> file = FileAccess::open(path, FileAccess::READ);
     if (file.is_null()) {
-        ResonanceLog::error("ResonanceSceneManager: Failed to open file for reading: " + filename);
+        ResonanceLog::error("ResonanceSceneManager: Failed to open file for reading: " + path);
         return false;
     }
 
@@ -387,7 +418,7 @@ bool ResonanceSceneManager::load_scene_data(IPLContext ctx, IPLScene* out_scene,
         // IPL API does not expose triangle count when loading from serialized file. Use 1 as "scene loaded" marker for is_simulating() (global_triangle_count > 0).
         if (out_global_triangle_count)
             *out_global_triangle_count = 1;
-        UtilityFunctions::print_rich("[color=cyan]Nexus Resonance:[/color] Scene loaded successfully from " + filename);
+        UtilityFunctions::print_rich("[color=cyan]Nexus Resonance:[/color] Scene loaded successfully from " + path);
         return true;
     }
     UtilityFunctions::push_error("Nexus Resonance: Failed to load scene.");
@@ -654,6 +685,10 @@ Error ResonanceSceneManager::save_phonon_scene_obj_atomic(IPLScene phonon_scene,
     String staging_dir = parent.path_join("_nexus_obj_staging");
     String file = path.get_file();
     String staging_obj = staging_dir.path_join(file);
+    const String base = file.get_basename();
+    const String mtl_file = base + String(".mtl");
+    String staging_mtl = staging_dir.path_join(mtl_file);
+    const String final_mtl = parent.path_join(mtl_file);
 
     Error mkerr = DirAccess::make_dir_recursive_absolute(staging_dir);
     if (mkerr != OK) {
@@ -666,17 +701,13 @@ Error ResonanceSceneManager::save_phonon_scene_obj_atomic(IPLScene phonon_scene,
 
     if (!FileAccess::file_exists(staging_obj)) {
         UtilityFunctions::push_warning("Nexus Resonance: Staged OBJ was not written: " + staging_obj);
+        clear_nexus_obj_staging_best_effort(staging_dir, staging_obj, staging_mtl);
         return ERR_CANT_CREATE;
     }
 
-    String base = file.get_basename();
-    String mtl_file = base + ".mtl";
-    String staging_mtl = staging_dir.path_join(mtl_file);
-    String final_mtl = parent.path_join(mtl_file);
-
     if (!FileAccess::file_exists(staging_mtl)) {
         UtilityFunctions::push_warning("Nexus Resonance: Staged MTL missing after export: " + staging_mtl);
-        DirAccess::remove_absolute(staging_obj);
+        clear_nexus_obj_staging_best_effort(staging_dir, staging_obj, staging_mtl);
         return ERR_FILE_CANT_WRITE;
     }
 
@@ -687,22 +718,26 @@ Error ResonanceSceneManager::save_phonon_scene_obj_atomic(IPLScene phonon_scene,
     }
     Error r_mtl = DirAccess::rename_absolute(staging_mtl, final_mtl);
     if (r_mtl != OK) {
-        DirAccess::remove_absolute(staging_obj);
-        if (FileAccess::file_exists(staging_mtl))
-            DirAccess::remove_absolute(staging_mtl);
+        clear_nexus_obj_staging_best_effort(staging_dir, staging_obj, staging_mtl);
         return r_mtl;
     }
 
     if (FileAccess::file_exists(path)) {
         Error rm_obj = DirAccess::remove_absolute(path);
-        if (rm_obj != OK && FileAccess::file_exists(path))
+        if (rm_obj != OK && FileAccess::file_exists(path)) {
+            clear_nexus_obj_staging_best_effort(staging_dir, staging_obj, staging_mtl);
             return rm_obj;
+        }
     }
     Error r_obj = DirAccess::rename_absolute(staging_obj, path);
     if (r_obj != OK) {
         UtilityFunctions::push_warning("Nexus Resonance: Failed to finalize OBJ (rename from staging): " + path);
+        clear_nexus_obj_staging_best_effort(staging_dir, staging_obj, staging_mtl);
         return r_obj;
     }
+
+    if (DirAccess::dir_exists_absolute(staging_dir))
+        DirAccess::remove_absolute(staging_dir);
     return OK;
 }
 

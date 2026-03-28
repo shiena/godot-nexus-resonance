@@ -13,6 +13,8 @@ enum class DirectInitFlags : int {
     PANNING_EFFECT = 1 << 2,
     BUFFERS = 1 << 3,
     AMBISONICS_ENCODE = 1 << 4,
+    AMBISONICS_PANNING = 1 << 5,
+    BINAURAL_STEREO_SCRATCH = 1 << 6,
 };
 inline DirectInitFlags operator|(DirectInitFlags a, DirectInitFlags b) {
     return static_cast<DirectInitFlags>(static_cast<int>(a) | static_cast<int>(b));
@@ -34,22 +36,27 @@ class ResonanceDirectProcessor {
     IPLPanningEffect panning_effect = nullptr;
     IPLAmbisonicsEncodeEffect ambisonics_encode_effect = nullptr;
     IPLAmbisonicsBinauralEffect ambisonics_binaural_effect = nullptr;
+    IPLAmbisonicsPanningEffect ambisonics_panning_effect = nullptr;
 
     // Intermediate buffers
     IPLAudioBuffer internal_mono_buffer{};   // Downmix input for direct effect
     IPLAudioBuffer internal_direct_output{}; // Output of iplDirectEffectApply (separate from input per Steam Audio ref)
     IPLAudioBuffer internal_ambi_buffer{};
+    /// Binaural effects write stereo here first; copied to FL/FR when output layout has >2 channels.
+    IPLAudioBuffer internal_binaural_stereo_out{};
 
     // Stored for tail processing when source stops
     IPLVector3 last_direction = {0.0f, 0.0f, -1.0f};
     bool last_hrtf_bilinear = false;
     float last_spatial_blend = 1.0f;
     bool last_use_ambisonics_encode_path = false;
+    bool last_use_binaural = true;
 
     DirectInitFlags init_flags = DirectInitFlags::NONE;
     int frame_size = resonance::kGodotDefaultFrameSize;
     int ambisonic_order = 1;
     bool use_ambisonics_encode = false;
+    int speaker_channels = 2;
 
   public:
     ResonanceDirectProcessor() = default;
@@ -60,7 +67,9 @@ class ResonanceDirectProcessor {
     ResonanceDirectProcessor(ResonanceDirectProcessor&&) = delete;
     ResonanceDirectProcessor& operator=(ResonanceDirectProcessor&&) = delete;
 
-    void initialize(IPLContext p_context, int p_sample_rate, int p_frame_size, int p_ambisonic_order = 1, bool p_use_ambisonics_encode = false);
+    /// \param p_speaker_channels Steam Audio layout channel count (1,2,4,6,8); others clamp to stereo.
+    void initialize(IPLContext p_context, int p_sample_rate, int p_frame_size, int p_ambisonic_order = 1, bool p_use_ambisonics_encode = false,
+                    int p_speaker_channels = 2);
     void cleanup();
 
     void process(
@@ -92,6 +101,7 @@ class ResonanceDirectProcessor {
   private:
     void apply_spatialization(const IPLVector3& dir, const IPLAudioBuffer& direct_out, IPLAudioBuffer& out,
                               bool use_ambi_path, bool use_binaural, bool hrtf_bilinear, float spatial_blend);
+    void copy_binaural_stereo_to_output(IPLAudioBuffer& out);
 };
 } // namespace godot
 

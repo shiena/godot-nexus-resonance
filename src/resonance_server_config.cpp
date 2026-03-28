@@ -1,5 +1,6 @@
 #include "resonance_server_config.h"
 #include "resonance_constants.h"
+#include "resonance_speaker_layout.h"
 #include <algorithm>
 #include <climits>
 #include <thread>
@@ -174,6 +175,7 @@ void ResonanceServerConfig::apply(const Dictionary& config,
     config_sofa_asset(config, "hrtf_sofa_asset", hrtf_sofa_asset);
     reverb_binaural = config_bool(config, "reverb_binaural", reverb_binaural);
     use_virtual_surround = config_bool(config, "use_virtual_surround", use_virtual_surround);
+    direct_speaker_channels = resonance::clamp_direct_speaker_channels(config_int(config, "direct_speaker_channels", direct_speaker_channels));
     hrtf_interpolation_bilinear = config_bool(config, "hrtf_interpolation_bilinear", hrtf_interpolation_bilinear);
     pathing_enabled = config_bool(config, "pathing_enabled", pathing_enabled);
 

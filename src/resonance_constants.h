@@ -8,7 +8,7 @@ namespace resonance {
 
 /// Version string (centralized; override via NEXUS_RESONANCE_VERSION when building)
 #ifndef NEXUS_RESONANCE_VERSION
-#define NEXUS_RESONANCE_VERSION "0.9.8"
+#define NEXUS_RESONANCE_VERSION "0.9.9"
 #endif
 constexpr const char* kVersion = NEXUS_RESONANCE_VERSION;
 
@@ -40,10 +40,22 @@ constexpr const char* kProjectSettingsResonancePrefix = "nexus/resonance/";
 constexpr const char* kProjectSettingsBakeDefaultOutputDirectory = "bake/default_output_directory";
 constexpr const char* kProjectSettingsBakeOutputDirectoryLegacy = "bake/output_dir";
 
-/// Baker default parameters (overridable via ProjectSettings nexus/resonance/bake_* and bake_num_*)
+/// Baker default parameters (ProjectSettings: bake_num_* / pathing / reflection type; ambisonics order comes from ResonanceBakeConfig or set_bake_params only)
 constexpr int kBakeDefaultNumRays = 4096;
 constexpr int kBakeDefaultNumBounces = 4;
 constexpr int kBakeDefaultNumThreads = 2;
+/// IPLReflectionsBakeParams::order — Ambisonics order of baked convolution IRs (Steam Audio 1–3 typical).
+constexpr int kBakeAmbisonicsOrderMin = 1;
+constexpr int kBakeAmbisonicsOrderMax = 3;
+constexpr int kBakeDefaultAmbisonicsOrder = 1;
+
+inline int clamp_bake_ambisonics_order(int order) {
+    if (order < kBakeAmbisonicsOrderMin)
+        return kBakeAmbisonicsOrderMin;
+    if (order > kBakeAmbisonicsOrderMax)
+        return kBakeAmbisonicsOrderMax;
+    return order;
+}
 constexpr float kBakePathingDefaultVisRange = 500.0f;
 constexpr float kBakePathingDefaultPathRange = 100.0f;
 constexpr int kBakePathingDefaultNumSamples = 16;

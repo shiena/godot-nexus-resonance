@@ -7,6 +7,7 @@
 #include <godot_cpp/variant/vector3.hpp>
 #include <phonon.h>
 
+#include "resonance_constants.h"
 #include "resonance_probe_data.h"
 #include "resonance_utils.h"
 
@@ -56,7 +57,8 @@ class ResonanceBaker {
         void (*progress_callback)(float, void*) = nullptr,
         void* progress_user_data = nullptr,
         bool pathing_scheduled = false,
-        int num_threads = 2);
+        int num_threads = 2,
+        int ambisonics_order = resonance::kBakeDefaultAmbisonicsOrder);
 
     // Internal method to create grid points in local space, then transform to world space.
     // reflection_type: 0 = Convolution (BAKECONVOLUTION), 1 = Parametric (BAKEPARAMETRIC)
@@ -77,7 +79,8 @@ class ResonanceBaker {
         void (*progress_callback)(float, void*) = nullptr,
         void* progress_user_data = nullptr,
         bool pathing_scheduled = false,
-        int num_threads = 2);
+        int num_threads = 2,
+        int ambisonics_order = resonance::kBakeDefaultAmbisonicsOrder);
 
     /// @param progress_callback When non-null, invoked synchronously on the calling thread (bake blocks until done).
     bool bake_pathing(
@@ -109,7 +112,8 @@ class ResonanceBaker {
         int num_rays = 4096,
         void (*progress_callback)(float, void*) = nullptr,
         void* progress_user_data = nullptr,
-        int num_threads = 2);
+        int num_threads = 2,
+        int ambisonics_order = resonance::kBakeDefaultAmbisonicsOrder);
 
     /// Bake reflections with STATICLISTENER variation. Requires probe_data with existing probes.
     /// endpoint_position: world position of the static listener. influence_radius: probes within this distance get data.
@@ -127,7 +131,22 @@ class ResonanceBaker {
         int num_rays = 4096,
         void (*progress_callback)(float, void*) = nullptr,
         void* progress_user_data = nullptr,
-        int num_threads = 2);
+        int num_threads = 2,
+        int ambisonics_order = resonance::kBakeDefaultAmbisonicsOrder);
+
+    /// Probe count in serialized probe data, or -1 if load fails.
+    int32_t probe_data_get_num_probes(IPLContext context, Ref<ResonanceProbeData> probe_data_res) const;
+
+    /// Removes one probe by index (Steam Audio iplProbeBatchRemoveProbe). Updates [param probe_data_res] bytes;
+    /// if [code]probe_positions[/code] length matched probe count, the same index is removed. Clears pathing hash.
+    /// Call [method ResonanceProbeVolume.reload_probe_batch] if this resource is loaded in the simulator.
+    bool probe_data_remove_probe_at_index(IPLContext context, Ref<ResonanceProbeData> probe_data_res, int32_t index) const;
+
+    /// Removes a baked data layer (iplProbeBatchRemoveData). [param baked_data_type]: 0 = reflections, 1 = pathing.
+    /// [param variation]: 0 = reverb, 1 = static source, 2 = static listener, 3 = dynamic (pathing).
+    /// For static source/listener, [param endpoint] and [param influence_radius] must match the bake sphere.
+    bool probe_data_remove_baked_data_layer(IPLContext context, Ref<ResonanceProbeData> probe_data_res, int baked_data_type,
+                                            int variation, Vector3 endpoint, float influence_radius) const;
 
   private:
     bool _bake_static_endpoint(
@@ -146,7 +165,8 @@ class ResonanceBaker {
         int num_rays = 4096,
         void (*progress_callback)(float, void*) = nullptr,
         void* progress_user_data = nullptr,
-        int num_threads = 2);
+        int num_threads = 2,
+        int ambisonics_order = resonance::kBakeDefaultAmbisonicsOrder);
 };
 
 } // namespace godot

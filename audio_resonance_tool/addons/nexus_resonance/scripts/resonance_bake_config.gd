@@ -45,6 +45,8 @@ var _pathing_enabled: bool = false
 
 # --- Quality ---
 @export_group("Quality")
+## Ambisonics order of baked convolution IRs (Steam Audio IPLReflectionsBakeParams.order). 1 = fastest/smallest, 3 = highest spatial detail, larger bake data.
+@export_range(1, 3, 1) var bake_ambisonics_order: int = 1
 ## Reflection rays per probe. Higher = better quality, longer bake.
 @export_range(256, 16384, 256) var bake_num_rays: int = 4096
 ## Reflection bounces per ray. Higher = longer reverb tail, longer bake.
@@ -71,6 +73,7 @@ func _validate_property(property: Dictionary) -> void:
 ## Returns bake params dictionary for C++ set_bake_params.
 func get_bake_params() -> Dictionary:
 	return {
+		"bake_ambisonics_order": bake_ambisonics_order,
 		"bake_num_rays": bake_num_rays,
 		"bake_num_bounces": bake_num_bounces,
 		"bake_num_threads": bake_num_threads,

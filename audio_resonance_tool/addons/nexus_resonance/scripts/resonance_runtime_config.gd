@@ -3,13 +3,14 @@ extends Resource
 class_name ResonanceRuntimeConfig
 
 ## Nexus Resonance runtime configuration resource.
-## Create or link in ResonanceRuntime node (Add Child Node, search ResonanceRuntime).
+## Create or link in ResonanceRuntime node (Add Child Node → **ResonanceRuntime** global class).
 ## Structure aligned with Steam Audio Settings for compatibility.
 
 const Constants = preload("resonance_config_constants.gd")
 
 signal reflection_type_changed(new_type: int)
 signal pathing_enabled_changed(enabled: bool)
+signal audio_frame_size_changed(new_size: int)
 
 # --- Audio ---
 @export_group("Audio")
@@ -24,7 +25,15 @@ signal pathing_enabled_changed(enabled: bool)
 )
 var sample_rate_override: int = 0
 ## Steam Audio processing block size. Auto = derive from Project Settings (audio/driver/output_latency). Manual = override for performance tuning.
-@export_enum("Auto:0", "256:256", "512:512", "1024:1024", "2048:2048") var audio_frame_size: int = 0
+var _audio_frame_size: int = 0
+@export_enum("Auto:0", "256:256", "512:512", "1024:1024", "2048:2048")
+var audio_frame_size: int:
+	get:
+		return _audio_frame_size
+	set(v):
+		if _audio_frame_size != v:
+			_audio_frame_size = v
+			audio_frame_size_changed.emit(v)
 ## Target bus for Direct + Pathing (player output). Empty = Master. Fallback when players use Global bus override.
 @export var bus: StringName = &"Master"
 ## Bus for convolution reverb (effect and activator). Empty = ResonanceReverb.
@@ -41,6 +50,8 @@ var sample_rate_override: int = 0
 @export var reverb_binaural: bool = true
 ## Use virtual surround instead of HRTF. Simpler, less accurate.
 @export var use_virtual_surround: bool = false
+## Direct path without HRTF: speaker layout for IPLPanningEffect (and optional Ambisonics→speaker decode for surround). Godot player output stays stereo (fold-down). Use 1/2/4/6/8 only; other values become stereo at runtime.
+@export_enum("Mono:1", "Stereo:2", "Quad:4", "5.1:6", "7.1:8") var direct_speaker_channels: int = 2
 ## HRTF volume gain (dB) for the embedded default HRTF. With custom SOFA, added to each asset's [member ResonanceSOFAAsset.volume_db] (linear gain product).
 @export_range(-24.0, 24.0, 0.1) var hrtf_volume_db: float = 0.0
 ## HRTF normalization for the embedded default HRTF only (None / RMS). Custom SOFA files use [member ResonanceSOFAAsset.norm_type] on the asset.
@@ -300,6 +311,7 @@ func get_config() -> Dictionary:
 		"hybrid_reverb_overlap_percent": hybrid_reverb_overlap_percent,
 		"reverb_binaural": reverb_binaural,
 		"use_virtual_surround": use_virtual_surround,
+		"direct_speaker_channels": direct_speaker_channels,
 		"hrtf_volume_db": hrtf_volume_db,
 		"hrtf_normalization_type": hrtf_normalization_type,
 		"hrtf_sofa_asset": get_hrtf_sofa_effective(),

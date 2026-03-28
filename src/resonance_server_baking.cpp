@@ -132,6 +132,8 @@ void ResonanceServer::set_bake_params(Dictionary params) {
         _bake_pathing_radius = (float)params["bake_pathing_radius"];
     if (params.has("bake_pathing_threshold"))
         _bake_pathing_threshold = (float)params["bake_pathing_threshold"];
+    if (params.has("bake_ambisonics_order"))
+        _bake_ambisonics_order = (int)params["bake_ambisonics_order"];
 }
 
 int ResonanceServer::_get_bake_num_rays() const {
@@ -162,6 +164,12 @@ int ResonanceServer::_get_bake_num_threads() const {
         return (int)ps->get_setting(String(resonance::kProjectSettingsResonancePrefix) + "bake_num_threads",
                                     resonance::kBakeDefaultNumThreads);
     return resonance::kBakeDefaultNumThreads;
+}
+
+int ResonanceServer::_get_bake_ambisonics_order() const {
+    if (_bake_ambisonics_order >= 0)
+        return resonance::clamp_bake_ambisonics_order(_bake_ambisonics_order);
+    return resonance::kBakeDefaultAmbisonicsOrder;
 }
 
 int ResonanceServer::_get_bake_reflection_type() const {
@@ -278,8 +286,9 @@ bool ResonanceServer::bake_manual_grid(const PackedVector3Array& points, Ref<Res
     int nr = _get_bake_num_rays();
     int bake_reflection = _get_bake_reflection_type();
     int nt = _get_bake_num_threads();
-    return _with_bake_scene([this, &points, &data, nb, nr, bake_reflection, nt](IPLScene bake_scene) {
-        return baker.bake_manual_grid(_ctx(), bake_scene, _scene_type(), _opencl(), _radeon(), points, nb, nr, bake_reflection, data, bake_progress_callback, this, _bake_pipeline_pathing, nt);
+    int ao = _get_bake_ambisonics_order();
+    return _with_bake_scene([this, &points, &data, nb, nr, bake_reflection, nt, ao](IPLScene bake_scene) {
+        return baker.bake_manual_grid(_ctx(), bake_scene, _scene_type(), _opencl(), _radeon(), points, nb, nr, bake_reflection, data, bake_progress_callback, this, _bake_pipeline_pathing, nt, ao);
     });
 }
 
@@ -299,16 +308,17 @@ bool ResonanceServer::bake_probes_for_volume(const Transform3D& volume_transform
     int nr = _get_bake_num_rays();
     int bake_reflection = _get_bake_reflection_type();
     int nt = _get_bake_num_threads();
-    return _with_bake_scene([this, volume_transform, extents, spacing, generation_type, height_above_floor, probe_data_res, nb, nr, bake_reflection, nt](IPLScene bake_scene) {
+    int ao = _get_bake_ambisonics_order();
+    return _with_bake_scene([this, volume_transform, extents, spacing, generation_type, height_above_floor, probe_data_res, nb, nr, bake_reflection, nt, ao](IPLScene bake_scene) {
         if (generation_type == ResonanceBaker::GEN_CENTROID || generation_type == ResonanceBaker::GEN_UNIFORM_FLOOR) {
             return baker.bake_with_probe_array(_ctx(), bake_scene, _scene_type(), _opencl(), _radeon(),
                                                volume_transform, extents, spacing, generation_type, height_above_floor,
-                                               nb, nr, bake_reflection, probe_data_res, bake_progress_callback, this, _bake_pipeline_pathing, nt);
+                                               nb, nr, bake_reflection, probe_data_res, bake_progress_callback, this, _bake_pipeline_pathing, nt, ao);
         }
         PackedVector3Array points = baker.generate_manual_grid(volume_transform, extents, spacing, generation_type, height_above_floor);
         if (points.size() == 0)
             return false;
-        return baker.bake_manual_grid(_ctx(), bake_scene, _scene_type(), _opencl(), _radeon(), points, nb, nr, bake_reflection, probe_data_res, bake_progress_callback, this, _bake_pipeline_pathing, nt);
+        return baker.bake_manual_grid(_ctx(), bake_scene, _scene_type(), _opencl(), _radeon(), points, nb, nr, bake_reflection, probe_data_res, bake_progress_callback, this, _bake_pipeline_pathing, nt, ao);
     });
 }
 
@@ -336,9 +346,10 @@ bool ResonanceServer::bake_static_source(Ref<ResonanceProbeData> data, Vector3 e
     int nb = _get_bake_num_bounces();
     int nr = _get_bake_num_rays();
     int nt = _get_bake_num_threads();
-    return _with_bake_scene([this, data, endpoint_position, influence_radius, nb, nr, nt](IPLScene bake_scene) {
+    int ao = _get_bake_ambisonics_order();
+    return _with_bake_scene([this, data, endpoint_position, influence_radius, nb, nr, nt, ao](IPLScene bake_scene) {
         return baker.bake_static_source(_ctx(), bake_scene, _scene_type(), _opencl(), _radeon(),
-                                        data, endpoint_position, influence_radius, nb, nr, bake_progress_callback, this, nt);
+                                        data, endpoint_position, influence_radius, nb, nr, bake_progress_callback, this, nt, ao);
     });
 }
 
@@ -350,9 +361,10 @@ bool ResonanceServer::bake_static_listener(Ref<ResonanceProbeData> data, Vector3
     int nb = _get_bake_num_bounces();
     int nr = _get_bake_num_rays();
     int nt = _get_bake_num_threads();
-    return _with_bake_scene([this, data, endpoint_position, influence_radius, nb, nr, nt](IPLScene bake_scene) {
+    int ao = _get_bake_ambisonics_order();
+    return _with_bake_scene([this, data, endpoint_position, influence_radius, nb, nr, nt, ao](IPLScene bake_scene) {
         return baker.bake_static_listener(_ctx(), bake_scene, _scene_type(), _opencl(), _radeon(),
-                                          data, endpoint_position, influence_radius, nb, nr, bake_progress_callback, this, nt);
+                                          data, endpoint_position, influence_radius, nb, nr, bake_progress_callback, this, nt, ao);
     });
 }
 
@@ -491,4 +503,21 @@ void ResonanceServer::clear_probe_batches() {
 }
 void ResonanceServer::emit_bake_progress(float progress) {
     emit_signal("bake_progress", progress);
+}
+
+int32_t ResonanceServer::editor_probe_data_get_num_probes(Ref<ResonanceProbeData> data) const {
+    return baker.probe_data_get_num_probes(_ctx(), data);
+}
+
+bool ResonanceServer::editor_probe_data_remove_probe(Ref<ResonanceProbeData> data, int32_t index) {
+    if (!_ctx() || data.is_null())
+        return false;
+    return baker.probe_data_remove_probe_at_index(_ctx(), data, index);
+}
+
+bool ResonanceServer::editor_probe_data_remove_baked_layer(Ref<ResonanceProbeData> data, int baked_data_type, int variation,
+                                                           Vector3 endpoint, float influence_radius) {
+    if (!_ctx() || data.is_null())
+        return false;
+    return baker.probe_data_remove_baked_data_layer(_ctx(), data, baked_data_type, variation, endpoint, influence_radius);
 }

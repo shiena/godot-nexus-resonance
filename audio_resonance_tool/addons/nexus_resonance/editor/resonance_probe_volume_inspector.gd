@@ -92,6 +92,195 @@ func _parse_begin(object: Object) -> void:
 	btn.pressed.connect(_on_bake_pressed.bind(object))
 	add_custom_control(btn)
 
+	_add_probe_batch_edit_section(object)
+
+
+func _add_probe_batch_edit_section(vol: Object) -> void:
+	if not vol.has_method("get_probe_data"):
+		return
+	var pd = vol.get_probe_data()
+	if pd == null:
+		return
+	var has_data: bool = not pd.get_data().is_empty()
+	if bake_runner and vol is Node:
+		var vol_nodes: Array[Node] = []
+		vol_nodes.append(vol as Node)
+		bake_runner.ensure_resonance_server_for_volumes(vol_nodes)
+	var srv = Engine.get_singleton("ResonanceServer")
+	var server_ready: bool = srv != null and srv.is_initialized()
+	var fold := FoldableContainer.new()
+	fold.title = tr(UIStrings.INSPECTOR_PROBE_BATCH_EDIT)
+	fold.folded = true
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	if not server_ready:
+		var need_srv := Label.new()
+		need_srv.text = tr(UIStrings.INSPECTOR_PROBE_BATCH_SERVER_REQUIRED)
+		need_srv.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		need_srv.add_theme_color_override("font_color", Color(1.0, 0.55, 0.35))
+		vbox.add_child(need_srv)
+	var num_probes := -1
+	if srv and srv.is_initialized() and srv.has_method("editor_probe_data_get_num_probes"):
+		num_probes = int(srv.editor_probe_data_get_num_probes(pd))
+	if num_probes < 0 and pd.get_probe_positions().size() > 0:
+		num_probes = pd.get_probe_positions().size()
+	var count_lbl := Label.new()
+	count_lbl.text = (
+		tr(UIStrings.INSPECTOR_PROBE_COUNT_KNOWN) % int(num_probes)
+		if num_probes >= 0
+		else tr(UIStrings.INSPECTOR_PROBE_COUNT_UNKNOWN)
+	)
+	count_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	vbox.add_child(count_lbl)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	var spin := SpinBox.new()
+	spin.min_value = 0
+	spin.max_value = maxi(0, num_probes - 1) if num_probes > 0 else 0
+	spin.step = 1
+	spin.rounded = true
+	spin.editable = has_data and server_ready
+	var rm_btn := Button.new()
+	rm_btn.text = tr(UIStrings.BTN_REMOVE_PROBE_AT_INDEX)
+	rm_btn.tooltip_text = tr(UIStrings.TT_REMOVE_PROBE)
+	rm_btn.disabled = not has_data or not server_ready
+	var batch_ui := {
+		"count_lbl": count_lbl,
+		"spin": spin,
+		"rm_btn": rm_btn,
+		"path_btn": null,
+		"refl_btn": null
+	}
+	rm_btn.pressed.connect(_on_remove_probe_at_index_pressed.bind(vol, spin, batch_ui))
+	row.add_child(spin)
+	row.add_child(rm_btn)
+	vbox.add_child(row)
+	var path_btn := Button.new()
+	path_btn.text = tr(UIStrings.BTN_REMOVE_BAKED_PATHING)
+	path_btn.tooltip_text = tr(UIStrings.TT_REMOVE_PATHING)
+	path_btn.disabled = not has_data or not server_ready
+	batch_ui["path_btn"] = path_btn
+	path_btn.pressed.connect(_on_remove_baked_pathing_pressed.bind(vol, batch_ui))
+	vbox.add_child(path_btn)
+	var refl_btn := Button.new()
+	refl_btn.text = tr(UIStrings.BTN_REMOVE_BAKED_REFLECTION_REVERB)
+	refl_btn.tooltip_text = tr(UIStrings.TT_REMOVE_REFLECTION_REVERB)
+	refl_btn.disabled = not has_data or not server_ready
+	batch_ui["refl_btn"] = refl_btn
+	refl_btn.pressed.connect(_on_remove_baked_reflection_reverb_pressed.bind(vol, batch_ui))
+	vbox.add_child(refl_btn)
+	fold.add_child(vbox)
+	add_custom_control(fold)
+
+
+func _refresh_probe_batch_section_ui(vol: Object, batch_ui: Dictionary) -> void:
+	var count_lbl: Variant = batch_ui.get("count_lbl", null)
+	var spin: Variant = batch_ui.get("spin", null)
+	if vol == null or count_lbl == null or spin == null:
+		return
+	var pd: Variant = vol.get_probe_data() if vol.has_method("get_probe_data") else null
+	var has_data: bool = pd != null and not pd.get_data().is_empty()
+	var srv: Variant = Engine.get_singleton("ResonanceServer")
+	var server_ready: bool = srv != null and srv.is_initialized()
+	var num_probes := -1
+	if srv and srv.is_initialized() and srv.has_method("editor_probe_data_get_num_probes") and pd:
+		num_probes = int(srv.editor_probe_data_get_num_probes(pd))
+	if num_probes < 0 and pd and pd.get_probe_positions().size() > 0:
+		num_probes = pd.get_probe_positions().size()
+	if count_lbl is Label:
+		(count_lbl as Label).text = (
+			tr(UIStrings.INSPECTOR_PROBE_COUNT_KNOWN) % int(num_probes)
+			if num_probes >= 0
+			else tr(UIStrings.INSPECTOR_PROBE_COUNT_UNKNOWN)
+		)
+	if spin is SpinBox:
+		var sb := spin as SpinBox
+		var mx := maxi(0, num_probes - 1) if num_probes > 0 else 0
+		sb.max_value = mx
+		if sb.value > mx:
+			sb.value = mx
+		sb.editable = has_data and server_ready
+	for key in ["rm_btn", "path_btn", "refl_btn"]:
+		var b: Variant = batch_ui.get(key, null)
+		if b is Button:
+			(b as Button).disabled = not has_data or not server_ready
+
+
+func _probe_edit_post_success(vol: Object, pd: Resource, batch_ui: Dictionary = {}) -> void:
+	pd.emit_changed()
+	if not pd.resource_path.is_empty():
+		ResourceSaver.save(pd, pd.resource_path)
+	if editor_interface:
+		editor_interface.mark_scene_as_unsaved()
+	if not batch_ui.is_empty():
+		_refresh_probe_batch_section_ui(vol, batch_ui)
+	# Deferred so the resource flush and editor state settle before native reload (avoids silent no-op).
+	if vol.has_method("reload_probe_batch"):
+		vol.call_deferred("reload_probe_batch")
+
+
+func _ensure_server_for_probe_edit(vol: Object) -> bool:
+	if bake_runner and vol is Node and bake_runner.has_method("ensure_resonance_server_for_volumes"):
+		var vol_nodes: Array[Node] = []
+		vol_nodes.append(vol as Node)
+		return bake_runner.ensure_resonance_server_for_volumes(vol_nodes)
+	var srv = Engine.get_singleton("ResonanceServer")
+	return srv != null and srv.is_initialized()
+
+
+func _on_remove_probe_at_index_pressed(vol: Object, spin: SpinBox, batch_ui: Dictionary) -> void:
+	var pd = vol.get_probe_data()
+	if pd == null or pd.get_data().is_empty():
+		return
+	if not _ensure_server_for_probe_edit(vol):
+		ResonanceEditorDialogs.show_warning(editor_interface, tr(UIStrings.WARN_PROBE_EDIT_NO_SERVER))
+		return
+	var srv = Engine.get_singleton("ResonanceServer")
+	if srv == null or not srv.is_initialized() or not srv.has_method("editor_probe_data_remove_probe"):
+		ResonanceEditorDialogs.show_warning(editor_interface, tr(UIStrings.WARN_PROBE_EDIT_NO_SERVER))
+		return
+	var idx := int(spin.value)
+	if not srv.editor_probe_data_remove_probe(pd, idx):
+		ResonanceEditorDialogs.show_warning(editor_interface, tr(UIStrings.WARN_PROBE_EDIT_FAILED))
+		return
+	_probe_edit_post_success(vol, pd, batch_ui)
+
+
+func _on_remove_baked_pathing_pressed(vol: Object, batch_ui: Dictionary) -> void:
+	var pd = vol.get_probe_data()
+	if pd == null or pd.get_data().is_empty():
+		return
+	if not _ensure_server_for_probe_edit(vol):
+		ResonanceEditorDialogs.show_warning(editor_interface, tr(UIStrings.WARN_PROBE_EDIT_NO_SERVER))
+		return
+	var srv = Engine.get_singleton("ResonanceServer")
+	if srv == null or not srv.is_initialized() or not srv.has_method("editor_probe_data_remove_baked_layer"):
+		ResonanceEditorDialogs.show_warning(editor_interface, tr(UIStrings.WARN_PROBE_EDIT_NO_SERVER))
+		return
+	# baked_data_type 1 = pathing; variation 3 = dynamic (matches bake_pathing)
+	if not srv.editor_probe_data_remove_baked_layer(pd, 1, 3, Vector3.ZERO, 0.0):
+		ResonanceEditorDialogs.show_warning(editor_interface, tr(UIStrings.WARN_PROBE_EDIT_FAILED))
+		return
+	_probe_edit_post_success(vol, pd, batch_ui)
+
+
+func _on_remove_baked_reflection_reverb_pressed(vol: Object, batch_ui: Dictionary) -> void:
+	var pd = vol.get_probe_data()
+	if pd == null or pd.get_data().is_empty():
+		return
+	if not _ensure_server_for_probe_edit(vol):
+		ResonanceEditorDialogs.show_warning(editor_interface, tr(UIStrings.WARN_PROBE_EDIT_NO_SERVER))
+		return
+	var srv = Engine.get_singleton("ResonanceServer")
+	if srv == null or not srv.is_initialized() or not srv.has_method("editor_probe_data_remove_baked_layer"):
+		ResonanceEditorDialogs.show_warning(editor_interface, tr(UIStrings.WARN_PROBE_EDIT_NO_SERVER))
+		return
+	# baked_data_type 0 = reflections; variation 0 = reverb
+	if not srv.editor_probe_data_remove_baked_layer(pd, 0, 0, Vector3.ZERO, 0.0):
+		ResonanceEditorDialogs.show_warning(editor_interface, tr(UIStrings.WARN_PROBE_EDIT_FAILED))
+		return
+	_probe_edit_post_success(vol, pd, batch_ui)
+
 
 func _on_preview_bake_pressed(obj: Object) -> void:
 	if not obj or not obj.is_class("ResonanceProbeVolume"):

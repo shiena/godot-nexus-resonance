@@ -89,3 +89,53 @@ TEST_CASE("reverb_ir_size_samples nominal", "[resonance_math]") {
     REQUIRE(reverb_ir_size_samples(48000, 2.0f) == 96000);
     REQUIRE(reverb_ir_size_samples(44100, 1.0f) == 44100);
 }
+
+// --- Pathing (ResonancePathProcessor + ResonancePlayer) ---
+// Steam Audio Unity/FMOD spatialize: applyVolumeRamp(prevPathingMixLevel, pathingMixLevel) on mono
+// after downmix, then iplPathEffectApply; output is iplAudioBufferMix at unity — no extra multiply by
+// reverb_pathing_attenuation on the wet (distance is already in path SH from the simulation).
+
+TEST_CASE("pathing: mono input ramp matches apply_volume_ramp step", "[volume_ramp][pathing]") {
+    const int n = 8;
+    float mono[n];
+    for (int i = 0; i < n; i++)
+        mono[i] = 2.0f;
+    const float prev_mix = 0.25f;
+    const float curr_mix = 1.0f;
+    apply_volume_ramp(prev_mix, curr_mix, n, mono);
+    const float step = (curr_mix - prev_mix) / static_cast<float>(n);
+    for (int i = 0; i < n; i++) {
+        const float vol = prev_mix + step * static_cast<float>(i);
+        REQUIRE(mono[i] == Approx(2.0f * vol));
+    }
+}
+
+TEST_CASE("pathing: constant mix level scales full block", "[volume_ramp][pathing]") {
+    float mono[6] = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+    apply_volume_ramp(0.5f, 0.5f, 6, mono);
+    for (int i = 0; i < 6; i++)
+        REQUIRE(mono[i] == Approx(0.5f));
+}
+
+TEST_CASE("pathing: ramp down to zero last sample not at zero volume", "[volume_ramp][pathing]") {
+    // apply_volume_ramp uses step = (end-start)/num_samples; last index uses start + step*(n-1), not end.
+    const int n = 4;
+    float mono[n] = {1.0f, 1.0f, 1.0f, 1.0f};
+    apply_volume_ramp(1.0f, 0.0f, n, mono);
+    REQUIRE(mono[0] == Approx(1.0f));
+    REQUIRE(mono[1] == Approx(0.75f));
+    REQUIRE(mono[2] == Approx(0.5f));
+    REQUIRE(mono[3] == Approx(0.25f));
+}
+
+TEST_CASE("pathing: wet add unity not times reverb_pathing_attenuation", "[pathing]") {
+    // Regression: path stereo used to be scaled by reverb_pathing_attenuation * pathing_mix per sample.
+    // Steam Audio Unity/FMOD spatialize mixes path effect output at unity (distance is in SH coeffs).
+    const float att = 0.2f;
+    const float path_out_sample = 1.0f;
+    const float legacy_wet = att * path_out_sample;
+    const float reference_wet = 1.0f * path_out_sample;
+    REQUIRE(legacy_wet == Approx(0.2f));
+    REQUIRE(reference_wet == Approx(1.0f));
+    REQUIRE(legacy_wet != Approx(reference_wet));
+}

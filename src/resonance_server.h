@@ -238,6 +238,8 @@ class ResonanceServer : public Object {
     bool hrtf_interpolation_bilinear = false;
     // Virtual Surround: decode reverb Ambisonics to 7.1, then iplVirtualSurroundEffect -> stereo (for speaker layouts without HRTF)
     bool use_virtual_surround = false;
+    /// IPLSpeakerLayout channel count for direct IPLPanningEffect / optional Ambisonics panning (1,2,4,6,8).
+    int direct_speaker_channels = 2;
     // Enable pathing simulation (multi-path sound propagation around obstacles)
     bool pathing_enabled = false;
     // Pathing visibility params (bakingVisibilityRadius/Threshold/Range)
@@ -439,6 +441,7 @@ class ResonanceServer : public Object {
     float _bake_pathing_radius = -1.0f;
     float _bake_pathing_threshold = -1.0f;
     int _bake_num_threads = -1;
+    int _bake_ambisonics_order = -1;
     bool _bake_pipeline_pathing = false;
 
     ResonanceProbeBatchRegistry probe_batch_registry_;
@@ -491,6 +494,7 @@ class ResonanceServer : public Object {
     int _get_bake_num_rays() const;
     int _get_bake_num_bounces() const;
     int _get_bake_num_threads() const;
+    int _get_bake_ambisonics_order() const;
     int _get_bake_reflection_type() const;
     float _get_bake_pathing_param(const char* key, float default_val) const;
     int _get_bake_pathing_num_samples() const;
@@ -582,6 +586,8 @@ class ResonanceServer : public Object {
     void reset_spatial_audio_warmup_passes();
     int get_sample_rate() const { return current_sample_rate; }
     int get_audio_frame_size() const { return frame_size; }
+    /// Channel count for direct-path speaker panning when not using HRTF (Steam Audio standard layouts).
+    int get_direct_speaker_channels() const { return direct_speaker_channels; }
     int get_ambisonic_order() const { return ambisonic_order; }
     /// Request reinit with detected Godot frame_count (from reverb bus). Call from audio thread. Only applies when Auto was used.
     void request_reinit_with_frame_size(int detected_frame_count);
@@ -664,6 +670,14 @@ class ResonanceServer : public Object {
     void clear_probe_batches();
     /// Removes probe batches incompatible with current reflection_type/pathing_enabled. Returns count removed.
     int revalidate_probe_batches_with_config();
+
+    /// Editor/tools: probe count in serialized [param data], or -1 if context/data invalid.
+    int32_t editor_probe_data_get_num_probes(Ref<ResonanceProbeData> data) const;
+    /// Editor/tools: remove probe by index; updates [param data] in memory. Reload probe batch on volumes using this resource.
+    bool editor_probe_data_remove_probe(Ref<ResonanceProbeData> data, int32_t index);
+    /// Editor/tools: remove a baked layer (reflections/pathing). See ResonanceBaker::probe_data_remove_baked_data_layer.
+    bool editor_probe_data_remove_baked_layer(Ref<ResonanceProbeData> data, int baked_data_type, int variation, Vector3 endpoint,
+                                              float influence_radius);
 
     // Runtime Control
     void set_debug_occlusion(bool p_enabled);

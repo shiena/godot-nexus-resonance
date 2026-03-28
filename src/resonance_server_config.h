@@ -49,6 +49,8 @@ struct ResonanceServerConfig {
     bool reverb_binaural = true;
     bool hrtf_interpolation_bilinear = false;
     bool use_virtual_surround = false;
+    /// Direct path non-HRTF panning: 1,2,4,6,8 (Mono/Stereo/Quad/5.1/7.1). Invalid values become stereo.
+    int direct_speaker_channels = 2;
 
     // Pathing
     bool pathing_enabled = false;

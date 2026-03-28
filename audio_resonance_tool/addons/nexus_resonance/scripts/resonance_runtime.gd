@@ -1,9 +1,10 @@
 @tool
 @icon("res://addons/nexus_resonance/ui/icons/resonance_config_icon.svg")
-extends ResonanceRuntime
+class_name ResonanceRuntime
+extends Node
 
 ## Nexus Resonance scene configuration node.
-## Add via **Add Child Node** and search **ResonanceRuntime** (GDExtension node type + this script).
+## Add via **Add Child Node** → **ResonanceRuntime** (global class; always includes this script).
 ## Assign a ResonanceRuntimeConfig resource (create new or link existing) for runtime settings.
 
 const ResonanceRuntimeConfig = preload(
@@ -515,6 +516,11 @@ func _connect_runtime_signals() -> void:
 		and not _runtime.pathing_enabled_changed.is_connected(_on_runtime_affecting_probes_changed)
 	):
 		_runtime.pathing_enabled_changed.connect(_on_runtime_affecting_probes_changed)
+	if (
+		_runtime.has_signal("audio_frame_size_changed")
+		and not _runtime.audio_frame_size_changed.is_connected(_on_audio_frame_size_changed)
+	):
+		_runtime.audio_frame_size_changed.connect(_on_audio_frame_size_changed)
 
 
 func _disconnect_runtime_signals() -> void:
@@ -530,9 +536,29 @@ func _disconnect_runtime_signals() -> void:
 		and _runtime.pathing_enabled_changed.is_connected(_on_runtime_affecting_probes_changed)
 	):
 		_runtime.pathing_enabled_changed.disconnect(_on_runtime_affecting_probes_changed)
+	if (
+		_runtime.has_signal("audio_frame_size_changed")
+		and _runtime.audio_frame_size_changed.is_connected(_on_audio_frame_size_changed)
+	):
+		_runtime.audio_frame_size_changed.disconnect(_on_audio_frame_size_changed)
 
 
 func _on_reflection_type_changed(_arg = null) -> void:
+	if not Engine.has_singleton("ResonanceServer"):
+		return
+	var srv = Engine.get_singleton("ResonanceServer")
+	if not srv or not srv.is_initialized():
+		return
+	var cfg = get_config_dict()
+	if cfg.is_empty():
+		return
+	_prepare_geometry_before_reinit()
+	srv.reinit_audio_engine(cfg)
+	call_deferred("_reload_after_reinit")
+	_notify_volumes_runtime_config_changed()
+
+
+func _on_audio_frame_size_changed(_arg = null) -> void:
 	if not Engine.has_singleton("ResonanceServer"):
 		return
 	var srv = Engine.get_singleton("ResonanceServer")

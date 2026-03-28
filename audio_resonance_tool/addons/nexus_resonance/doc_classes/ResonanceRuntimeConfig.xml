@@ -4,7 +4,7 @@
 		Runtime configuration resource for Nexus Resonance. Structure aligned with Steam Audio Settings.
 	</brief_description>
 	<description>
-		Nexus Resonance runtime configuration resource. Create or link in ResonanceRuntime node (Add Child Node > ResonanceRuntime). Structure and group order follow Steam Audio Settings: HRTF Settings, Ray Tracer Settings, Occlusion Settings, Real-time Reflections, Baked Reverb, Baked Pathing, Simulation Update, Reflection Effect, Hybrid Reverb, Reverb Output, Physics. Emits reflection_type_changed and pathing_enabled_changed when those settings change.
+		Nexus Resonance runtime configuration resource. Create or link in ResonanceRuntime node (Add Child Node > ResonanceRuntime). Structure and group order follow Steam Audio Settings: HRTF Settings, Ray Tracer Settings, Occlusion Settings, Real-time Reflections, Baked Reverb, Baked Pathing, Simulation Update, Reflection Effect, Hybrid Reverb, Reverb Output, Physics. Emits reflection_type_changed, pathing_enabled_changed, and audio_frame_size_changed when those settings change.
 	</description>
 	<tutorials>
 	</tutorials>
@@ -19,6 +19,12 @@
 			<param index="0" name="enabled" type="bool" />
 			<description>
 				Emitted when pathing_enabled changes.
+			</description>
+		</signal>
+		<signal name="audio_frame_size_changed">
+			<param index="0" name="new_size" type="int" />
+			<description>
+				Emitted when audio_frame_size changes (inspector value: 0 = Auto, or 256 / 512 / 1024 / 2048). In the editor, [ResonanceRuntime] reconnects the native audio engine when the server is already initialized (brief audio interruption).
 			</description>
 		</signal>
 	</signals>
@@ -67,7 +73,7 @@
 			Sample rate override. 0 = Use Godot Mix Rate (follow project settings). Other values = override; mismatch may cause audio issues (no resampling).
 		</member>
 		<member name="audio_frame_size" type="int" default="0">
-			Steam Audio block size. Auto (0) = derive from Project Settings audio/driver/output_latency. Manual (256/512/1024/2048) = override for performance tuning.
+			Steam Audio block size. Auto (0) = derive from Project Settings audio/driver/output_latency. Manual (256/512/1024/2048) = override for performance tuning. After changing while the game runs from the editor, [ResonanceRuntime] triggers [method ResonanceServer.reinit_audio_engine] via [signal audio_frame_size_changed] (same pattern as [signal reflection_type_changed]).
 		</member>
 		<member name="ambisonic_order" type="int" default="1">
 			Ambisonic order for reverb encoding: 1st Order, 2nd Order, or 3rd Order. Higher = more spatial detail, more CPU.
@@ -116,6 +122,9 @@
 		</member>
 		<member name="use_virtual_surround" type="bool" default="false">
 			Use virtual surround instead of HRTF.
+		</member>
+		<member name="direct_speaker_channels" type="int" default="2">
+			Direct path without HRTF: [code]IPLSpeakerLayout[/code] channel count (1 Mono, 2 Stereo, 4 Quad, 6 5.1, 8 7.1). With surround and Ambisonics encode, non-HRTF sources use [code]iplAmbisonicsPanningEffect[/code]; otherwise [code]iplPanningEffect[/code]. Godot [code]AudioStreamPlayback[/code] output remains stereo (fold-down inside the player). Invalid values become stereo at runtime. Requires [method ResonanceServer.reinit_audio_engine] after change while running.
 		</member>
 		<member name="hrtf_volume_db" type="float" default="0.0">
 			HRTF gain in dB for the embedded default HRTF. With custom SOFA, added (in dB) to each asset's volume before gain conversion.

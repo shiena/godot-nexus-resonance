@@ -31,6 +31,44 @@ float owner_volume_linear(const ResonancePlayer* owner) {
         return 1.0f;
     return resonance::sanitize_audio_float(owner->get_volume_linear());
 }
+
+bool ipl_all_channel_ptrs_ok(const IPLAudioBuffer& b, int nch) {
+    if (!b.data || b.numChannels < nch)
+        return false;
+    for (int c = 0; c < nch; ++c) {
+        if (!b.data[c])
+            return false;
+    }
+    return true;
+}
+
+/// Fold one multichannel sample to stereo (Steam Audio layout: quad / 5.1 / 7.1 channel order).
+void downmix_multichannel_sample(const float* const* d, int nch, int sample_idx, float& out_l, float& out_r) {
+    constexpr float k = 0.70710678f;
+    switch (nch) {
+    case 1:
+        out_l = out_r = d[0][sample_idx];
+        break;
+    case 2:
+        out_l = d[0][sample_idx];
+        out_r = d[1][sample_idx];
+        break;
+    case 4:
+        out_l = d[0][sample_idx] + k * d[2][sample_idx];
+        out_r = d[1][sample_idx] + k * d[3][sample_idx];
+        break;
+    case 6: // FL, FR, C, LFE, RL, RR
+        out_l = d[0][sample_idx] + k * d[2][sample_idx] + k * d[4][sample_idx];
+        out_r = d[1][sample_idx] + k * d[2][sample_idx] + k * d[5][sample_idx];
+        break;
+    case 8: // FL, FR, C, LFE, BL, BR, SL, SR
+        out_l = d[0][sample_idx] + k * d[2][sample_idx] + k * d[4][sample_idx] + k * d[6][sample_idx];
+        out_r = d[1][sample_idx] + k * d[2][sample_idx] + k * d[5][sample_idx] + k * d[7][sample_idx];
+        break;
+    default:
+        out_l = out_r = 0.0f;
+    }
+}
 } // namespace
 
 /// Apply reverb distance falloff: when distance >= rmd gain becomes 0; between fade_start and rmd, linear fade.
@@ -157,6 +195,7 @@ void ResonanceInternalPlayback::_cleanup_steam_audio() {
     memset(&sa_final_mix_buffer, 0, sizeof(IPLAudioBuffer));
 
     is_initialized = false;
+    direct_out_channels_ = 2;
 
     input_ring_l.clear();
     input_ring_r.clear();
@@ -183,31 +222,35 @@ void ResonanceInternalPlayback::_lazy_init_steam_audio(int ignored_rate) {
     context = srv->get_context_handle();
     int order = srv->get_ambisonic_order();
     int refl_type = srv->get_reflection_type();
+    direct_out_channels_ = srv->get_direct_speaker_channels();
+    if (direct_out_channels_ < 1)
+        direct_out_channels_ = 2;
 
     temp_process_buffer_l.resize(frame_size_);
     temp_process_buffer_r.resize(frame_size_);
 
     // 1. Initialize Direct (always create Ambisonics Encode path for runtime switching)
-    direct_processor.initialize(context, current_sample_rate, frame_size_, order, true);
+    direct_processor.initialize(context, current_sample_rate, frame_size_, order, true, direct_out_channels_);
 
     // 2. Initialize Reflection (convolution or parametric)
-    reflection_processor.initialize(context, current_sample_rate, frame_size_, order, refl_type);
+    reflection_processor.initialize(context, current_sample_rate, frame_size_, order, refl_type, srv->get_max_reverb_duration());
 
     // 3. Initialize Path Processor (for pathing simulation)
     path_processor.initialize(context, current_sample_rate, frame_size_, order);
     // 4. Initialize Mixer Processor (for convolution ambisonic decode)
     mixer_processor.initialize(context, current_sample_rate, frame_size_, order);
 
-    // 5. Allocate Buffers
+    // 5. Allocate Buffers (direct path matches server speaker layout; path processor stays stereo)
     if (iplAudioBufferAllocate(context, 2, frame_size_, &sa_in_buffer) != IPL_STATUS_SUCCESS ||
-        iplAudioBufferAllocate(context, 2, frame_size_, &sa_direct_out_buffer) != IPL_STATUS_SUCCESS ||
+        iplAudioBufferAllocate(context, direct_out_channels_, frame_size_, &sa_direct_out_buffer) != IPL_STATUS_SUCCESS ||
         iplAudioBufferAllocate(context, 2, frame_size_, &sa_path_out_buffer) != IPL_STATUS_SUCCESS ||
-        iplAudioBufferAllocate(context, 2, frame_size_, &sa_final_mix_buffer) != IPL_STATUS_SUCCESS) {
+        iplAudioBufferAllocate(context, direct_out_channels_, frame_size_, &sa_final_mix_buffer) != IPL_STATUS_SUCCESS) {
         ResonanceLog::error("ResonancePlayer: Playback Init Failed: Buffer allocation failed (IPLerror).");
         _cleanup_steam_audio();
         return;
     }
-    if (!sa_in_buffer.data || !sa_direct_out_buffer.data || !sa_path_out_buffer.data || !sa_final_mix_buffer.data) {
+    if (!ipl_all_channel_ptrs_ok(sa_in_buffer, 2) || !ipl_all_channel_ptrs_ok(sa_direct_out_buffer, direct_out_channels_) ||
+        !ipl_all_channel_ptrs_ok(sa_path_out_buffer, 2) || !ipl_all_channel_ptrs_ok(sa_final_mix_buffer, direct_out_channels_)) {
         ResonanceLog::error("ResonancePlayer: Playback Init Failed: Buffer allocation returned null.");
         _cleanup_steam_audio();
         return;
@@ -227,8 +270,10 @@ void ResonanceInternalPlayback::_add_reverb_to_output(IPLAudioBuffer* reverb_buf
                 output_ring_reverb_l.write(&mono, 1);
                 output_ring_reverb_r.write(&mono, 1);
             } else {
-                sa_final_mix_buffer.data[0][i] += mono;
-                sa_final_mix_buffer.data[1][i] += mono;
+                if (sa_final_mix_buffer.data[0])
+                    sa_final_mix_buffer.data[0][i] += mono;
+                if (direct_out_channels_ >= 2 && sa_final_mix_buffer.data[1])
+                    sa_final_mix_buffer.data[1][i] += mono;
             }
         }
     } else {
@@ -243,12 +288,47 @@ void ResonanceInternalPlayback::_add_reverb_to_output(IPLAudioBuffer* reverb_buf
                     output_ring_reverb_l.write(&l, 1);
                     output_ring_reverb_r.write(&r, 1);
                 } else {
-                    sa_final_mix_buffer.data[0][i] += l;
-                    sa_final_mix_buffer.data[1][i] += r;
+                    if (sa_final_mix_buffer.data[0])
+                        sa_final_mix_buffer.data[0][i] += l;
+                    if (direct_out_channels_ >= 2 && sa_final_mix_buffer.data[1])
+                        sa_final_mix_buffer.data[1][i] += r;
                 }
             }
         }
     }
+}
+
+void ResonanceInternalPlayback::_zero_sa_final_mix() {
+    if (!sa_final_mix_buffer.data)
+        return;
+    for (int c = 0; c < direct_out_channels_ && c < sa_final_mix_buffer.numChannels; ++c) {
+        if (sa_final_mix_buffer.data[c])
+            memset(sa_final_mix_buffer.data[c], 0, frame_size_ * sizeof(float));
+    }
+}
+
+void ResonanceInternalPlayback::_write_output_rings_folded() {
+    if (!sa_final_mix_buffer.data || direct_out_channels_ < 1)
+        return;
+    if (direct_out_channels_ == 1 && sa_final_mix_buffer.data[0]) {
+        output_ring_l.write(sa_final_mix_buffer.data[0], frame_size_);
+        output_ring_r.write(sa_final_mix_buffer.data[0], frame_size_);
+        return;
+    }
+    if (direct_out_channels_ == 2 && sa_final_mix_buffer.data[0] && sa_final_mix_buffer.data[1]) {
+        output_ring_l.write(sa_final_mix_buffer.data[0], frame_size_);
+        output_ring_r.write(sa_final_mix_buffer.data[1], frame_size_);
+        return;
+    }
+    for (int i = 0; i < frame_size_; ++i) {
+        float ol = 0.0f;
+        float orv = 0.0f;
+        downmix_multichannel_sample(sa_final_mix_buffer.data, direct_out_channels_, i, ol, orv);
+        temp_process_buffer_l[i] = ol;
+        temp_process_buffer_r[i] = orv;
+    }
+    output_ring_l.write(temp_process_buffer_l.data(), frame_size_);
+    output_ring_r.write(temp_process_buffer_r.data(), frame_size_);
 }
 
 void ResonanceInternalPlayback::_process_steam_audio_block() {
@@ -260,13 +340,13 @@ void ResonanceInternalPlayback::_process_steam_audio_block() {
         return;
 
     const float node_vol = owner_volume_linear(owner_player_);
-    if (!sa_in_buffer.data || !sa_in_buffer.data[0] || !sa_in_buffer.data[1])
+    if (!ipl_all_channel_ptrs_ok(sa_in_buffer, 2))
         return;
-    if (!sa_direct_out_buffer.data || !sa_direct_out_buffer.data[0] || !sa_direct_out_buffer.data[1])
+    if (!ipl_all_channel_ptrs_ok(sa_direct_out_buffer, direct_out_channels_))
         return;
-    if (!sa_path_out_buffer.data || !sa_path_out_buffer.data[0] || !sa_path_out_buffer.data[1])
+    if (!ipl_all_channel_ptrs_ok(sa_path_out_buffer, 2))
         return;
-    if (!sa_final_mix_buffer.data || !sa_final_mix_buffer.data[0] || !sa_final_mix_buffer.data[1])
+    if (!ipl_all_channel_ptrs_ok(sa_final_mix_buffer, direct_out_channels_))
         return;
 
     // 1. Read RingBuffer
@@ -287,19 +367,15 @@ void ResonanceInternalPlayback::_process_steam_audio_block() {
             }
         }
         if (!input_started) {
-            memset(sa_final_mix_buffer.data[0], 0, frame_size_ * sizeof(float));
-            memset(sa_final_mix_buffer.data[1], 0, frame_size_ * sizeof(float));
-            output_ring_l.write(sa_final_mix_buffer.data[0], frame_size_);
-            output_ring_r.write(sa_final_mix_buffer.data[1], frame_size_);
+            _zero_sa_final_mix();
+            _write_output_rings_folded();
             return;
         }
     }
 
     if (!srv->is_spatial_audio_output_ready()) {
-        memset(sa_final_mix_buffer.data[0], 0, frame_size_ * sizeof(float));
-        memset(sa_final_mix_buffer.data[1], 0, frame_size_ * sizeof(float));
-        output_ring_l.write(sa_final_mix_buffer.data[0], frame_size_);
-        output_ring_r.write(sa_final_mix_buffer.data[1], frame_size_);
+        _zero_sa_final_mix();
+        _write_output_rings_folded();
         return;
     }
 
@@ -342,9 +418,9 @@ void ResonanceInternalPlayback::_process_steam_audio_block() {
         if (srv && params_current.enable_reverb) {
             IPLReflectionEffectParams reverb_params{};
             bool has_reverb = srv->fetch_reverb_params(current_source_handle, reverb_params);
+            const int refl_type = srv->get_reflection_type();
 
             if (has_reverb) {
-                int refl_type = srv->get_reflection_type();
                 if (refl_type == resonance::kReflectionHybrid) {
                     if (params_current.reflections_eq[0] != 1.0f || params_current.reflections_eq[1] != 1.0f || params_current.reflections_eq[2] != 1.0f) {
                         reverb_params.eq[0] *= params_current.reflections_eq[0];
@@ -397,7 +473,30 @@ void ResonanceInternalPlayback::_process_steam_audio_block() {
                     reflection_processor.process_mix_direct(sa_in_buffer, reverb_params,
                                                             prev_parametric_reflections_mix_level_, params_current.reflections_mix_level);
                     prev_parametric_reflections_mix_level_ = params_current.reflections_mix_level;
+                    reflection_tail_params_ = reverb_params;
+                    reflection_tail_have_params_ = true;
+                    reflection_tail_wet_gain_ = resonance::sanitize_audio_float(reverb_gain);
+                    reflection_tail_split_output_ = params_current.reverb_split_output;
                 }
+            } else if (reflection_tail_have_params_ &&
+                       (refl_type == resonance::kReflectionParametric || refl_type == resonance::kReflectionHybrid)) {
+                // fetch_reverb_params can fail (simulation lock, pending source, etc.). Skipping Apply for a whole
+                // Steam frame leaves dry advancing but wet frozen — heard as block-rate pumping. Keep advancing the
+                // effect with last-known room params; distance/air gain still follows current playback params.
+                IPLReflectionEffectParams rp = reflection_tail_params_;
+                if (refl_type == resonance::kReflectionHybrid && params_current.reflections_delay >= 0)
+                    rp.delay = params_current.reflections_delay;
+                reverb_gain = resonance::sanitize_audio_float(params_current.reverb_pathing_attenuation);
+                if (params_current.apply_air_absorption) {
+                    float air_avg = (params_current.air_absorption[0] + params_current.air_absorption[1] + params_current.air_absorption[2]) / 3.0f;
+                    reverb_gain *= resonance::sanitize_audio_float(air_avg);
+                }
+                reverb_gain = apply_reverb_distance_falloff(reverb_gain, params_current.distance, srv->get_reverb_max_distance());
+                reverb_to_player_output = true;
+                reflection_processor.process_mix_direct(sa_in_buffer, rp, prev_parametric_reflections_mix_level_, params_current.reflections_mix_level);
+                prev_parametric_reflections_mix_level_ = params_current.reflections_mix_level;
+                reflection_tail_wet_gain_ = resonance::sanitize_audio_float(reverb_gain);
+                reflection_tail_split_output_ = params_current.reverb_split_output;
             } else {
                 instrumentation_reverb_miss_blocks.fetch_add(1, std::memory_order_relaxed);
                 // Throttle: skip first N misses, then log only after threshold (reset to 0 after log)
@@ -427,15 +526,18 @@ void ResonanceInternalPlayback::_process_steam_audio_block() {
         eff_gain *= target_direct;
         dbg_direct = resonance::sanitize_audio_float(std::clamp(eff_gain, 0.0f, 1.0f));
 
-        // Apply to Direct (Left & Right)
-        for (int i = 0; i < 2; i++) {
-            resonance::apply_volume_ramp(prev_direct_weight, target_direct, frame_size_, sa_direct_out_buffer.data[i]);
+        // Apply to Direct (all speaker channels)
+        for (int c = 0; c < direct_out_channels_; c++) {
+            if (sa_direct_out_buffer.data[c])
+                resonance::apply_volume_ramp(prev_direct_weight, target_direct, frame_size_, sa_direct_out_buffer.data[c]);
         }
         prev_direct_weight = target_direct;
 
         // Mix Direct into final buffer
-        memcpy(sa_final_mix_buffer.data[0], sa_direct_out_buffer.data[0], frame_size_ * sizeof(float));
-        memcpy(sa_final_mix_buffer.data[1], sa_direct_out_buffer.data[1], frame_size_ * sizeof(float));
+        for (int c = 0; c < direct_out_channels_; c++) {
+            if (sa_direct_out_buffer.data[c] && sa_final_mix_buffer.data[c])
+                memcpy(sa_final_mix_buffer.data[c], sa_direct_out_buffer.data[c], frame_size_ * sizeof(float));
+        }
 
         // Add Reverb to player output (Parametric/Hybrid only; Convolution feeds mixer, no fallback)
         // When reverb_split_output: write to reverb ring for separate bus; else mix into final.
@@ -493,8 +595,10 @@ void ResonanceInternalPlayback::_process_steam_audio_block() {
                 instrumentation_last_pathing_out_rms.store(path_out_rms, std::memory_order_relaxed);
                 dbg_path = resonance::sanitize_audio_float(params_current.pathing_mix_level);
                 for (int i = 0; i < frame_size_; i++) {
-                    sa_final_mix_buffer.data[0][i] += sa_path_out_buffer.data[0][i];
-                    sa_final_mix_buffer.data[1][i] += sa_path_out_buffer.data[1][i];
+                    if (sa_final_mix_buffer.data[0])
+                        sa_final_mix_buffer.data[0][i] += sa_path_out_buffer.data[0][i];
+                    if (direct_out_channels_ >= 2 && sa_final_mix_buffer.data[1])
+                        sa_final_mix_buffer.data[1][i] += sa_path_out_buffer.data[1][i];
                 }
                 prev_pathing_mix_level_ = params_current.pathing_mix_level;
                 srv->record_pathing_player_applied();
@@ -518,8 +622,14 @@ void ResonanceInternalPlayback::_process_steam_audio_block() {
         instrumentation_last_pathing_out_rms.store(0.0f, std::memory_order_relaxed);
         instrumentation_last_pathing_order.store(-1, std::memory_order_relaxed);
         instrumentation_passthrough_blocks.fetch_add(1, std::memory_order_relaxed);
-        memcpy(sa_final_mix_buffer.data[0], sa_in_buffer.data[0], frame_size_ * sizeof(float));
-        memcpy(sa_final_mix_buffer.data[1], sa_in_buffer.data[1], frame_size_ * sizeof(float));
+        if (sa_final_mix_buffer.data[0] && sa_in_buffer.data[0])
+            memcpy(sa_final_mix_buffer.data[0], sa_in_buffer.data[0], frame_size_ * sizeof(float));
+        if (direct_out_channels_ >= 2 && sa_final_mix_buffer.data[1] && sa_in_buffer.data[1])
+            memcpy(sa_final_mix_buffer.data[1], sa_in_buffer.data[1], frame_size_ * sizeof(float));
+        for (int c = 2; c < direct_out_channels_; c++) {
+            if (sa_final_mix_buffer.data[c])
+                memset(sa_final_mix_buffer.data[c], 0, frame_size_ * sizeof(float));
+        }
 
         // Reset Ramps if we lost source, so next time it fades in cleanly
         prev_direct_weight = 1.0f;
@@ -528,26 +638,27 @@ void ResonanceInternalPlayback::_process_steam_audio_block() {
     }
 
     // Safety: clamp output to prevent NaN/overflow from processing bugs
-    for (int i = 0; i < frame_size_; i++) {
-        sa_final_mix_buffer.data[0][i] = std::clamp(sa_final_mix_buffer.data[0][i], -1.0f, 1.0f);
-        sa_final_mix_buffer.data[1][i] = std::clamp(sa_final_mix_buffer.data[1][i], -1.0f, 1.0f);
+    for (int c = 0; c < direct_out_channels_; c++) {
+        if (!sa_final_mix_buffer.data[c])
+            continue;
+        for (int i = 0; i < frame_size_; i++)
+            sa_final_mix_buffer.data[c][i] = std::clamp(sa_final_mix_buffer.data[c][i], -1.0f, 1.0f);
     }
 
-    // Instrumentation: output RMS and silent-block detection (pre–node volume; matches ring samples)
+    // Instrumentation: output RMS and silent-block detection (stereo fold-down; matches ring samples)
     float sum_sq = 0.0f;
     for (int i = 0; i < frame_size_; i++) {
-        float l = sa_final_mix_buffer.data[0][i];
-        float r = sa_final_mix_buffer.data[1][i];
+        float l = 0.0f;
+        float r = 0.0f;
+        downmix_multichannel_sample(sa_final_mix_buffer.data, direct_out_channels_, i, l, r);
         sum_sq += l * l + r * r;
     }
-    float rms = std::sqrt(sum_sq / (2 * frame_size_));
+    float rms = (frame_size_ > 0) ? std::sqrt(sum_sq / (2.0f * static_cast<float>(frame_size_))) : 0.0f;
     instrumentation_last_output_rms_q8.store((uint32_t)(rms * 256.0f), std::memory_order_relaxed);
     if (local_source && rms < resonance::kInstrumentationSilentBlockThreshold)
         instrumentation_silent_output_blocks.fetch_add(1, std::memory_order_relaxed);
 
-    // Output to Output RingBuffer
-    output_ring_l.write(sa_final_mix_buffer.data[0], frame_size_);
-    output_ring_r.write(sa_final_mix_buffer.data[1], frame_size_);
+    _write_output_rings_folded();
 
     auto t1 = std::chrono::steady_clock::now();
     uint64_t us = (uint64_t)std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
@@ -678,10 +789,56 @@ int32_t ResonanceInternalPlayback::_mix(AudioFrame* buffer, double rate_scale, i
             return 0;
         }
         while (output_ring_l.get_available_read() < (size_t)frames) {
-            if (!direct_processor.process_tail(sa_direct_out_buffer))
+            if (!ipl_all_channel_ptrs_ok(sa_final_mix_buffer, direct_out_channels_) ||
+                !ipl_all_channel_ptrs_ok(sa_direct_out_buffer, direct_out_channels_))
                 break;
-            output_ring_l.write(sa_direct_out_buffer.data[0], frame_size_);
-            output_ring_r.write(sa_direct_out_buffer.data[1], frame_size_);
+
+            bool produced = false;
+            _zero_sa_final_mix();
+
+            if (direct_processor.process_tail(sa_direct_out_buffer)) {
+                for (int c = 0; c < direct_out_channels_; c++) {
+                    if (sa_direct_out_buffer.data[c] && sa_final_mix_buffer.data[c])
+                        memcpy(sa_final_mix_buffer.data[c], sa_direct_out_buffer.data[c], frame_size_ * sizeof(float));
+                }
+                produced = true;
+            }
+
+            if (local_source && reflection_tail_have_params_ && reflection_processor.get_tail_size_samples() > 0) {
+                IPLReflectionEffectParams rp = reflection_tail_params_;
+                reflection_processor.tail_apply_direct(&rp);
+                IPLAudioBuffer* reverb_buf = reflection_processor.get_direct_output_buffer();
+                if (reverb_buf && reverb_buf->data) {
+                    _add_reverb_to_output(reverb_buf, reflection_tail_wet_gain_, reflection_tail_split_output_);
+                    produced = true;
+                }
+            }
+            if (reflection_processor.get_tail_size_samples() <= 0)
+                reflection_tail_have_params_ = false;
+
+            if (local_source && srv_guard && srv_guard->is_pathing_enabled() && path_processor.get_tail_size_samples() > 0 &&
+                sa_path_out_buffer.data && sa_path_out_buffer.data[0] && sa_path_out_buffer.data[1]) {
+                if (path_processor.process_tail(sa_path_out_buffer)) {
+                    for (int i = 0; i < frame_size_; i++) {
+                        if (sa_final_mix_buffer.data[0])
+                            sa_final_mix_buffer.data[0][i] += sa_path_out_buffer.data[0][i];
+                        if (direct_out_channels_ >= 2 && sa_final_mix_buffer.data[1])
+                            sa_final_mix_buffer.data[1][i] += sa_path_out_buffer.data[1][i];
+                    }
+                    produced = true;
+                }
+            }
+
+            if (!produced)
+                break;
+
+            for (int c = 0; c < direct_out_channels_; c++) {
+                if (!sa_final_mix_buffer.data[c])
+                    continue;
+                for (int i = 0; i < frame_size_; i++)
+                    sa_final_mix_buffer.data[c][i] = std::clamp(sa_final_mix_buffer.data[c][i], -1.0f, 1.0f);
+            }
+            _write_output_rings_folded();
         }
         int available = (int)output_ring_l.get_available_read();
         int to_copy = (frames < available) ? frames : available;
@@ -769,7 +926,17 @@ void ResonanceInternalPlayback::_start(double from_pos) {
     prev_conv_reverb_gain = -1.0f;
     prev_parametric_reflections_mix_level_ = 1.0f;
     prev_pathing_mix_level_ = 1.0f;
+    reflection_processor.reset_effect();
+    path_processor.reset_effect();
+    reflection_tail_have_params_ = false;
+    memset(&reflection_tail_params_, 0, sizeof(reflection_tail_params_));
     direct_processor.reset_for_new_playback();
+    input_ring_l.clear();
+    input_ring_r.clear();
+    output_ring_l.clear();
+    output_ring_r.clear();
+    output_ring_reverb_l.clear();
+    output_ring_reverb_r.clear();
     if (base_playback.is_valid())
         base_playback->start(from_pos);
 }
@@ -806,10 +973,10 @@ void ResonanceReverbPlayback::set_parent_player(ResonancePlayer* p_player) {
 int32_t ResonanceReverbPlayback::_mix(AudioFrame* buffer, float _rate_scale, int32_t frames) {
     if (!parent_player || frames <= 0)
         return 0;
-    if (!parent_player->is_playing())
-        return 0;
     ResonanceInternalPlayback* main_pb = Object::cast_to<ResonanceInternalPlayback>(parent_player->get_stream_playback().ptr());
     if (!main_pb)
+        return 0;
+    if (!parent_player->is_playing() && main_pb->get_reverb_ring_available_read() == 0)
         return 0;
     return main_pb->read_reverb_frames(buffer, frames);
 }
@@ -1540,6 +1707,9 @@ void ResonancePlayer::_update_stream_setup() {
 }
 
 void ResonancePlayer::play_stream(double from_pos) {
+    // Force full playback-parameter push on first playing frames (LOD anchor/timer otherwise stale after prior shot).
+    playback_lod_have_anchor_ = false;
+    playback_lod_time_since_full_ = 0.0;
     _update_stream_setup();
     // GDExtension may narrow to float internally; keep double at call site.
     // NOLINTNEXTLINE(bugprone-narrowing-conversions)

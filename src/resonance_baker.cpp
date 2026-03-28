@@ -17,6 +17,16 @@ using namespace godot;
 // Thread-safe counter for fallback probe data path when no path is set
 static std::atomic<int> s_fallback_counter{0};
 
+/// Marks probe data out of sync with ResonanceProbeVolume::_get_bake_params_hash() so editor gizmos use gray
+/// (re-bake needed) until a full bake writes a matching hash again. Uses a fixed sentinel (not XOR) so repeated
+/// edits without re-bake cannot accidentally restore a matching hash.
+static void invalidate_probe_data_bake_params_hash(const Ref<ResonanceProbeData>& probe_data_res) {
+    if (probe_data_res.is_null())
+        return;
+    constexpr uint32_t kInvalidBakeParamsStamp = 0xDEADBEEFu;
+    probe_data_res->set_bake_params_hash(static_cast<int64_t>(kInvalidBakeParamsStamp));
+}
+
 /// Convolution=0 -> BAKECONVOLUTION only; Parametric=1 -> BAKEPARAMETRIC only; Hybrid=2 or -1 -> both
 static IPLReflectionsBakeFlags _bake_flags_from_reflection_type(int reflection_type) {
     if (reflection_type == resonance::kReflectionConvolution)
@@ -30,6 +40,7 @@ static void _fill_reflections_bake_params(IPLReflectionsBakeParams& out,
                                           IPLScene scene, IPLProbeBatch probe_batch, IPLSceneType scene_type,
                                           IPLOpenCLDevice opencl_device, IPLRadeonRaysDevice radeon_rays_device,
                                           IPLBakedDataVariation variation, int num_rays, int num_bounces, int reflection_type, int num_threads,
+                                          int ambisonics_order,
                                           const Vector3* endpoint_position = nullptr, float influence_radius = 0.0f) {
     out.scene = scene;
     out.probeBatch = probe_batch;
@@ -46,7 +57,7 @@ static void _fill_reflections_bake_params(IPLReflectionsBakeParams& out,
     out.numRays = num_rays;
     out.numBounces = num_bounces;
     out.numDiffuseSamples = resonance::kBakerNumDiffuseSamples;
-    out.order = 1;
+    out.order = resonance::clamp_bake_ambisonics_order(ambisonics_order);
     out.simulatedDuration = resonance::kBakerSimulatedDuration;
     out.savedDuration = resonance::kBakerSimulatedDuration;
     out.numThreads = (num_threads < 1) ? 1 : num_threads;
@@ -74,6 +85,28 @@ static IPLProbeBatch _load_probe_batch_from_resource(IPLContext context, Ref<Res
     }
     iplProbeBatchCommit(batch);
     return batch;
+}
+
+static bool _save_probe_batch_to_probe_data(IPLContext context, IPLProbeBatch batch, Ref<ResonanceProbeData> probe_data_res) {
+    IPLSerializedObjectSettings serial_settings{};
+    IPLSerializedObject serialized_object = nullptr;
+    if (iplSerializedObjectCreate(context, &serial_settings, &serialized_object) != IPL_STATUS_SUCCESS) {
+        ResonanceLog::error("ResonanceBaker: iplSerializedObjectCreate failed (_save_probe_batch_to_probe_data).");
+        return false;
+    }
+    IPLScopedRelease<IPLSerializedObject> serial_guard(serialized_object, iplSerializedObjectRelease);
+    iplProbeBatchSave(batch, serialized_object);
+    IPLsize size = iplSerializedObjectGetSize(serialized_object);
+    IPLbyte* data = iplSerializedObjectGetData(serialized_object);
+    if (size == 0 || !data) {
+        UtilityFunctions::push_error("Nexus Resonance: Serialized probe batch is empty after edit.");
+        return false;
+    }
+    PackedByteArray new_pba;
+    new_pba.resize((int64_t)size);
+    memcpy(new_pba.ptrw(), data, size);
+    probe_data_res->set_data(new_pba);
+    return true;
 }
 
 static String _build_tres_content(const PackedByteArray& pba, Ref<ResonanceProbeData> probe_data_res, int reflection_type) {
@@ -241,7 +274,8 @@ bool ResonanceBaker::bake_with_probe_array(IPLContext context, IPLScene scene, I
                                            int generation_type, float height_above_floor,
                                            int num_bounces, int num_rays, int reflection_type,
                                            Ref<ResonanceProbeData> probe_data_res,
-                                           void (*progress_callback)(float, void*), void* progress_user_data, bool pathing_scheduled, int num_threads) {
+                                           void (*progress_callback)(float, void*), void* progress_user_data, bool pathing_scheduled, int num_threads,
+                                           int ambisonics_order) {
     if (generation_type != GEN_CENTROID && generation_type != GEN_UNIFORM_FLOOR) {
         UtilityFunctions::push_error("ResonanceBaker: bake_with_probe_array only supports Centroid (0) and UniformFloor (1). Use bake_manual_grid for Volume.");
         return false;
@@ -277,7 +311,7 @@ bool ResonanceBaker::bake_with_probe_array(IPLContext context, IPLScene scene, I
             PackedVector3Array points = generate_manual_grid(volume_transform, extents, spacing, generation_type, height_above_floor);
             if (!points.is_empty()) {
                 return bake_manual_grid(context, scene, scene_type, opencl_device, radeon_rays_device,
-                                        points, num_bounces, num_rays, reflection_type, probe_data_res, progress_callback, progress_user_data, pathing_scheduled, num_threads);
+                                        points, num_bounces, num_rays, reflection_type, probe_data_res, progress_callback, progress_user_data, pathing_scheduled, num_threads, ambisonics_order);
             }
         }
         UtilityFunctions::push_error("ResonanceBaker: Steam probe array generated 0 probes. Check volume and scene geometry.");
@@ -303,7 +337,7 @@ bool ResonanceBaker::bake_with_probe_array(IPLContext context, IPLScene scene, I
     iplProbeBatchCommit(probeBatch);
     IPLReflectionsBakeParams bakeParams{};
     _fill_reflections_bake_params(bakeParams, scene, probeBatch, scene_type, opencl_device, radeon_rays_device,
-                                  IPL_BAKEDDATAVARIATION_REVERB, num_rays, num_bounces, reflection_type, num_threads);
+                                  IPL_BAKEDDATAVARIATION_REVERB, num_rays, num_bounces, reflection_type, num_threads, ambisonics_order);
     AdapterData adapter = {progress_callback, progress_user_data};
     iplReflectionsBakerBake(context, &bakeParams,
                             (progress_callback && progress_user_data) ? _ipl_progress_adapter : nullptr,
@@ -339,7 +373,7 @@ bool ResonanceBaker::bake_with_probe_array(IPLContext context, IPLScene scene, I
     return true;
 }
 
-bool ResonanceBaker::bake_manual_grid(IPLContext context, IPLScene scene, IPLSceneType scene_type, IPLOpenCLDevice opencl_device, IPLRadeonRaysDevice radeon_rays_device, const PackedVector3Array& probe_positions, int num_bounces, int num_rays, int reflection_type, Ref<ResonanceProbeData> probe_data_res, void (*progress_callback)(float, void*), void* progress_user_data, bool pathing_scheduled, int num_threads) {
+bool ResonanceBaker::bake_manual_grid(IPLContext context, IPLScene scene, IPLSceneType scene_type, IPLOpenCLDevice opencl_device, IPLRadeonRaysDevice radeon_rays_device, const PackedVector3Array& probe_positions, int num_bounces, int num_rays, int reflection_type, Ref<ResonanceProbeData> probe_data_res, void (*progress_callback)(float, void*), void* progress_user_data, bool pathing_scheduled, int num_threads, int ambisonics_order) {
     Engine* eng = Engine::get_singleton();
     if (eng && eng->is_editor_hint()) {
         const char* refl_name = (reflection_type == resonance::kReflectionConvolution) ? "Convolution" : (reflection_type == resonance::kReflectionParametric) ? "Parametric"
@@ -390,7 +424,7 @@ bool ResonanceBaker::bake_manual_grid(IPLContext context, IPLScene scene, IPLSce
     // 3. Bake Params - always bake both so Convolution, Parametric and Hybrid work at runtime without re-bake
     IPLReflectionsBakeParams bakeParams{};
     _fill_reflections_bake_params(bakeParams, scene, probeBatch, scene_type, opencl_device, radeon_rays_device,
-                                  IPL_BAKEDDATAVARIATION_REVERB, num_rays, num_bounces, reflection_type, num_threads);
+                                  IPL_BAKEDDATAVARIATION_REVERB, num_rays, num_bounces, reflection_type, num_threads, ambisonics_order);
 
     // 4. Run Bake (with optional progress callback)
     AdapterData adapter = {progress_callback, progress_user_data};
@@ -520,7 +554,8 @@ bool ResonanceBaker::_bake_static_endpoint(IPLContext context, IPLScene scene, I
                                            IPLOpenCLDevice opencl_device, IPLRadeonRaysDevice radeon_rays_device,
                                            Ref<ResonanceProbeData> probe_data_res, Vector3 endpoint_position, float influence_radius,
                                            IPLBakedDataVariation variation, const char* error_prefix, const char* success_msg,
-                                           int num_bounces, int num_rays, void (*progress_callback)(float, void*), void* progress_user_data, int num_threads) {
+                                           int num_bounces, int num_rays, void (*progress_callback)(float, void*), void* progress_user_data, int num_threads,
+                                           int ambisonics_order) {
     String prefix(error_prefix);
     if (probe_data_res.is_null() || probe_data_res->get_data().is_empty()) {
         UtilityFunctions::push_error("Nexus Resonance: " + prefix + " requires probe_data with existing baked probes (Bake Probes first).");
@@ -544,7 +579,7 @@ bool ResonanceBaker::_bake_static_endpoint(IPLContext context, IPLScene scene, I
     int refl_type = baked_type >= 0 ? baked_type : 2;
     IPLReflectionsBakeParams bakeParams{};
     _fill_reflections_bake_params(bakeParams, scene, batch, scene_type, opencl_device, radeon_rays_device,
-                                  variation, num_rays, num_bounces, refl_type, num_threads,
+                                  variation, num_rays, num_bounces, refl_type, num_threads, ambisonics_order,
                                   &endpoint_position, influence_radius);
 
     AdapterData adapter = {progress_callback, progress_user_data};
@@ -582,19 +617,129 @@ bool ResonanceBaker::_bake_static_endpoint(IPLContext context, IPLScene scene, I
 bool ResonanceBaker::bake_static_source(IPLContext context, IPLScene scene, IPLSceneType scene_type,
                                         IPLOpenCLDevice opencl_device, IPLRadeonRaysDevice radeon_rays_device,
                                         Ref<ResonanceProbeData> probe_data_res, Vector3 endpoint_position, float influence_radius,
-                                        int num_bounces, int num_rays, void (*progress_callback)(float, void*), void* progress_user_data, int num_threads) {
+                                        int num_bounces, int num_rays, void (*progress_callback)(float, void*), void* progress_user_data, int num_threads,
+                                        int ambisonics_order) {
     return _bake_static_endpoint(context, scene, scene_type, opencl_device, radeon_rays_device,
                                  probe_data_res, endpoint_position, influence_radius,
                                  IPL_BAKEDDATAVARIATION_STATICSOURCE, "bake_static_source", "Static source baked successfully.",
-                                 num_bounces, num_rays, progress_callback, progress_user_data, num_threads);
+                                 num_bounces, num_rays, progress_callback, progress_user_data, num_threads, ambisonics_order);
 }
 
 bool ResonanceBaker::bake_static_listener(IPLContext context, IPLScene scene, IPLSceneType scene_type,
                                           IPLOpenCLDevice opencl_device, IPLRadeonRaysDevice radeon_rays_device,
                                           Ref<ResonanceProbeData> probe_data_res, Vector3 endpoint_position, float influence_radius,
-                                          int num_bounces, int num_rays, void (*progress_callback)(float, void*), void* progress_user_data, int num_threads) {
+                                          int num_bounces, int num_rays, void (*progress_callback)(float, void*), void* progress_user_data, int num_threads,
+                                          int ambisonics_order) {
     return _bake_static_endpoint(context, scene, scene_type, opencl_device, radeon_rays_device,
                                  probe_data_res, endpoint_position, influence_radius,
                                  IPL_BAKEDDATAVARIATION_STATICLISTENER, "bake_static_listener", "Static listener baked successfully.",
-                                 num_bounces, num_rays, progress_callback, progress_user_data, num_threads);
+                                 num_bounces, num_rays, progress_callback, progress_user_data, num_threads, ambisonics_order);
+}
+
+int32_t ResonanceBaker::probe_data_get_num_probes(IPLContext context, Ref<ResonanceProbeData> probe_data_res) const {
+    if (!context || probe_data_res.is_null() || probe_data_res->get_data().is_empty())
+        return -1;
+    IPLProbeBatch batch = _load_probe_batch_from_resource(context, probe_data_res);
+    if (!batch)
+        return -1;
+    int32_t n = iplProbeBatchGetNumProbes(batch);
+    iplProbeBatchRelease(&batch);
+    return n;
+}
+
+bool ResonanceBaker::probe_data_remove_probe_at_index(IPLContext context, Ref<ResonanceProbeData> probe_data_res, int32_t index) const {
+    if (!context || probe_data_res.is_null() || probe_data_res->get_data().is_empty()) {
+        UtilityFunctions::push_error("Nexus Resonance: probe_data_remove_probe_at_index requires context and non-empty probe data.");
+        return false;
+    }
+    IPLProbeBatch batch = _load_probe_batch_from_resource(context, probe_data_res);
+    if (!batch) {
+        UtilityFunctions::push_error("Nexus Resonance: probe_data_remove_probe_at_index failed to load probe batch.");
+        return false;
+    }
+    IPLScopedRelease<IPLProbeBatch> batch_guard(batch, iplProbeBatchRelease);
+    int32_t n = iplProbeBatchGetNumProbes(batch);
+    if (index < 0 || index >= n) {
+        if (n <= 0)
+            UtilityFunctions::push_error("Nexus Resonance: probe batch has no probes.");
+        else
+            UtilityFunctions::push_error("Nexus Resonance: probe index out of range (0 .. " +
+                                         String::num_int64(static_cast<int64_t>(n - 1)) + ").");
+        return false;
+    }
+    iplProbeBatchRemoveProbe(batch, index);
+    iplProbeBatchCommit(batch);
+    if (!_save_probe_batch_to_probe_data(context, batch, probe_data_res))
+        return false;
+    PackedVector3Array pos = probe_data_res->get_probe_positions();
+    if (pos.size() == n) {
+        pos.remove_at(index);
+        probe_data_res->set_probe_positions(pos);
+    }
+    probe_data_res->set_pathing_params_hash(0);
+    Engine* eng = Engine::get_singleton();
+    if (eng && eng->is_editor_hint()) {
+        UtilityFunctions::print_rich("[color=cyan]Nexus Resonance:[/color] Removed probe " +
+                                     String::num_int64(static_cast<int64_t>(index)) +
+                                     ". Re-bake pathing if needed; call reload_probe_batch on volumes using this resource.");
+    }
+    return true;
+}
+
+bool ResonanceBaker::probe_data_remove_baked_data_layer(IPLContext context, Ref<ResonanceProbeData> probe_data_res, int baked_data_type,
+                                                        int variation, Vector3 endpoint, float influence_radius) const {
+    if (!context || probe_data_res.is_null() || probe_data_res->get_data().is_empty()) {
+        UtilityFunctions::push_error("Nexus Resonance: probe_data_remove_baked_data_layer requires context and non-empty probe data.");
+        return false;
+    }
+    if (baked_data_type < 0 || baked_data_type > 1) {
+        UtilityFunctions::push_error("Nexus Resonance: baked_data_type must be 0 (reflections) or 1 (pathing).");
+        return false;
+    }
+    if (variation < 0 || variation > 3) {
+        UtilityFunctions::push_error("Nexus Resonance: variation must be 0–3 (reverb, static source, static listener, dynamic).");
+        return false;
+    }
+    IPLBakedDataIdentifier id{};
+    id.type = (baked_data_type == 0) ? IPL_BAKEDDATATYPE_REFLECTIONS : IPL_BAKEDDATATYPE_PATHING;
+    id.variation = static_cast<IPLBakedDataVariation>(variation);
+    if (id.variation == IPL_BAKEDDATAVARIATION_STATICSOURCE || id.variation == IPL_BAKEDDATAVARIATION_STATICLISTENER) {
+        id.endpointInfluence.center = ResonanceUtils::to_ipl_vector3(endpoint);
+        id.endpointInfluence.radius = influence_radius;
+    }
+    IPLProbeBatch batch = _load_probe_batch_from_resource(context, probe_data_res);
+    if (!batch) {
+        UtilityFunctions::push_error("Nexus Resonance: probe_data_remove_baked_data_layer failed to load probe batch.");
+        return false;
+    }
+    IPLScopedRelease<IPLProbeBatch> batch_guard(batch, iplProbeBatchRelease);
+    IPLsize layer_size = iplProbeBatchGetDataSize(batch, &id);
+    if (layer_size == 0) {
+        UtilityFunctions::push_warning(
+            "Nexus Resonance: No baked data for the requested layer (type=" +
+            String::num_int64(static_cast<int64_t>(baked_data_type)) + ", variation=" +
+            String::num_int64(static_cast<int64_t>(variation)) + "). Nothing was removed.");
+        return false;
+    }
+    iplProbeBatchRemoveData(batch, &id);
+    iplProbeBatchCommit(batch);
+    if (!_save_probe_batch_to_probe_data(context, batch, probe_data_res))
+        return false;
+    if (id.type == IPL_BAKEDDATATYPE_PATHING)
+        probe_data_res->set_pathing_params_hash(0);
+    if (id.type == IPL_BAKEDDATATYPE_REFLECTIONS && id.variation == IPL_BAKEDDATAVARIATION_REVERB)
+        probe_data_res->set_baked_reflection_type(-1);
+    if (id.type == IPL_BAKEDDATATYPE_REFLECTIONS && id.variation == IPL_BAKEDDATAVARIATION_STATICSOURCE)
+        probe_data_res->set_static_source_params_hash(0);
+    if (id.type == IPL_BAKEDDATATYPE_REFLECTIONS && id.variation == IPL_BAKEDDATAVARIATION_STATICLISTENER)
+        probe_data_res->set_static_listener_params_hash(0);
+    // Pathing is optional for gameplay; stripping it should not force gray gizmos. Reflections layers do.
+    if (id.type == IPL_BAKEDDATATYPE_REFLECTIONS)
+        invalidate_probe_data_bake_params_hash(probe_data_res);
+    Engine* eng = Engine::get_singleton();
+    if (eng && eng->is_editor_hint()) {
+        UtilityFunctions::print_rich(
+            "[color=cyan]Nexus Resonance:[/color] Removed baked data layer. Call reload_probe_batch on volumes using this resource.");
+    }
+    return true;
 }

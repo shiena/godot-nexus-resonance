@@ -86,6 +86,8 @@ class ResonanceInternalPlayback : public AudioStreamPlayback {
 
     static const int kMaxBlocksPerMixCall = 4;           // Cap blocks per _mix to avoid exceeding audio callback budget (Godot frames 1024 + frame_size 512)
     int frame_size_ = resonance::kGodotDefaultFrameSize; // Steam Audio block size from ResonanceServer (256/512/1024)
+    /// Direct spatializer output channels (1/2/4/6/8); Godot _mix is still stereo (fold-down here).
+    int direct_out_channels_ = 2;
     Ref<AudioStreamPlayback> base_playback;
 
     std::atomic<bool> params_dirty = false;
@@ -144,6 +146,11 @@ class ResonanceInternalPlayback : public AudioStreamPlayback {
     // Parametric pathing fallback: persistent sh coeffs when baked path fails (order 1 = 4 coeffs)
     float parametric_path_sh_coeffs[4];
 
+    IPLReflectionEffectParams reflection_tail_params_{};
+    bool reflection_tail_have_params_ = false;
+    float reflection_tail_wet_gain_ = 1.0f;
+    bool reflection_tail_split_output_ = false;
+
     // --- AUDIO INSTRUMENTATION (for dropout debugging) ---
     // Atomic counters updated from audio thread; read from main thread
     std::atomic<uint64_t> instrumentation_input_dropped{0};                                   // Samples dropped when input ring full
@@ -176,6 +183,8 @@ class ResonanceInternalPlayback : public AudioStreamPlayback {
     void _process_steam_audio_block();                                                         // Process a single block of audio through Steam Audio
     void _sync_params();                                                                       // Sync parameters from next to current
     void _add_reverb_to_output(IPLAudioBuffer* reverb_buf, float refl_mix, bool split_output); // Parametric vs Convolution, split vs mix
+    void _write_output_rings_folded();                                                         // sa_final_mix_buffer (N ch) -> stereo rings via temp_process_buffer_*
+    void _zero_sa_final_mix();                                                                 // memset all direct_out_channels_
 
   public:
     ResonanceInternalPlayback();
@@ -207,6 +216,9 @@ class ResonanceInternalPlayback : public AudioStreamPlayback {
                                       int32_t& out_pathing_order) const;
     /// Reset all instrumentation counters. Call from main thread to clear and re-observe.
     void reset_instrumentation();
+    /// Split convolution wet ring depth (for ResonanceReverbPlayback after main stream stops).
+    size_t get_reverb_ring_available_read() const { return output_ring_reverb_l.get_available_read(); }
+
     /// Fills buffer with reverb frames (or silence if unavailable). Always returns frames. Called from reverb playback _mix.
     int32_t read_reverb_frames(AudioFrame* buffer, int32_t frames);
     virtual void _stop() override;                // Stops playback

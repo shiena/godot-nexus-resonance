@@ -1,6 +1,7 @@
 #include "resonance_processor_direct.h"
 #include "resonance_log.h"
 #include "resonance_server.h"
+#include "resonance_speaker_layout.h"
 #include "resonance_utils.h"
 #include <cmath>
 #include <cstring>
@@ -9,7 +10,8 @@ namespace godot {
 
 ResonanceDirectProcessor::~ResonanceDirectProcessor() { cleanup(); }
 
-void ResonanceDirectProcessor::initialize(IPLContext p_context, int p_sample_rate, int p_frame_size, int p_ambisonic_order, bool p_use_ambisonics_encode) {
+void ResonanceDirectProcessor::initialize(IPLContext p_context, int p_sample_rate, int p_frame_size, int p_ambisonic_order, bool p_use_ambisonics_encode,
+                                          int p_speaker_channels) {
     if (init_flags != DirectInitFlags::NONE)
         return;
 
@@ -22,6 +24,7 @@ void ResonanceDirectProcessor::initialize(IPLContext p_context, int p_sample_rat
     frame_size = p_frame_size;
     ambisonic_order = p_ambisonic_order;
     use_ambisonics_encode = p_use_ambisonics_encode;
+    speaker_channels = resonance::clamp_direct_speaker_channels(p_speaker_channels);
 
     IPLAudioSettings audioSettings{};
     audioSettings.samplingRate = p_sample_rate;
@@ -53,10 +56,9 @@ void ResonanceDirectProcessor::initialize(IPLContext p_context, int p_sample_rat
         ResonanceLog::warn("DirectProcessor: No HRTF found. Binaural disabled.");
     }
 
-    // 3. Panning Effect
+    // 3. Panning Effect (multi-channel layout when not using HRTF)
     IPLPanningEffectSettings panSettings{};
-    panSettings.speakerLayout.type = IPL_SPEAKERLAYOUTTYPE_STEREO;
-    panSettings.speakerLayout.numSpeakers = 2;
+    panSettings.speakerLayout = resonance::speaker_layout_for_channel_count(speaker_channels);
     if (iplPanningEffectCreate(context, &audioSettings, &panSettings, &panning_effect) == IPL_STATUS_SUCCESS) {
         init_flags |= DirectInitFlags::PANNING_EFFECT;
     } else {
@@ -84,12 +86,33 @@ void ResonanceDirectProcessor::initialize(IPLContext p_context, int p_sample_rat
             int num_ambi_channels = (ambisonic_order + 1) * (ambisonic_order + 1);
             if (iplAudioBufferAllocate(context, num_ambi_channels, frame_size, &internal_ambi_buffer) == IPL_STATUS_SUCCESS && internal_ambi_buffer.data) {
                 init_flags |= DirectInitFlags::AMBISONICS_ENCODE;
+                // Non-HRTF surround: decode Ambisonics to speakers (optional; stereo uses cheaper panning path).
+                if (speaker_channels > 2) {
+                    IPLAmbisonicsPanningEffectSettings ambiPanSettings{};
+                    ambiPanSettings.speakerLayout = resonance::speaker_layout_for_channel_count(speaker_channels);
+                    ambiPanSettings.maxOrder = ambisonic_order;
+                    if (iplAmbisonicsPanningEffectCreate(context, &audioSettings, &ambiPanSettings, &ambisonics_panning_effect) == IPL_STATUS_SUCCESS) {
+                        init_flags |= DirectInitFlags::AMBISONICS_PANNING;
+                    } else {
+                        ResonanceLog::warn("DirectProcessor: Ambisonics Panning effect creation failed; using IPLPanningEffect for non-HRTF.");
+                    }
+                }
             } else {
                 iplAmbisonicsEncodeEffectRelease(&ambisonics_encode_effect);
                 iplAmbisonicsBinauralEffectRelease(&ambisonics_binaural_effect);
                 ambisonics_encode_effect = nullptr;
                 ambisonics_binaural_effect = nullptr;
             }
+        }
+    }
+
+    // Binaural APIs expect a stereo output buffer; copy to FL/FR when the player uses a surround layout.
+    if (speaker_channels > 2 && hrtf_handle && (binaural_effect || ambisonics_binaural_effect)) {
+        if (iplAudioBufferAllocate(context, 2, frame_size, &internal_binaural_stereo_out) == IPL_STATUS_SUCCESS && internal_binaural_stereo_out.data &&
+            internal_binaural_stereo_out.data[0] && internal_binaural_stereo_out.data[1]) {
+            init_flags |= DirectInitFlags::BINAURAL_STEREO_SCRATCH;
+        } else {
+            ResonanceLog::warn("DirectProcessor: Binaural stereo scratch allocation failed; HRTF with surround direct_speaker_channels may be unstable.");
         }
     }
 
@@ -134,6 +157,14 @@ void ResonanceDirectProcessor::cleanup() {
         iplAmbisonicsBinauralEffectRelease(&ambisonics_binaural_effect);
         ambisonics_binaural_effect = nullptr;
     }
+    if (ambisonics_panning_effect) {
+        iplAmbisonicsPanningEffectRelease(&ambisonics_panning_effect);
+        ambisonics_panning_effect = nullptr;
+    }
+    if (context && internal_binaural_stereo_out.data != nullptr) {
+        iplAudioBufferFree(context, &internal_binaural_stereo_out);
+    }
+    memset(&internal_binaural_stereo_out, 0, sizeof(internal_binaural_stereo_out));
 
     if (context && internal_mono_buffer.data != nullptr) {
         iplAudioBufferFree(context, &internal_mono_buffer);
@@ -269,13 +300,38 @@ void ResonanceDirectProcessor::process(
     last_hrtf_bilinear = hrtf_interpolation_bilinear;
     last_spatial_blend = spatial_blend;
     last_use_ambisonics_encode_path = use_ambisonics_encode_path;
+    last_use_binaural = use_binaural;
 
     apply_spatialization(local_dir, internal_direct_output, out_buffer, use_ambisonics_encode_path, use_binaural,
                          hrtf_interpolation_bilinear, spatial_blend);
 }
 
+void ResonanceDirectProcessor::copy_binaural_stereo_to_output(IPLAudioBuffer& out) {
+    const IPLAudioBuffer& st = internal_binaural_stereo_out;
+    if (!st.data || !st.data[0] || !st.data[1] || !out.data)
+        return;
+    int nc = out.numChannels;
+    if (nc >= 2 && out.data[0] && out.data[1]) {
+        memcpy(out.data[0], st.data[0], frame_size * sizeof(float));
+        memcpy(out.data[1], st.data[1], frame_size * sizeof(float));
+        for (int c = 2; c < nc; ++c) {
+            if (out.data[c])
+                memset(out.data[c], 0, frame_size * sizeof(float));
+        }
+    } else if (nc == 1 && out.data[0]) {
+        for (int i = 0; i < frame_size; ++i)
+            out.data[0][i] = 0.5f * (st.data[0][i] + st.data[1][i]);
+    }
+}
+
 void ResonanceDirectProcessor::apply_spatialization(const IPLVector3& dir, const IPLAudioBuffer& direct_out, IPLAudioBuffer& out,
                                                     bool use_ambi_path, bool use_binaural, bool hrtf_bilinear, float spatial_blend) {
+    IPLAudioBuffer* binaural_out = &out;
+    if (out.numChannels > 2 && (init_flags & DirectInitFlags::BINAURAL_STEREO_SCRATCH) && internal_binaural_stereo_out.data &&
+        internal_binaural_stereo_out.data[0] && internal_binaural_stereo_out.data[1]) {
+        binaural_out = &internal_binaural_stereo_out;
+    }
+
     if (use_ambi_path && ambisonics_encode_effect && ambisonics_binaural_effect && internal_ambi_buffer.data && use_binaural && hrtf_handle) {
         IPLAmbisonicsEncodeEffectParams encParams{};
         encParams.direction = dir;
@@ -285,7 +341,9 @@ void ResonanceDirectProcessor::apply_spatialization(const IPLVector3& dir, const
         IPLAmbisonicsBinauralEffectParams ambBinParams{};
         ambBinParams.hrtf = hrtf_handle;
         ambBinParams.order = ambisonic_order;
-        iplAmbisonicsBinauralEffectApply(ambisonics_binaural_effect, &ambBinParams, &internal_ambi_buffer, &out);
+        iplAmbisonicsBinauralEffectApply(ambisonics_binaural_effect, &ambBinParams, &internal_ambi_buffer, binaural_out);
+        if (binaural_out != &out)
+            copy_binaural_stereo_to_output(out);
     } else if (use_binaural && binaural_effect && hrtf_handle) {
         IPLBinauralEffectParams binParams{};
         binParams.direction = dir;
@@ -293,7 +351,18 @@ void ResonanceDirectProcessor::apply_spatialization(const IPLVector3& dir, const
         binParams.spatialBlend = spatial_blend;
         binParams.hrtf = hrtf_handle;
         binParams.peakDelays = nullptr;
-        iplBinauralEffectApply(binaural_effect, &binParams, const_cast<IPLAudioBuffer*>(&direct_out), &out);
+        iplBinauralEffectApply(binaural_effect, &binParams, const_cast<IPLAudioBuffer*>(&direct_out), binaural_out);
+        if (binaural_out != &out)
+            copy_binaural_stereo_to_output(out);
+    } else if (use_ambi_path && ambisonics_encode_effect && ambisonics_panning_effect && internal_ambi_buffer.data) {
+        IPLAmbisonicsEncodeEffectParams encParams{};
+        encParams.direction = dir;
+        encParams.order = ambisonic_order;
+        iplAmbisonicsEncodeEffectApply(ambisonics_encode_effect, &encParams, const_cast<IPLAudioBuffer*>(&direct_out), &internal_ambi_buffer);
+
+        IPLAmbisonicsPanningEffectParams ambiPanParams{};
+        ambiPanParams.order = ambisonic_order;
+        iplAmbisonicsPanningEffectApply(ambisonics_panning_effect, &ambiPanParams, &internal_ambi_buffer, &out);
     } else if (panning_effect) {
         IPLPanningEffectParams panParams{};
         panParams.direction = dir;
@@ -320,7 +389,7 @@ bool ResonanceDirectProcessor::process_tail(IPLAudioBuffer& out_buffer) {
     if (state == IPL_AUDIOEFFECTSTATE_TAILCOMPLETE)
         return false;
 
-    apply_spatialization(last_direction, internal_direct_output, out_buffer, last_use_ambisonics_encode_path, true,
+    apply_spatialization(last_direction, internal_direct_output, out_buffer, last_use_ambisonics_encode_path, last_use_binaural,
                          last_hrtf_bilinear, last_spatial_blend);
     return true;
 }

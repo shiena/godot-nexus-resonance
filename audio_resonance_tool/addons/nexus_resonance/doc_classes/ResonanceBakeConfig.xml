@@ -50,6 +50,9 @@
 		<member name="static_listener_enabled" type="bool" default="false">
 			Bake static listener from bake_listeners node.
 		</member>
+		<member name="bake_ambisonics_order" type="int" default="1">
+			Ambisonics order of baked convolution IRs (Steam Audio IPLReflectionsBakeParams.order). Range 1–3: higher order improves spatial detail and increases bake size/time.
+		</member>
 		<member name="bake_num_rays" type="int" default="4096">
 			Reflection rays per probe (256–16384).
 		</member>
