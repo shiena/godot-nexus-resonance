@@ -5,7 +5,7 @@ extends GutTest
 func test_get_bake_params_has_expected_keys():
 	var bc = ResonanceBakeConfig.create_default()
 	var params = bc.get_bake_params()
-	var expected = ["bake_num_rays", "bake_num_bounces", "bake_num_threads", "bake_reflection_type",
+	var expected = ["bake_ambisonics_order", "bake_num_rays", "bake_num_bounces", "bake_num_threads", "bake_reflection_type",
 		"bake_pathing_vis_range", "bake_pathing_path_range", "bake_pathing_num_samples",
 		"bake_pathing_radius", "bake_pathing_threshold"]
 	for key in expected:
@@ -20,14 +20,18 @@ func test_bake_defaults_are_sensible():
 	assert_lte(bc.bake_num_bounces, 32, "bake_num_bounces should be <= 32")
 	assert_gte(bc.reflection_type, 0, "reflection_type should be 0-2")
 	assert_lte(bc.reflection_type, 2, "reflection_type should be 0-2")
+	assert_gte(bc.bake_ambisonics_order, 1, "bake_ambisonics_order should be >= 1")
+	assert_lte(bc.bake_ambisonics_order, 3, "bake_ambisonics_order should be <= 3")
 
 func test_get_bake_params_applies_properties():
 	var bc = ResonanceBakeConfig.create_default()
 	bc.bake_num_rays = 8192
+	bc.bake_ambisonics_order = 2
 	bc.pathing_enabled = true
 	bc.bake_pathing_radius = 0.8
 	var params = bc.get_bake_params()
 	assert_eq(params.get("bake_num_rays", -1), 8192, "bake_num_rays should be applied")
+	assert_eq(params.get("bake_ambisonics_order", -1), 2, "bake_ambisonics_order should be applied")
 	assert_eq(params.get("bake_pathing_radius", -1.0), 0.8, "bake_pathing_radius should be applied")
 
 func test_create_default_returns_valid_config():

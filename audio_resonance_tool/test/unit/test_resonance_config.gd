@@ -5,7 +5,7 @@ extends GutTest
 func test_create_default_has_required_keys():
 	var rt = ResonanceRuntimeConfig.create_default()
 	var config = rt.get_config()
-	var required = ["sample_rate", "ambisonic_order", "max_reverb_duration", "reverb_influence_radius"]
+	var required = ["sample_rate", "ambisonic_order", "max_reverb_duration", "reverb_influence_radius", "direct_speaker_channels"]
 	for key in required:
 		assert_has(config, key, "config missing: " + key)
 
@@ -58,6 +58,15 @@ func test_audio_frame_size_manual_passthrough():
 	rt.audio_frame_size = 1024
 	var config = rt.get_config()
 	assert_eq(config.get("audio_frame_size", -1), 1024, "manual audio_frame_size should pass through")
+
+
+func test_direct_speaker_channels_default_and_passthrough():
+	var rt = ResonanceRuntimeConfig.create_default()
+	assert_eq(rt.direct_speaker_channels, 2, "default direct_speaker_channels")
+	var config = rt.get_config()
+	assert_eq(config.get("direct_speaker_channels", -1), 2, "get_config default")
+	rt.direct_speaker_channels = 6
+	assert_eq(rt.get_config().get("direct_speaker_channels", -1), 6, "5.1 channel count passthrough")
 
 
 func test_get_config_includes_simulator_and_hrtf_keys():
