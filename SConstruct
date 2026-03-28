@@ -139,7 +139,7 @@ if build_tests:
     env_test = env.Clone()
     env_test.Replace(LIBS=[], LIBPATH=[])
     env_test.Append(CPPPATH=["src", "src/lib/catch2/single_include/catch2"])
-    test_sources = ["src/test/test_main.cpp", "src/test/test_ring_buffer.cpp", "src/test/test_volume_ramp.cpp", "src/test/test_resonance_hash.cpp", "src/test/test_handle_manager.cpp", "src/test/test_ipl_guard.cpp"]
+    test_sources = ["src/test/test_main.cpp", "src/test/test_ring_buffer.cpp", "src/test/test_volume_ramp.cpp", "src/test/test_resonance_hash.cpp", "src/test/test_bake_ambisonics_order.cpp", "src/test/test_handle_manager.cpp", "src/test/test_ipl_guard.cpp"]
     test_dir = "build/tests"
     test_exe = env_test.Program(os.path.join(test_dir, "nexus_resonance_tests"), test_sources)
     env.Alias("test", test_exe)
