@@ -30,7 +30,7 @@
 		<method name="is_simulating" qualifiers="const">
 			<return type="bool" />
 			<description>
-				Returns true if simulation (pathing/reflections) is running.
+				Returns true when the server can run acoustic simulation: static triangle count &gt; 0 for normal tracers, or [code]scene_type[/code] Custom with a valid [World3D] from [method set_physics_world].
 			</description>
 		</method>
 		<method name="notify_geometry_changed">
@@ -64,13 +64,34 @@
 			<return type="void" />
 			<param index="0" name="delta" type="float" />
 			<description>
-				Advances simulation (pathing, reflections). Called each frame by ResonanceRuntime.
+				Advances simulation (pathing, reflections). Called each frame by ResonanceRuntime. When [code]scene_type[/code] is Custom, runs Steam Audio [code]iplSimulatorRun*[/code] on the main thread (no background worker).
+			</description>
+		</method>
+		<method name="set_physics_world">
+			<return type="void" />
+			<param index="0" name="world" type="World3D" />
+			<description>
+				Sets the Godot [World3D] for Custom-scene physics raycasts. [ResonanceRuntime] updates this from the viewport each frame when the server is initialized.
+			</description>
+		</method>
+		<method name="set_physics_ray_exclude_rids">
+			<return type="void" />
+			<param index="0" name="exclude" type="Array" />
+			<description>
+				User list of [RID]s excluded from Custom-scene ray queries (same as [code]PhysicsRayQueryParameters3D.exclude[/code]). The server merges this with [method set_listener_physics_ray_exclude_rids] and auto-registered source colliders from [member ResonancePlayer.physics_ray_auto_exclude_collision_bodies] before passing the combined array to Godot.
+			</description>
+		</method>
+		<method name="set_listener_physics_ray_exclude_rids">
+			<return type="void" />
+			<param index="0" name="rids" type="Array" />
+			<description>
+				Replaces the listener-side exclude list (typically [code]CollisionObject3D[/code] RIDs on the camera parent chain and nodes in the [code]resonance_listener[/code] group). [ResonanceRuntime] sets this each frame when [method uses_custom_ray_tracer] is true. Merged with [method set_physics_ray_exclude_rids] and source auto-excludes.
 			</description>
 		</method>
 		<method name="get_simulation_worker_timing" qualifiers="const">
 			<return type="Dictionary" />
 			<description>
-				Returns profiling timings from the [b]last[/b] simulation worker tick only (microseconds): [code]us_run_direct[/code], [code]us_run_reflections[/code], [code]us_run_pathing[/code], [code]us_sync_fetch[/code] ([code]_worker_sync_fetch_caches[/code]). Reflections/pathing entries are 0 when that step did not run. Use [code]us_run_pathing[/code] to compare pathing cost when tuning [member ResonanceRuntimeConfig.pathing_num_vis_samples], [member ResonanceRuntimeConfig.simulation_update_interval], and player path validation / alternate paths. Shown in the debug overlay Reverb Bus expert section. Cleared by [method reset_pathing_instrumentation].
+				Returns profiling timings from the [b]last[/b] simulation step only (microseconds): [code]us_run_direct[/code], [code]us_run_reflections[/code], [code]us_run_pathing[/code], [code]us_sync_fetch[/code] ([code]_worker_sync_fetch_caches[/code]). Normally updated from the background worker; when [code]scene_type[/code] is Custom, updated from the main-thread [method tick] instead. Reflections/pathing entries are 0 when that step did not run. Use [code]us_run_pathing[/code] to compare pathing cost when tuning [member ResonanceRuntimeConfig.pathing_num_vis_samples], [member ResonanceRuntimeConfig.simulation_update_interval], and player path validation / alternate paths. Shown in the debug overlay Reverb Bus expert section. Cleared by [method reset_pathing_instrumentation].
 			</description>
 		</method>
 		<method name="set_listener_valid">

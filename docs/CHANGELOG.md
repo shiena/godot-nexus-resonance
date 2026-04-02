@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),  
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.10] - 2026-04-02
+
+### Added
+
+- **Custom scene type (3)** in **ResonanceRuntimeConfig** - live occlusion and reflection rays follow **Godot physics** (your colliders), not the exported acoustic mesh. Optional `**resonance_physics_material_preset`** on colliders; **ResonancePlayer** can auto-ignore its own collision bodies. **Baking** still uses the usual Embree/Default path.
+
+### Fixed
+
+- **Debug overlay (ResonancePlayer)** - **Signal P** now shows **path wet output RMS** (per block, clamped 0..1), aligned with **Signal D/R** as pipeline-derived levels.
+- **ResonancePlayer** - Sources that started before **ResonanceServer** was ready (common when the player is a **child** of **ResonanceRuntime**) now **register correctly**; reverb/occlusion should no longer stay permanently “dry” from that alone. `**play()`** and `**play_stream()**` both hook up the same way.
+- **ResonancePlayer polyphony** - With `**max_polyphony` > 1** and `**player_config`**, every voice gets the same Steam parameters (one shared sim source per node); **reverb split** mixes convolution/parametric wet from all voices. `**get_audio_instrumentation`** aggregates counters and adds `**polyphony_voice_count**`.
+- **ResonancePlayer / AudioStreamPlayer3D** - `**stream`** / `**get_stream**` keep the user’s resource while the engine uses an internal wrapper; runtime stream changes update the wrapper. `**max_db**` is honored with volume in native `**_mix**`. Docs: inspector matrix and `**godot_***` keys in `**get_audio_instrumentation**`.
+- **Occlusion** - If the engine briefly has no fresh occlusion data, direct sound defaults to **not** treated as fully blocked (avoids accidental silence).
+
 ## [0.9.9] - 2026-03-28
 
 ### Added
@@ -15,9 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Serialized Phonon scene I/O** - `**save_scene_data**` / `**load_scene_data**` resolve `**res://**` and `**user://**` through `**ProjectSettings.globalize_path**` before `**FileAccess**` open/exists checks, matching other export paths and avoiding platform-dependent relative-path surprises.
-- **Debug OBJ export staging** - Failed or incomplete atomic OBJ writes now remove `**_nexus_obj_staging**` contents (and the folder when empty) instead of leaving stale `.obj`/`.mtl` fragments; successful exports drop the empty staging directory as well.
-- **ResonanceLogger console** - Each log line is mirrored with `**print()`** in addition to `**print_rich()`** so messages show under standard Output filters; `**_ready()**` reloads logger project settings (and file output flags now load even if `categories_enabled` was missing). New Project Setting `**nexus/resonance/logger/output_to_debug**` (default on) toggles console mirroring.
+- **Serialized Phonon scene I/O** - `**save_scene_data`** / `**load_scene_data**` resolve `**res://**` and `**user://**` through `**ProjectSettings.globalize_path**` before `**FileAccess**` open/exists checks, matching other export paths and avoiding platform-dependent relative-path surprises.
+- **Debug OBJ export staging** - Failed or incomplete atomic OBJ writes now remove `**_nexus_obj_staging`** contents (and the folder when empty) instead of leaving stale `.obj`/`.mtl` fragments; successful exports drop the empty staging directory as well.
+- **ResonanceLogger console** - Each log line is mirrored with `**print()`** in addition to `**print_rich()`** so messages show under standard Output filters; `**_ready()`** reloads logger project settings (and file output flags now load even if `categories_enabled` was missing). New Project Setting `**nexus/resonance/logger/output_to_debug**` (default on) toggles console mirroring.
 - **Steam Audio verbose** - Project setting is read with proper bool coercion; IPL INFO/DEBUG forwarding unchanged but **one summary line** is printed at context init when enabled so the option is visibly active. **Editor:** `steam_audio_verbose` is always re-registered in Project Settings (not only on first creation).
 - **Short sounds** - Parametric/hybrid reverb and pathing tails decay naturally after the dry signal ends, so one-shots can sound like they’re in the room instead of cutting off abruptly.
 - **ResonanceRuntime** (**breaking**) - The runtime node is a plain **Node** again (fixes a regression). Update scenes if you depended on the previous setup.

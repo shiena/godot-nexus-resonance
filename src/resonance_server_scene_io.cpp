@@ -52,6 +52,11 @@ void ResonanceServer::mark_scene_commit_pending_assume_locked() {
 }
 
 void ResonanceServer::save_scene_data(String filename) {
+    if (_scene_type() == IPL_SCENETYPE_CUSTOM) {
+        UtilityFunctions::push_warning(
+            "Nexus Resonance: save_scene_data is not supported when scene_type is Custom (no Phonon mesh data).");
+        return;
+    }
     std::lock_guard<std::mutex> lock(simulation_mutex);
     scene_manager_.save_scene_data(_ctx(), scene, filename);
 }
@@ -84,10 +89,16 @@ void ResonanceServer::save_scene_obj(String file_base_name) {
 void ResonanceServer::load_scene_data(String filename) {
     if (!_ctx() || !simulator)
         return;
+    if (_scene_type() == IPL_SCENETYPE_CUSTOM) {
+        UtilityFunctions::push_warning(
+            "Nexus Resonance: load_scene_data is not supported when scene_type is Custom (Godot Physics).");
+        return;
+    }
     bool loaded = false;
     {
         std::lock_guard<std::mutex> lock(simulation_mutex);
-        loaded = scene_manager_.load_scene_data(_ctx(), &scene, simulator, _scene_type(), _embree(), _radeon(), filename, &global_triangle_count);
+        loaded = scene_manager_.load_scene_data(_ctx(), &scene, simulator, _tracer_type_for_mesh_operations(), _embree(), _radeon(), filename,
+                                                &global_triangle_count);
     }
     if (loaded)
         call_deferred("_deferred_refresh_all_geometry_after_scene_load");

@@ -232,8 +232,9 @@ void ResonanceServerConfig::apply(const Dictionary& config,
         scene_type = config_int(config, "scene_type", scene_type);
     else
         scene_type = config_bool(config, "use_radeon_rays", false) ? 2 : 0; // backwards compatibility: missing key = Default
-    if (scene_type < 0 || scene_type > 2)
+    if (scene_type < 0 || scene_type > 3)
         scene_type = 0;
+    physics_ray_collision_mask = config_int(config, "physics_ray_collision_mask", physics_ray_collision_mask);
     opencl_device_type = config_int(config, "opencl_device_type", opencl_device_type);
     if (opencl_device_type < 0)
         opencl_device_type = 0;

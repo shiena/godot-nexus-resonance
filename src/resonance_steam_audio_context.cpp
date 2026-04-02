@@ -214,7 +214,11 @@ bool ResonanceSteamAudioContext::init(ResonanceSteamAudioContextConfig& config) 
     }
 
     if (scene_type_ != IPL_SCENETYPE_RADEONRAYS) {
-        if (config.scene_type == 0) {
+        if (config.scene_type == 3) {
+            scene_type_ = IPL_SCENETYPE_CUSTOM;
+            UtilityFunctions::print_rich(
+                "[color=cyan]Nexus Resonance:[/color] Using Custom scene (Godot 3D physics raycasts; simulation on main thread).");
+        } else if (config.scene_type == 0) {
             scene_type_ = IPL_SCENETYPE_DEFAULT;
             UtilityFunctions::print_rich("[color=cyan]Nexus Resonance:[/color] Using built-in ray tracer (Default).");
         } else {
@@ -234,6 +238,8 @@ bool ResonanceSteamAudioContext::init(ResonanceSteamAudioContextConfig& config) 
     // Align config.scene_type with the effective ray tracer (Embree/Radeon init may fall back to Default).
     if (scene_type_ == IPL_SCENETYPE_RADEONRAYS)
         config.scene_type = 2;
+    else if (scene_type_ == IPL_SCENETYPE_CUSTOM)
+        config.scene_type = 3;
     else if (scene_type_ == IPL_SCENETYPE_EMBREE)
         config.scene_type = 1;
     else
@@ -245,6 +251,8 @@ bool ResonanceSteamAudioContext::init(ResonanceSteamAudioContextConfig& config) 
             tracer = "Embree";
         else if (config.scene_type == 2)
             tracer = "Radeon Rays (OpenCL)";
+        else if (config.scene_type == 3)
+            tracer = "Custom (Godot Physics)";
         const String verbose_msg = String("SteamAudio verbose: ") +
                                    "IPL INFO/DEBUG lines are printed only when the Steam Audio library emits them; with the built-in ray tracer that is often almost never. "
                                    "Extra Nexus geometry messages use the same setting (see Output). Effective ray tracer: " +

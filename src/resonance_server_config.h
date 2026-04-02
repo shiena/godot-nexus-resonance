@@ -66,8 +66,10 @@ struct ResonanceServerConfig {
     bool find_alternate_paths = false;
 
     // Ray tracer / OpenCL / Radeon Rays
-    /// 0=Default (built-in Phonon), 1=Embree (Intel, faster CPU), 2=Radeon Rays (GPU)
+    /// 0=Default (built-in Phonon), 1=Embree, 2=Radeon Rays, 3=Custom (Godot Physics)
     int scene_type = 0;
+    /// Godot PhysicsRayQueryParameters3D collision_mask when scene_type==3; -1 = all layers.
+    int physics_ray_collision_mask = -1;
     int opencl_device_type = 0; // 0=GPU, 1=CPU, 2=Any
     int opencl_device_index = 0;
 

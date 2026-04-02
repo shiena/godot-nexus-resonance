@@ -11,7 +11,9 @@
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
+#include <godot_cpp/variant/rid.hpp>
 #include <godot_cpp/variant/transform3d.hpp>
+#include <godot_cpp/variant/typed_array.hpp>
 #include <godot_cpp/variant/vector3.hpp>
 #include <memory>
 #include <mutex>
@@ -27,6 +29,7 @@
 #include "resonance_baker.h"
 #include "resonance_constants.h"
 #include "resonance_geometry_asset.h"
+#include "resonance_godot_physics_scene_bridge.h"
 #include "resonance_probe_batch_registry.h"
 #include "resonance_probe_data.h"
 #include "resonance_scene_manager.h"
@@ -34,6 +37,8 @@
 #include "resonance_sofa_asset.h"
 #include "resonance_steam_audio_context.h"
 #include "resonance_utils.h"
+
+#include <godot_cpp/classes/world3d.hpp>
 
 namespace godot {
 
@@ -104,6 +109,15 @@ class ResonanceServer : public Object {
 
     // Steam Audio Context (owns context, embree, opencl, radeon rays, TAN, HRTF)
     std::unique_ptr<ResonanceSteamAudioContext> steam_audio_context_;
+    ResonanceGodotPhysicsSceneBridge godot_physics_bridge_;
+    /// Custom-scene ray excludes: merged user + listener + auto-registered CollisionObject3D RIDs (see _rebuild_and_apply_physics_ray_excludes_unlocked).
+    std::mutex physics_ray_excludes_mutex_;
+    TypedArray<RID> physics_ray_exclude_rids_user_;
+    TypedArray<RID> listener_physics_ray_exclude_rids_;
+    std::unordered_map<int64_t, int> physics_ray_auto_exclude_refcount_;
+    std::vector<RID> physics_ray_auto_exclude_active_;
+    void _rebuild_and_apply_physics_ray_excludes_unlocked();
+    void _clear_physics_ray_excludes_state();
     IPLScene scene = nullptr;
     std::vector<IPLStaticMesh> _runtime_static_meshes; // Loaded from ResonanceStaticScene assets (additive); released on shutdown
     std::vector<IPLScene> _runtime_static_sub_scenes;  // Sub-scenes for instanced static meshes (transform applied)
@@ -461,6 +475,12 @@ class ResonanceServer : public Object {
     void _apply_config(Dictionary config);
     void _worker_thread_func();
     void _worker_note_direct_sim_pass_completed();
+    /// Steam Audio Run* + cache sync. Caller must hold simulation_mutex. Used by worker thread or main thread (CUSTOM).
+    void _run_phonon_simulation_locked(const IPLCoordinateSpace3& current_listener, bool run_direct, bool run_heavy);
+    IPLCoordinateSpace3 _snapshot_listener_for_simulation();
+    bool _uses_main_thread_phonon_simulation() const;
+    /// IPL scene type for static mesh load / bake temp scenes (never CUSTOM).
+    IPLSceneType _tracer_type_for_mesh_operations() const;
     void _init_internal();
     void _init_context_and_devices();
     bool _init_scene_and_simulator();
@@ -564,6 +584,18 @@ class ResonanceServer : public Object {
     /// FMOD Bridge: Pointer to simulation settings (valid while server initialized). For C++ bridge use.
     const IPLSimulationSettings* get_simulation_settings_for_fmod() const { return _ctx() ? &simulation_settings : nullptr; }
     IPLSceneType get_scene_type() const { return steam_audio_context_ ? steam_audio_context_->get_scene_type() : IPL_SCENETYPE_DEFAULT; }
+    /// Scene type for iplStaticMeshLoad / sub-scenes / bake temp scenes. When runtime uses CUSTOM, returns Default (meshes are not added to the global CUSTOM scene).
+    IPLSceneType get_phonon_mesh_scene_type() const { return _tracer_type_for_mesh_operations(); }
+
+    /// Godot World3D for physics raycasts when scene_type is Custom. Call from main thread (e.g. each frame from ResonanceRuntime).
+    void set_physics_world(const Ref<World3D>& world);
+    /// User RID excludes for Custom-scene ray queries. Merged each tick with listener and auto source excludes before applying to the bridge.
+    void set_physics_ray_exclude_rids(const TypedArray<RID>& exclude);
+    /// Listener-side CollisionObject3D RIDs (camera parent chain, [code]resonance_listener[/code] group, etc.). Replaces the previous listener list; merged with user + auto excludes.
+    void set_listener_physics_ray_exclude_rids(const TypedArray<RID>& rids);
+    /// Register a CollisionObject3D RID to ignore in Custom-scene rays (refcounted; used by ResonancePlayer for descendant colliders).
+    void register_physics_ray_auto_exclude_rid(RID rid);
+    void unregister_physics_ray_auto_exclude_rid(RID rid);
 
     // Thread Safety
     void lock_mixer() { mixer_access_mutex.lock(); }

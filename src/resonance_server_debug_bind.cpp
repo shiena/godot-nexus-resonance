@@ -245,6 +245,9 @@ void ResonanceServer::_bind_methods() {
     ClassDB::bind_method(D_METHOD("notify_listener_changed"), &ResonanceServer::notify_listener_changed);
     ClassDB::bind_method(D_METHOD("notify_listener_changed_to", "listener_node"), &ResonanceServer::notify_listener_changed_to);
     ClassDB::bind_method(D_METHOD("tick", "delta"), &ResonanceServer::tick);
+    ClassDB::bind_method(D_METHOD("set_physics_world", "world"), &ResonanceServer::set_physics_world);
+    ClassDB::bind_method(D_METHOD("set_physics_ray_exclude_rids", "exclude"), &ResonanceServer::set_physics_ray_exclude_rids);
+    ClassDB::bind_method(D_METHOD("set_listener_physics_ray_exclude_rids", "rids"), &ResonanceServer::set_listener_physics_ray_exclude_rids);
     ClassDB::bind_method(D_METHOD("flush_pending_source_updates"), &ResonanceServer::flush_pending_source_updates);
 
     // Probes

@@ -8,7 +8,7 @@ namespace resonance {
 
 /// Version string (centralized; override via NEXUS_RESONANCE_VERSION when building)
 #ifndef NEXUS_RESONANCE_VERSION
-#define NEXUS_RESONANCE_VERSION "0.9.9"
+#define NEXUS_RESONANCE_VERSION "0.9.10"
 #endif
 constexpr const char* kVersion = NEXUS_RESONANCE_VERSION;
 
@@ -110,6 +110,11 @@ constexpr float kBakedEndpointRadius = 10000.0f;
 
 /// Number of samples in attenuation callback curve (linear/custom modes)
 constexpr int kAttenuationCurveSamples = 64;
+
+/// When [code]get_source_occlusion_data[/code] has no simulation readback, treat as unoccluded (Steam: 1 = line-of-sight).
+constexpr float kOcclusionFetchDefaultVisible = 1.0f;
+/// Custom-scene occlusion any-hit: nudge ray start along direction (meters). Matches Steam [code]direct_simulator[/code] [code]kRayOffset[/code] scale.
+constexpr float kCustomSceneOcclusionRayStartEpsilon = 1e-2f;
 
 /// Steam Audio simulator: max occlusion samples per source (default / config baseline)
 constexpr int kMaxOcclusionSamples = 64;

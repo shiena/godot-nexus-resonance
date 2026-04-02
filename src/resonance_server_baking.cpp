@@ -94,22 +94,32 @@ void ResonanceServer::clear_static_scenes() {
 void ResonanceServer::add_static_scene_from_asset(const Ref<ResonanceGeometryAsset>& p_asset, const Transform3D& p_transform) {
     if (!_ctx() || !scene)
         return;
+    if (_scene_type() == IPL_SCENETYPE_CUSTOM) {
+        UtilityFunctions::push_warning(
+            "Nexus Resonance: add_static_scene_from_asset has no effect when scene_type is Custom (Godot Physics).");
+        return;
+    }
     std::lock_guard<std::mutex> lock(simulation_mutex);
     RuntimeSceneState state(_runtime_static_meshes, _runtime_static_triangle_count, _runtime_static_debug_mesh_ids,
                             &global_triangle_count, &scene_dirty, _runtime_static_sub_scenes, _runtime_static_instanced_meshes);
     scene_manager_.add_static_scene_from_asset(_ctx(), scene, p_asset, &ray_trace_debug_context_,
-                                               wants_debug_reflection_viz(), state, p_transform, _scene_type(), _embree(), _radeon());
+                                               wants_debug_reflection_viz(), state, p_transform, _tracer_type_for_mesh_operations(), _embree(), _radeon());
     reset_spatial_audio_warmup_passes();
 }
 
 void ResonanceServer::load_static_scene_from_asset(const Ref<ResonanceGeometryAsset>& p_asset, const Transform3D& p_transform) {
     if (!_ctx() || !scene)
         return;
+    if (_scene_type() == IPL_SCENETYPE_CUSTOM) {
+        UtilityFunctions::push_warning(
+            "Nexus Resonance: load_static_scene_from_asset has no effect when scene_type is Custom (Godot Physics).");
+        return;
+    }
     std::lock_guard<std::mutex> lock(simulation_mutex);
     RuntimeSceneState state(_runtime_static_meshes, _runtime_static_triangle_count, _runtime_static_debug_mesh_ids,
                             &global_triangle_count, &scene_dirty, _runtime_static_sub_scenes, _runtime_static_instanced_meshes);
     scene_manager_.load_static_scene_from_asset(_ctx(), scene, p_asset, &ray_trace_debug_context_,
-                                                wants_debug_reflection_viz(), state, p_transform, _scene_type(), _embree(), _radeon());
+                                                wants_debug_reflection_viz(), state, p_transform, _tracer_type_for_mesh_operations(), _embree(), _radeon());
     reset_spatial_audio_warmup_passes();
 }
 
@@ -212,7 +222,7 @@ IPLScene ResonanceServer::_prepare_bake_scene(IPLScene* out_temp_scene, IPLStati
     *out_temp_mesh = nullptr;
     if (_bake_static_scene_asset.is_valid() && _bake_static_scene_asset->is_valid() && _ctx()) {
         IPLSceneSettings sceneSettings{};
-        sceneSettings.type = _scene_type();
+        sceneSettings.type = _tracer_type_for_mesh_operations();
         sceneSettings.embreeDevice = _embree();
         sceneSettings.radeonRaysDevice = _radeon();
         IPLScene temp = nullptr;
@@ -288,7 +298,7 @@ bool ResonanceServer::bake_manual_grid(const PackedVector3Array& points, Ref<Res
     int nt = _get_bake_num_threads();
     int ao = _get_bake_ambisonics_order();
     return _with_bake_scene([this, &points, &data, nb, nr, bake_reflection, nt, ao](IPLScene bake_scene) {
-        return baker.bake_manual_grid(_ctx(), bake_scene, _scene_type(), _opencl(), _radeon(), points, nb, nr, bake_reflection, data, bake_progress_callback, this, _bake_pipeline_pathing, nt, ao);
+        return baker.bake_manual_grid(_ctx(), bake_scene, _tracer_type_for_mesh_operations(), _opencl(), _radeon(), points, nb, nr, bake_reflection, data, bake_progress_callback, this, _bake_pipeline_pathing, nt, ao);
     });
 }
 
@@ -311,14 +321,14 @@ bool ResonanceServer::bake_probes_for_volume(const Transform3D& volume_transform
     int ao = _get_bake_ambisonics_order();
     return _with_bake_scene([this, volume_transform, extents, spacing, generation_type, height_above_floor, probe_data_res, nb, nr, bake_reflection, nt, ao](IPLScene bake_scene) {
         if (generation_type == ResonanceBaker::GEN_CENTROID || generation_type == ResonanceBaker::GEN_UNIFORM_FLOOR) {
-            return baker.bake_with_probe_array(_ctx(), bake_scene, _scene_type(), _opencl(), _radeon(),
+            return baker.bake_with_probe_array(_ctx(), bake_scene, _tracer_type_for_mesh_operations(), _opencl(), _radeon(),
                                                volume_transform, extents, spacing, generation_type, height_above_floor,
                                                nb, nr, bake_reflection, probe_data_res, bake_progress_callback, this, _bake_pipeline_pathing, nt, ao);
         }
         PackedVector3Array points = baker.generate_manual_grid(volume_transform, extents, spacing, generation_type, height_above_floor);
         if (points.size() == 0)
             return false;
-        return baker.bake_manual_grid(_ctx(), bake_scene, _scene_type(), _opencl(), _radeon(), points, nb, nr, bake_reflection, probe_data_res, bake_progress_callback, this, _bake_pipeline_pathing, nt, ao);
+        return baker.bake_manual_grid(_ctx(), bake_scene, _tracer_type_for_mesh_operations(), _opencl(), _radeon(), points, nb, nr, bake_reflection, probe_data_res, bake_progress_callback, this, _bake_pipeline_pathing, nt, ao);
     });
 }
 
@@ -348,7 +358,7 @@ bool ResonanceServer::bake_static_source(Ref<ResonanceProbeData> data, Vector3 e
     int nt = _get_bake_num_threads();
     int ao = _get_bake_ambisonics_order();
     return _with_bake_scene([this, data, endpoint_position, influence_radius, nb, nr, nt, ao](IPLScene bake_scene) {
-        return baker.bake_static_source(_ctx(), bake_scene, _scene_type(), _opencl(), _radeon(),
+        return baker.bake_static_source(_ctx(), bake_scene, _tracer_type_for_mesh_operations(), _opencl(), _radeon(),
                                         data, endpoint_position, influence_radius, nb, nr, bake_progress_callback, this, nt, ao);
     });
 }
@@ -363,7 +373,7 @@ bool ResonanceServer::bake_static_listener(Ref<ResonanceProbeData> data, Vector3
     int nt = _get_bake_num_threads();
     int ao = _get_bake_ambisonics_order();
     return _with_bake_scene([this, data, endpoint_position, influence_radius, nb, nr, nt, ao](IPLScene bake_scene) {
-        return baker.bake_static_listener(_ctx(), bake_scene, _scene_type(), _opencl(), _radeon(),
+        return baker.bake_static_listener(_ctx(), bake_scene, _tracer_type_for_mesh_operations(), _opencl(), _radeon(),
                                           data, endpoint_position, influence_radius, nb, nr, bake_progress_callback, this, nt, ao);
     });
 }

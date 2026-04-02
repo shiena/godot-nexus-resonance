@@ -28,7 +28,7 @@ struct ResonanceDebugData {
     bool air_abs_enabled;
     bool directivity_enabled;
 
-    // Signal levels (0-10) after all calculations. Direct, Reverb, Pathing.
+    // Signal levels for HUD: direct gain, reverb send, path wet output RMS (clamped 0..1), last block.
     float signal_direct = 0.0f;
     float signal_reverb = 0.0f;
     float signal_pathing = 0.0f;

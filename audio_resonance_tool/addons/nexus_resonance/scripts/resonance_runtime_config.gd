@@ -141,6 +141,8 @@ var _pathing_enabled: bool = false
 
 # --- Occlusion & Physics ---
 @export_group("Occlusion & Physics")
+## Collision mask for Godot [code]PhysicsRayQueryParameters3D[/code] when [member scene_type] is Custom (Godot Physics). [code]-1[/code] = all physics layers.
+@export_flags_3d_physics var physics_ray_collision_mask: int = -1
 ## Occlusion model: Raycast (binary hit) or Volumetric (fractional occlusion from samples; Steam Audio [code]numOcclusionSamples[/code]). Volumetric only affects how occlusion is computed, not how transmission coefficients are banded. Pair with [member ResonancePlayerConfig.occlusion_samples] and [member ResonancePlayerConfig.source_radius] on each source.
 @export_enum("Raycast:0", "Volumetric:1") var occlusion_type: int = 1
 ## Simulator cap for volumetric occlusion samples (Steam Audio [code]maxNumOcclusionSamples[/code]). Per-source [member ResonancePlayerConfig.occlusion_samples] are clamped to this.
@@ -167,8 +169,9 @@ var _scene_type: int = 0
 ## Ray tracer backend. Default = built-in Phonon; Embree = Intel (faster CPU on Windows/Linux/macOS per Steam Audio).
 ## Radeon Rays = OpenCL GPU path supported on 64-bit Windows only; Linux/macOS/Android/iOS fall back to Default with a warning.
 ## For realtime rays with reflections/pathing, prefer Embree (or Radeon Rays on Windows) — Unity docs warn the slowest tracer is unsuitable for heavy simulation.
-## Godot often omits `scene_type = 0` in .tres; initializer 0 keeps „Default“ after reload. Embree/Radeon serialize as 1/2.
-@export_enum("Default:0", "Embree:1", "Radeon Rays:2") var scene_type: int:
+## Godot often omits `scene_type = 0` in .tres; initializer 0 keeps „Default“ after reload. Embree/Radeon/Custom serialize as 1/2/3.
+## Custom = Steam Audio [code]IPL_SCENETYPE_CUSTOM[/code]: raycasts use Godot 3D physics (see [member physics_ray_collision_mask]). Simulation runs on the main thread; ResonanceGeometry meshes are not uploaded to Phonon.
+@export_enum("Default:0", "Embree:1", "Radeon Rays:2", "Custom (Godot Physics):3") var scene_type: int:
 	get:
 		return _scene_type
 	set(v):
@@ -301,6 +304,7 @@ func get_config() -> Dictionary:
 		"realtime_rays": rays,
 		"realtime_bounces": realtime_bounces,
 		"scene_type": scene_type,
+		"physics_ray_collision_mask": physics_ray_collision_mask,
 		"opencl_device_type": opencl_device_type,
 		"opencl_device_index": opencl_device_index,
 		"realtime_irradiance_min_distance": realtime_irradiance_min_distance,

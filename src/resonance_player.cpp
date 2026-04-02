@@ -12,8 +12,10 @@
 #include <godot_cpp/classes/audio_server.hpp>
 #include <godot_cpp/classes/audio_stream_player.hpp>
 #include <godot_cpp/classes/camera3d.hpp>
+#include <godot_cpp/classes/collision_object3d.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/node3d.hpp>
+#include <godot_cpp/classes/object.hpp>
 #include <godot_cpp/classes/viewport.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/projection.hpp>
@@ -25,11 +27,26 @@
 using namespace godot;
 
 namespace {
-/// Godot does not apply AudioStreamPlayer3D volume to GDExtension AudioStreamPlayback::_mix buffers; match editor Volume here.
-float owner_volume_linear(const ResonancePlayer* owner) {
+/// Godot does not apply AudioStreamPlayer3D volume to GDExtension AudioStreamPlayback::_mix buffers; match Volume + max_db here.
+float owner_effective_volume_linear(const ResonancePlayer* owner) {
     if (!owner)
         return 1.0f;
-    return resonance::sanitize_audio_float(owner->get_volume_linear());
+    const float vdb = owner->get_volume_db();
+    const float cap_db = owner->get_max_db();
+    const float eff_db = std::min(vdb, cap_db);
+    const float lin = std::pow(10.0f, eff_db / 20.0f);
+    return resonance::sanitize_audio_float(lin);
+}
+
+static void collect_collision_object_rids_recursive(Node* node, std::vector<RID>& out) {
+    if (!node)
+        return;
+    auto* co = Object::cast_to<CollisionObject3D>(node);
+    if (co)
+        out.push_back(co->get_rid());
+    const int nch = node->get_child_count();
+    for (int i = 0; i < nch; ++i)
+        collect_collision_object_rids_recursive(node->get_child(i), out);
 }
 
 bool ipl_all_channel_ptrs_ok(const IPLAudioBuffer& b, int nch) {
@@ -128,7 +145,11 @@ ResonanceInternalPlayback::ResonanceInternalPlayback() {
     parametric_path_sh_coeffs[1] = parametric_path_sh_coeffs[2] = parametric_path_sh_coeffs[3] = 0.0f;
 }
 
-ResonanceInternalPlayback::~ResonanceInternalPlayback() { _cleanup_steam_audio(); }
+ResonanceInternalPlayback::~ResonanceInternalPlayback() {
+    if (owner_player_)
+        owner_player_->internal_unregister_playback(this);
+    _cleanup_steam_audio();
+}
 
 void ResonanceInternalPlayback::ipl_context_reinit_cleanup(void* userdata) {
     if (!userdata)
@@ -339,7 +360,7 @@ void ResonanceInternalPlayback::_process_steam_audio_block() {
     if (!context || !srv || !srv->is_initialized())
         return;
 
-    const float node_vol = owner_volume_linear(owner_player_);
+    const float node_vol = owner_effective_volume_linear(owner_player_);
     if (!ipl_all_channel_ptrs_ok(sa_in_buffer, 2))
         return;
     if (!ipl_all_channel_ptrs_ok(sa_direct_out_buffer, direct_out_channels_))
@@ -593,7 +614,7 @@ void ResonanceInternalPlayback::_process_steam_audio_block() {
                 }
                 const float path_out_rms = (frame_size_ > 0) ? std::sqrt(path_sum_sq / (2.0f * static_cast<float>(frame_size_))) : 0.0f;
                 instrumentation_last_pathing_out_rms.store(path_out_rms, std::memory_order_relaxed);
-                dbg_path = resonance::sanitize_audio_float(params_current.pathing_mix_level);
+                dbg_path = resonance::sanitize_audio_float(std::clamp(path_out_rms, 0.0f, 1.0f));
                 for (int i = 0; i < frame_size_; i++) {
                     if (sa_final_mix_buffer.data[0])
                         sa_final_mix_buffer.data[0][i] += sa_path_out_buffer.data[0][i];
@@ -696,6 +717,7 @@ void ResonanceInternalPlayback::get_instrumentation_snapshot(uint64_t& out_input
     out_pathing_order = instrumentation_last_pathing_order.load(std::memory_order_relaxed);
 }
 
+// out_pathing: path wet stereo RMS after simulation, clamped to [0,1] (not pathing_mix_level).
 void ResonanceInternalPlayback::get_debug_signal_levels(float& out_direct, float& out_reverb, float& out_pathing) const {
     out_direct = debug_signal_direct.load(std::memory_order_relaxed);
     out_reverb = debug_signal_reverb.load(std::memory_order_relaxed);
@@ -717,7 +739,7 @@ int32_t ResonanceInternalPlayback::read_reverb_frames(AudioFrame* buffer, int32_
     }
     output_ring_reverb_l.read(temp_reverb_buffer_l.data(), to_read);
     output_ring_reverb_r.read(temp_reverb_buffer_r.data(), to_read);
-    const float v_rev = owner_volume_linear(owner_player_);
+    const float v_rev = owner_effective_volume_linear(owner_player_);
     for (int32_t i = 0; i < to_read; i++) {
         buffer[i].left = temp_reverb_buffer_l[i] * v_rev;
         buffer[i].right = temp_reverb_buffer_r[i] * v_rev;
@@ -842,7 +864,7 @@ int32_t ResonanceInternalPlayback::_mix(AudioFrame* buffer, double rate_scale, i
         }
         int available = (int)output_ring_l.get_available_read();
         int to_copy = (frames < available) ? frames : available;
-        const float v_tail = owner_volume_linear(owner_player_);
+        const float v_tail = owner_effective_volume_linear(owner_player_);
         for (int i = 0; i < to_copy; i++) {
             float l, r;
             output_ring_l.read(&l, 1);
@@ -861,7 +883,7 @@ int32_t ResonanceInternalPlayback::_mix(AudioFrame* buffer, double rate_scale, i
         _lazy_init_steam_audio(0);
         // If init failed (e.g. out of memory or no context), fallback to passthrough
         if (!is_initialized) {
-            const float v = owner_volume_linear(owner_player_);
+            const float v = owner_effective_volume_linear(owner_player_);
             for (int i = 0; i < samples_read; i++) {
                 buffer[i].left = mixed_frames[i].x * v;
                 buffer[i].right = mixed_frames[i].y * v;
@@ -903,7 +925,7 @@ int32_t ResonanceInternalPlayback::_mix(AudioFrame* buffer, double rate_scale, i
         instrumentation_output_underrun.fetch_add((uint64_t)(samples_to_output - valid_copy), std::memory_order_relaxed);
     }
 
-    const float v_out = owner_volume_linear(owner_player_);
+    const float v_out = owner_effective_volume_linear(owner_player_);
     for (int i = 0; i < valid_copy; i++) {
         float l = 0.0f;
         float r = 0.0f;
@@ -939,8 +961,12 @@ void ResonanceInternalPlayback::_start(double from_pos) {
     output_ring_reverb_r.clear();
     if (base_playback.is_valid())
         base_playback->start(from_pos);
+    if (owner_player_)
+        owner_player_->internal_register_playback(this);
 }
 void ResonanceInternalPlayback::_stop() {
+    if (owner_player_)
+        owner_player_->internal_unregister_playback(this);
     if (base_playback.is_valid())
         base_playback->stop();
     direct_processor.reset_for_new_playback();
@@ -971,14 +997,47 @@ void ResonanceReverbPlayback::set_parent_player(ResonancePlayer* p_player) {
 }
 
 int32_t ResonanceReverbPlayback::_mix(AudioFrame* buffer, float _rate_scale, int32_t frames) {
-    if (!parent_player || frames <= 0)
+    if (!parent_player || frames <= 0 || !buffer)
         return 0;
-    ResonanceInternalPlayback* main_pb = Object::cast_to<ResonanceInternalPlayback>(parent_player->get_stream_playback().ptr());
-    if (!main_pb)
+    std::vector<ResonanceInternalPlayback*> voices;
+    parent_player->internal_copy_internal_playbacks(voices);
+    size_t total_reverb_samples = 0;
+    for (ResonanceInternalPlayback* pb : voices) {
+        if (pb)
+            total_reverb_samples += pb->get_reverb_ring_available_read();
+    }
+    ResonanceInternalPlayback* fallback_pb = nullptr;
+    if (voices.empty())
+        fallback_pb = Object::cast_to<ResonanceInternalPlayback>(parent_player->get_stream_playback().ptr());
+    if (voices.empty() && !fallback_pb)
         return 0;
-    if (!parent_player->is_playing() && main_pb->get_reverb_ring_available_read() == 0)
+    if (voices.empty()) {
+        if (!parent_player->is_playing() && fallback_pb->get_reverb_ring_available_read() == 0)
+            return 0;
+        return fallback_pb->read_reverb_frames(buffer, frames);
+    }
+    if (!parent_player->is_playing() && total_reverb_samples == 0)
         return 0;
-    return main_pb->read_reverb_frames(buffer, frames);
+    for (int32_t i = 0; i < frames; i++) {
+        buffer[i].left = 0.0f;
+        buffer[i].right = 0.0f;
+    }
+    thread_local static std::vector<AudioFrame> tmp_voice_reverb;
+    tmp_voice_reverb.resize((size_t)frames);
+    for (ResonanceInternalPlayback* pb : voices) {
+        if (!pb)
+            continue;
+        pb->read_reverb_frames(tmp_voice_reverb.data(), frames);
+        for (int32_t i = 0; i < frames; i++) {
+            buffer[i].left += tmp_voice_reverb[i].left;
+            buffer[i].right += tmp_voice_reverb[i].right;
+        }
+    }
+    for (int32_t i = 0; i < frames; i++) {
+        buffer[i].left = std::clamp(buffer[i].left, -1.0f, 1.0f);
+        buffer[i].right = std::clamp(buffer[i].right, -1.0f, 1.0f);
+    }
+    return frames;
 }
 
 void ResonanceReverbPlayback::_start(double _from_pos) {}
@@ -1162,6 +1221,7 @@ void ResonancePlayer::_ready() {
 }
 
 void ResonancePlayer::_exit_tree() {
+    _clear_physics_ray_auto_exclude_rids();
     stop();
     debug_drawer.cleanup();
 
@@ -1170,6 +1230,74 @@ void ResonancePlayer::_exit_tree() {
         if (srv && !ResonanceServer::is_shutting_down())
             srv->destroy_source_handle(source_handle);
         source_handle = -1;
+    }
+}
+
+ResonancePlayer::~ResonancePlayer() {
+    std::vector<ResonanceInternalPlayback*> copy;
+    {
+        std::lock_guard<std::mutex> lock(internal_playbacks_mutex_);
+        copy.swap(internal_playbacks_);
+    }
+    for (ResonanceInternalPlayback* p : copy) {
+        if (p)
+            p->internal_orphan_owner_player();
+    }
+}
+
+void ResonancePlayer::internal_register_playback(ResonanceInternalPlayback* p) {
+    if (!p)
+        return;
+    std::lock_guard<std::mutex> lock(internal_playbacks_mutex_);
+    for (ResonanceInternalPlayback* q : internal_playbacks_) {
+        if (q == p)
+            return;
+    }
+    internal_playbacks_.push_back(p);
+}
+
+void ResonancePlayer::internal_unregister_playback(ResonanceInternalPlayback* p) {
+    if (!p)
+        return;
+    std::lock_guard<std::mutex> lock(internal_playbacks_mutex_);
+    internal_playbacks_.erase(std::remove(internal_playbacks_.begin(), internal_playbacks_.end(), p), internal_playbacks_.end());
+}
+
+void ResonancePlayer::internal_copy_internal_playbacks(std::vector<ResonanceInternalPlayback*>& out) const {
+    std::lock_guard<std::mutex> lock(internal_playbacks_mutex_);
+    out = internal_playbacks_;
+}
+
+void ResonancePlayer::_broadcast_update_parameters(const PlaybackParameters& p) {
+    std::vector<ResonanceInternalPlayback*> copy;
+    {
+        std::lock_guard<std::mutex> lock(internal_playbacks_mutex_);
+        copy = internal_playbacks_;
+    }
+    for (ResonanceInternalPlayback* pb : copy) {
+        if (pb)
+            pb->update_parameters(p);
+    }
+}
+
+void ResonancePlayer::_aggregate_debug_signal_levels(float& out_direct, float& out_reverb, float& out_pathing) {
+    out_direct = 0.0f;
+    out_reverb = 0.0f;
+    out_pathing = 0.0f;
+    std::vector<ResonanceInternalPlayback*> copy;
+    internal_copy_internal_playbacks(copy);
+    for (ResonanceInternalPlayback* pb : copy) {
+        if (!pb)
+            continue;
+        float d = 0.0f, r = 0.0f, p = 0.0f;
+        pb->get_debug_signal_levels(d, r, p);
+        out_direct = std::max(out_direct, d);
+        out_reverb = std::max(out_reverb, r);
+        out_pathing = std::max(out_pathing, p);
+    }
+    if (copy.empty()) {
+        if (ResonanceInternalPlayback* pb = _get_resonance_playback())
+            pb->get_debug_signal_levels(out_direct, out_reverb, out_pathing);
     }
 }
 
@@ -1565,9 +1693,7 @@ void ResonancePlayer::_apply_playback_params_from_simulation(ResonanceServer* sr
                                                            occ_val, tx_low, tx_mid, tx_high, directivity_val, air_abs,
                                                            has_reverb, direct_enabled, reverb_enabled);
 
-    ResonanceInternalPlayback* res_pb = _get_resonance_playback();
-    if (res_pb)
-        res_pb->update_parameters(new_params);
+    _broadcast_update_parameters(new_params);
 
     if (opt_debug_out) {
         opt_debug_out->source_pos = get_global_position();
@@ -1610,6 +1736,38 @@ void ResonancePlayer::_deferred_push_playback_parameters() {
     _push_playback_parameters_from_simulation(srv, nullptr, 0.0);
 }
 
+void ResonancePlayer::_notification(int p_what) {
+    if (p_what == NOTIFICATION_ENTER_TREE || p_what == NOTIFICATION_CHILD_ORDER_CHANGED) {
+        Engine* eng = Engine::get_singleton();
+        if (!eng || !eng->is_editor_hint())
+            _sync_physics_ray_auto_exclude_rids();
+    }
+}
+
+void ResonancePlayer::_clear_physics_ray_auto_exclude_rids() {
+    ResonanceServer* srv = ResonanceServer::get_singleton();
+    if (srv && !registered_physics_auto_exclude_rids_.empty()) {
+        for (const RID& r : registered_physics_auto_exclude_rids_)
+            srv->unregister_physics_ray_auto_exclude_rid(r);
+    }
+    registered_physics_auto_exclude_rids_.clear();
+}
+
+void ResonancePlayer::_sync_physics_ray_auto_exclude_rids() {
+    if (!physics_ray_auto_exclude_collision_bodies_)
+        return;
+    ResonanceServer* srv = ResonanceServer::get_singleton();
+    if (!srv || !srv->uses_custom_ray_tracer())
+        return;
+    _clear_physics_ray_auto_exclude_rids();
+    std::vector<RID> found;
+    collect_collision_object_rids_recursive(this, found);
+    for (const RID& r : found) {
+        srv->register_physics_ray_auto_exclude_rid(r);
+        registered_physics_auto_exclude_rids_.push_back(r);
+    }
+}
+
 void ResonancePlayer::_process(double delta) {
     Engine* eng = Engine::get_singleton();
     if (eng && eng->is_editor_hint())
@@ -1618,6 +1776,14 @@ void ResonancePlayer::_process(double delta) {
         return;
 
     ResonanceServer* srv = ResonanceServer::get_singleton();
+    if (physics_ray_auto_exclude_collision_bodies_ && srv && srv->uses_custom_ray_tracer()) {
+        if (++physics_auto_exclude_resync_counter_ >= 60) {
+            physics_auto_exclude_resync_counter_ = 0;
+            _sync_physics_ray_auto_exclude_rids();
+        }
+    } else {
+        physics_auto_exclude_resync_counter_ = 0;
+    }
     const bool dbg_occ = srv && srv->is_debug_occlusion_enabled();
     const bool dbg_ref = srv && srv->is_debug_reflections_enabled();
     const bool want_player_debug_ui = !exclude_from_debug_ && (dbg_occ || dbg_ref);
@@ -1642,6 +1808,9 @@ void ResonancePlayer::_process(double delta) {
         return;
     }
 
+    if (srv && source_handle < 0 && srv->is_initialized())
+        _try_ensure_source_and_sync(srv, true);
+
     if (!srv || !srv->is_simulating() || source_handle < 0) {
         if (show_debug_hud && debug_overlay_has_last_data_)
             _sync_player_debug_drawer(delta, srv, debug_overlay_last_data_, true);
@@ -1663,14 +1832,7 @@ void ResonancePlayer::_process(double delta) {
         dbg_data = debug_overlay_last_data_;
 
     // --- DEBUG DRAWING ---
-    ResonanceInternalPlayback* res_pb = _get_resonance_playback();
-    if (res_pb) {
-        res_pb->get_debug_signal_levels(dbg_data.signal_direct, dbg_data.signal_reverb, dbg_data.signal_pathing);
-    } else {
-        dbg_data.signal_direct = 0.0f;
-        dbg_data.signal_reverb = 0.0f;
-        dbg_data.signal_pathing = 0.0f;
-    }
+    _aggregate_debug_signal_levels(dbg_data.signal_direct, dbg_data.signal_reverb, dbg_data.signal_pathing);
 
     if (apply_playback) {
         debug_overlay_last_data_ = dbg_data;
@@ -1679,41 +1841,47 @@ void ResonancePlayer::_process(double delta) {
     _sync_player_debug_drawer(delta, srv, dbg_data, show_debug_hud);
 }
 
-void ResonancePlayer::_ensure_source_exists() {
-    if (!player_config.is_valid())
-        return;
-    ResonanceServer* srv = ResonanceServer::get_singleton();
-    if (srv && srv->is_initialized() && source_handle < 0) {
-        float eff_radius = _config_float("source_radius", 1.0f);
-        source_handle = srv->create_source_handle(get_global_position(), eff_radius);
+bool ResonancePlayer::_try_ensure_source_and_sync(ResonanceServer* srv, bool deferred_playback_push_if_playing) {
+    if (!player_config.is_valid() || source_handle >= 0)
+        return false;
+    if (!srv || !srv->is_initialized())
+        return false;
+
+    const float eff_radius = _config_float("source_radius", 1.0f);
+    const int32_t h = srv->create_source_handle(get_global_position(), eff_radius);
+    if (h < 0) {
+        if (!warned_source_handle_create_failed_) {
+            warned_source_handle_create_failed_ = true;
+            ResonanceLog::warn(
+                "ResonancePlayer: create_source_handle failed (is the simulator ready?). Reverb/occlusion may stay dry until it succeeds.");
+        }
+        return false;
     }
+    warned_source_handle_create_failed_ = false;
+    source_handle = h;
+    _prepare_source_for_simulation(srv);
+    if (deferred_playback_push_if_playing && is_playing())
+        call_deferred("_deferred_push_playback_parameters");
+    return true;
 }
 
-void ResonancePlayer::_update_stream_setup() {
+void ResonancePlayer::_deferred_try_ensure_source_after_config() {
+    Engine* eng = Engine::get_singleton();
+    if (eng && eng->is_editor_hint())
+        return;
     if (!player_config.is_valid())
         return;
-    Ref<AudioStream> cur = get_stream();
-    if (cur.is_valid() && cur->get_class() == "ResonanceInternalStream") {
-        if (ResonanceInternalStream* ris = Object::cast_to<ResonanceInternalStream>(cur.ptr()))
-            ris->set_stream_owner(this);
-        return;
-    }
-    if (cur.is_valid()) {
-        internal_stream.instantiate();
-        internal_stream->set_base_stream(cur);
-        internal_stream->set_stream_owner(this);
-        set_stream(internal_stream);
-    }
-}
-
-void ResonancePlayer::play_stream(double from_pos) {
-    // Force full playback-parameter push on first playing frames (LOD anchor/timer otherwise stale after prior shot).
-    playback_lod_have_anchor_ = false;
-    playback_lod_time_since_full_ = 0.0;
     _update_stream_setup();
-    // GDExtension may narrow to float internally; keep double at call site.
-    // NOLINTNEXTLINE(bugprone-narrowing-conversions)
-    play(from_pos);
+    ResonanceServer* srv = ResonanceServer::get_singleton();
+    _try_ensure_source_and_sync(srv, is_playing());
+}
+
+void ResonancePlayer::_ensure_source_exists() {
+    ResonanceServer* srv = ResonanceServer::get_singleton();
+    (void)_try_ensure_source_and_sync(srv, false);
+}
+
+void ResonancePlayer::_start_reverb_split_child_if_needed() {
     Node* reverb_child = get_node_or_null(NodePath("ResonanceReverbOutput"));
     if (reverb_child && reverb_child->is_class("AudioStreamPlayer")) {
         if (AudioStreamPlayer* rp = Object::cast_to<AudioStreamPlayer>(reverb_child)) {
@@ -1721,11 +1889,96 @@ void ResonancePlayer::play_stream(double from_pos) {
                 rp->play();
         }
     }
-    if (player_config.is_valid())
+}
+
+void ResonancePlayer::set_stream(const Ref<AudioStream>& p_stream) {
+    Engine* eng = Engine::get_singleton();
+    const bool editor = eng && eng->is_editor_hint();
+    if (!player_config.is_valid()) {
+        logical_stream_.unref();
+        internal_stream.unref();
+        AudioStreamPlayer3D::set_stream(p_stream);
+        return;
+    }
+    logical_stream_ = p_stream;
+    if (editor) {
+        internal_stream.unref();
+        AudioStreamPlayer3D::set_stream(p_stream);
+        return;
+    }
+    if (!logical_stream_.is_valid()) {
+        internal_stream.unref();
+        AudioStreamPlayer3D::set_stream(Ref<AudioStream>());
+        return;
+    }
+    if (!internal_stream.is_valid())
+        internal_stream.instantiate();
+    internal_stream->set_base_stream(logical_stream_);
+    internal_stream->set_stream_owner(this);
+    AudioStreamPlayer3D::set_stream(internal_stream);
+}
+
+Ref<AudioStream> ResonancePlayer::get_stream() const {
+    if (!player_config.is_valid())
+        return AudioStreamPlayer3D::get_stream();
+    if (logical_stream_.is_valid())
+        return logical_stream_;
+    return AudioStreamPlayer3D::get_stream();
+}
+
+void ResonancePlayer::play(float from_position) {
+    Engine* eng = Engine::get_singleton();
+    if (eng && eng->is_editor_hint()) {
+        AudioStreamPlayer3D::play(from_position);
+        return;
+    }
+    if (player_config.is_valid()) {
+        playback_lod_have_anchor_ = false;
+        playback_lod_time_since_full_ = 0.0;
+        _update_stream_setup();
+        ResonanceServer* srv = ResonanceServer::get_singleton();
+        _try_ensure_source_and_sync(srv, false);
+    }
+    AudioStreamPlayer3D::play(from_position);
+    if (player_config.is_valid()) {
+        _start_reverb_split_child_if_needed();
         call_deferred("_deferred_push_playback_parameters");
+    }
+}
+
+void ResonancePlayer::_update_stream_setup() {
+    if (!player_config.is_valid())
+        return;
+    const Ref<AudioStream> engine_s = AudioStreamPlayer3D::get_stream();
+    if (internal_stream.is_valid() && engine_s == internal_stream) {
+        if (ResonanceInternalStream* ris = Object::cast_to<ResonanceInternalStream>(internal_stream.ptr())) {
+            ris->set_stream_owner(this);
+            if (logical_stream_.is_valid())
+                ris->set_base_stream(logical_stream_);
+        }
+        return;
+    }
+    logical_stream_ = engine_s;
+    if (logical_stream_.is_valid()) {
+        if (!internal_stream.is_valid())
+            internal_stream.instantiate();
+        internal_stream->set_base_stream(logical_stream_);
+        internal_stream->set_stream_owner(this);
+        AudioStreamPlayer3D::set_stream(internal_stream);
+    } else {
+        internal_stream.unref();
+        AudioStreamPlayer3D::set_stream(Ref<AudioStream>());
+    }
+}
+
+void ResonancePlayer::play_stream(double from_pos) {
+    // GDExtension may narrow to float internally; keep double at call site.
+    // NOLINTNEXTLINE(bugprone-narrowing-conversions)
+    play(static_cast<float>(from_pos));
 }
 
 void ResonancePlayer::stop() {
+    warned_source_handle_create_failed_ = false;
     playback_lod_have_anchor_ = false;
     playback_lod_time_since_full_ = 0.0;
     coeff_smooth_initialized_ = false;
@@ -1748,10 +2001,29 @@ void ResonancePlayer::clear_pathing_probe_immediate() {
         return;
     _ensure_config_and_apply_source(-1);
 }
+void ResonancePlayer::set_physics_ray_auto_exclude_collision_bodies(bool p_enable) {
+    if (physics_ray_auto_exclude_collision_bodies_ == p_enable)
+        return;
+    physics_ray_auto_exclude_collision_bodies_ = p_enable;
+    if (!p_enable)
+        _clear_physics_ray_auto_exclude_rids();
+    else
+        _sync_physics_ray_auto_exclude_rids();
+}
+
 void ResonancePlayer::set_exclude_from_debug(bool p_exclude) { exclude_from_debug_ = p_exclude; }
 void ResonancePlayer::set_player_config(const Ref<Resource>& p_config) {
+    const bool had_config = player_config.is_valid();
     player_config = p_config;
     config_cache_valid_ = false;
+    if (had_config && !player_config.is_valid()) {
+        const Ref<AudioStream> logical = logical_stream_;
+        internal_stream.unref();
+        logical_stream_.unref();
+        AudioStreamPlayer3D::set_stream(logical);
+    } else if (player_config.is_valid()) {
+        call_deferred("_deferred_try_ensure_source_after_config");
+    }
 }
 Ref<Resource> ResonancePlayer::get_player_config() const { return player_config; }
 
@@ -1795,10 +2067,38 @@ void ResonancePlayer::_update_reverb_split_child(const StringName& p_reverb_bus)
 
 Dictionary ResonancePlayer::get_audio_instrumentation() {
     Dictionary d;
-    ResonanceInternalPlayback* res_pb = _get_resonance_playback();
-    if (res_pb) {
+    if (!player_config.is_valid())
+        return d;
+    d["godot_attenuation_model"] = (int)get_attenuation_model();
+    d["godot_pitch_scale"] = get_pitch_scale();
+    d["godot_max_distance"] = get_max_distance();
+    d["godot_max_db"] = get_max_db();
+    d["godot_unit_size"] = get_unit_size();
+
+    std::vector<ResonanceInternalPlayback*> copy;
+    internal_copy_internal_playbacks(copy);
+    if (copy.empty()) {
+        if (ResonanceInternalPlayback* res_pb = _get_resonance_playback())
+            copy.push_back(res_pb);
+    }
+    if (copy.empty())
+        return d;
+
+    uint64_t sum_input_dropped = 0, sum_output_underrun = 0, sum_output_blocked = 0, sum_mix_calls = 0, sum_blocks = 0;
+    uint64_t sum_passthrough = 0, sum_reverb_miss = 0, max_block_us = 0;
+    uint64_t sum_late_mix = 0, sum_param_syncs = 0, sum_zero_input = 0;
+    int32_t agg_mix_frames_min = std::numeric_limits<int32_t>::max();
+    int32_t agg_mix_frames_max = 0;
+    uint64_t sum_silent_blocks = 0;
+    float max_last_rms = 0.0f;
+    float max_path_sh_rms = 0.0f, max_path_sh_energy = 0.0f, max_path_out_rms = 0.0f;
+    int32_t max_path_order = -1;
+
+    for (ResonanceInternalPlayback* res_pb : copy) {
+        if (!res_pb)
+            continue;
         uint64_t input_dropped = 0, output_underrun = 0, output_blocked = 0, mix_calls = 0, blocks = 0;
-        uint64_t passthrough = 0, reverb_miss = 0, max_block_us = 0;
+        uint64_t passthrough = 0, reverb_miss = 0, block_us = 0;
         uint64_t late_mix = 0, param_syncs = 0, zero_input = 0;
         int32_t mix_frames_min = std::numeric_limits<int32_t>::max(), mix_frames_max = 0;
         uint64_t silent_blocks = 0;
@@ -1806,44 +2106,82 @@ Dictionary ResonancePlayer::get_audio_instrumentation() {
         float path_sh_rms = 0.0f, path_sh_energy = 0.0f, path_out_rms = 0.0f;
         int32_t path_order = -1;
         res_pb->get_instrumentation_snapshot(input_dropped, output_underrun, output_blocked, mix_calls, blocks,
-                                             passthrough, reverb_miss, max_block_us, late_mix, param_syncs, zero_input,
+                                             passthrough, reverb_miss, block_us, late_mix, param_syncs, zero_input,
                                              mix_frames_min, mix_frames_max, silent_blocks, last_rms,
                                              path_sh_rms, path_sh_energy, path_out_rms, path_order);
-        d["input_dropped"] = (int64_t)input_dropped;
-        d["output_underrun"] = (int64_t)output_underrun;
-        d["output_blocked"] = (int64_t)output_blocked;
-        d["mix_calls"] = (int64_t)mix_calls;
-        d["blocks_processed"] = (int64_t)blocks;
-        d["passthrough_blocks"] = (int64_t)passthrough;
-        d["reverb_miss_blocks"] = (int64_t)reverb_miss;
-        d["max_block_time_us"] = (int64_t)max_block_us;
-        d["late_mix_count"] = (int64_t)late_mix;
-        d["param_sync_count"] = (int64_t)param_syncs;
-        d["zero_input_count"] = (int64_t)zero_input;
-        d["mix_frames_min"] = (int)mix_frames_min;
-        d["mix_frames_max"] = (int)mix_frames_max;
-        d["silent_output_blocks"] = (int64_t)silent_blocks;
-        d["last_output_rms"] = last_rms;
-        d["pathing_sh_rms"] = path_sh_rms;
-        d["pathing_sh_energy"] = path_sh_energy;
-        d["pathing_out_rms"] = path_out_rms;
-        d["pathing_sh_order"] = (int)path_order;
+        sum_input_dropped += input_dropped;
+        sum_output_underrun += output_underrun;
+        sum_output_blocked += output_blocked;
+        sum_mix_calls += mix_calls;
+        sum_blocks += blocks;
+        sum_passthrough += passthrough;
+        sum_reverb_miss += reverb_miss;
+        max_block_us = std::max(max_block_us, block_us);
+        sum_late_mix += late_mix;
+        sum_param_syncs += param_syncs;
+        sum_zero_input += zero_input;
+        if (mix_frames_min < agg_mix_frames_min)
+            agg_mix_frames_min = mix_frames_min;
+        agg_mix_frames_max = std::max(agg_mix_frames_max, mix_frames_max);
+        sum_silent_blocks += silent_blocks;
+        max_last_rms = std::max(max_last_rms, last_rms);
+        max_path_sh_rms = std::max(max_path_sh_rms, path_sh_rms);
+        max_path_sh_energy = std::max(max_path_sh_energy, path_sh_energy);
+        max_path_out_rms = std::max(max_path_out_rms, path_out_rms);
+        max_path_order = std::max(max_path_order, path_order);
     }
+
+    if (agg_mix_frames_min == std::numeric_limits<int32_t>::max())
+        agg_mix_frames_min = 0;
+
+    d["input_dropped"] = (int64_t)sum_input_dropped;
+    d["output_underrun"] = (int64_t)sum_output_underrun;
+    d["output_blocked"] = (int64_t)sum_output_blocked;
+    d["mix_calls"] = (int64_t)sum_mix_calls;
+    d["blocks_processed"] = (int64_t)sum_blocks;
+    d["passthrough_blocks"] = (int64_t)sum_passthrough;
+    d["reverb_miss_blocks"] = (int64_t)sum_reverb_miss;
+    d["max_block_time_us"] = (int64_t)max_block_us;
+    d["late_mix_count"] = (int64_t)sum_late_mix;
+    d["param_sync_count"] = (int64_t)sum_param_syncs;
+    d["zero_input_count"] = (int64_t)sum_zero_input;
+    d["mix_frames_min"] = (int)agg_mix_frames_min;
+    d["mix_frames_max"] = (int)agg_mix_frames_max;
+    d["silent_output_blocks"] = (int64_t)sum_silent_blocks;
+    d["last_output_rms"] = max_last_rms;
+    d["pathing_sh_rms"] = max_path_sh_rms;
+    d["pathing_sh_energy"] = max_path_sh_energy;
+    d["pathing_out_rms"] = max_path_out_rms;
+    d["pathing_sh_order"] = (int)max_path_order;
+    d["polyphony_voice_count"] = (int)copy.size();
     return d;
 }
 
 void ResonancePlayer::reset_audio_instrumentation() {
-    ResonanceInternalPlayback* res_pb = _get_resonance_playback();
-    if (res_pb)
-        res_pb->reset_instrumentation();
+    std::vector<ResonanceInternalPlayback*> copy;
+    internal_copy_internal_playbacks(copy);
+    if (copy.empty()) {
+        if (ResonanceInternalPlayback* res_pb = _get_resonance_playback())
+            copy.push_back(res_pb);
+    }
+    for (ResonanceInternalPlayback* res_pb : copy) {
+        if (res_pb)
+            res_pb->reset_instrumentation();
+    }
 }
 
 void ResonancePlayer::_bind_methods() {
+    ClassDB::bind_method(D_METHOD("set_stream", "stream"), &ResonancePlayer::set_stream);
+    ClassDB::bind_method(D_METHOD("get_stream"), &ResonancePlayer::get_stream);
+    ClassDB::bind_method(D_METHOD("play", "from_position"), &ResonancePlayer::play, DEFVAL(0.0f));
     ClassDB::bind_method(D_METHOD("play_stream", "from_position"), &ResonancePlayer::play_stream, DEFVAL(0.0));
+    ClassDB::bind_method(D_METHOD("_deferred_try_ensure_source_after_config"), &ResonancePlayer::_deferred_try_ensure_source_after_config);
     ClassDB::bind_method(D_METHOD("set_pathing_probe_volume", "p_path"), &ResonancePlayer::set_pathing_probe_volume);
     ClassDB::bind_method(D_METHOD("get_pathing_probe_volume"), &ResonancePlayer::get_pathing_probe_volume);
     ClassDB::bind_method(D_METHOD("set_exclude_from_debug", "p_exclude"), &ResonancePlayer::set_exclude_from_debug);
     ClassDB::bind_method(D_METHOD("get_exclude_from_debug"), &ResonancePlayer::get_exclude_from_debug);
+    ClassDB::bind_method(D_METHOD("set_physics_ray_auto_exclude_collision_bodies", "p_enable"), &ResonancePlayer::set_physics_ray_auto_exclude_collision_bodies);
+    ClassDB::bind_method(D_METHOD("get_physics_ray_auto_exclude_collision_bodies"), &ResonancePlayer::get_physics_ray_auto_exclude_collision_bodies);
     ClassDB::bind_method(D_METHOD("set_player_config", "p_config"), &ResonancePlayer::set_player_config);
     ClassDB::bind_method(D_METHOD("get_player_config"), &ResonancePlayer::get_player_config);
     ClassDB::bind_method(D_METHOD("set_reverb_split_output", "p_enable", "p_reverb_bus"), &ResonancePlayer::set_reverb_split_output, DEFVAL(StringName()));
@@ -1854,6 +2192,8 @@ void ResonancePlayer::_bind_methods() {
     ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "player_config", PROPERTY_HINT_RESOURCE_TYPE, "ResonancePlayerConfig"), "set_player_config", "get_player_config");
     ADD_PROPERTY(PropertyInfo(Variant::NODE_PATH, "pathing_probe_volume", PROPERTY_HINT_NODE_PATH_VALID_TYPES, "ResonanceProbeVolume"), "set_pathing_probe_volume", "get_pathing_probe_volume");
     ADD_PROPERTY(PropertyInfo(Variant::BOOL, "exclude_from_debug"), "set_exclude_from_debug", "get_exclude_from_debug");
+    ADD_PROPERTY(PropertyInfo(Variant::BOOL, "physics_ray_auto_exclude_collision_bodies"), "set_physics_ray_auto_exclude_collision_bodies",
+                 "get_physics_ray_auto_exclude_collision_bodies");
 
     BIND_ENUM_CONSTANT(ATTENUATION_INVERSE);
     BIND_ENUM_CONSTANT(ATTENUATION_LINEAR);

@@ -12,7 +12,8 @@ using namespace godot;
 
 OcclusionData ResonanceServer::get_source_occlusion_data(int32_t handle) {
     OcclusionData result;
-    result.occlusion = 0.0f;
+    // Default "no data": treat as unoccluded. Steam uses 1 = LOS, 0 = blocked.
+    result.occlusion = resonance::kOcclusionFetchDefaultVisible;
     result.transmission[0] = 1.0f;
     result.transmission[1] = 1.0f;
     result.transmission[2] = 1.0f;
@@ -27,8 +28,9 @@ OcclusionData ResonanceServer::get_source_occlusion_data(int32_t handle) {
     std::unique_lock<std::mutex> lock(simulation_mutex, std::defer_lock);
     if (lock.try_lock()) {
         IPLSource src = source_manager.get_source(handle);
-        if (!src)
+        if (!src) {
             return result;
+        }
 
         IPLSimulationOutputs outputs{};
         iplSourceGetOutputs(src, IPL_SIMULATIONFLAGS_DIRECT, &outputs);

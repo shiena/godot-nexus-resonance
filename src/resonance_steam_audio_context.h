@@ -15,7 +15,7 @@ struct ResonanceSteamAudioContextConfig {
     int ambisonic_order = 1;
     float max_reverb_duration = 2.0f;
     int reflection_type = resonance::kReflectionConvolution; // May be modified (e.g. TAN fallback)
-    int scene_type = 0;                                      // 0=Default, 1=Embree, 2=Radeon Rays
+    int scene_type = 0;                                      // 0=Default, 1=Embree, 2=Radeon, 3=Custom (Godot Physics)
     int opencl_device_type = 0;                              // 0=GPU, 1=CPU, 2=Any
     int opencl_device_index = 0;
     bool context_validation = false;
@@ -40,7 +40,7 @@ class ResonanceSteamAudioContext {
     ResonanceSteamAudioContext& operator=(ResonanceSteamAudioContext&&) = delete;
 
     /// Initialize context and devices. reflection_type in config may be modified (TAN fallback).
-    /// config.scene_type is set to the effective tracer index (0=Default, 1=Embree, 2=Radeon) after device setup.
+    /// config.scene_type is set to the effective tracer index (0–3) after device setup.
     /// Returns true on success.
     bool init(ResonanceSteamAudioContextConfig& config);
 

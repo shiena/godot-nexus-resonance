@@ -34,6 +34,15 @@ nexus-resonance/
 - **ResonanceRuntime** (GDScript): Scene node, drives init, listener fallback, reverb bus.
 - **ResonanceRuntimeConfig** (GDScript): Resource with all runtime settings (sample rate, frame size, reflection type, etc.).
 - **ResonancePlayer** / **ResonanceAmbisonicPlayer** (C++): Audio sources with direct, reverb, pathing.
+- **ResonancePlayer polyphony:** When `player_config` is set, Godot may run several `ResonanceInternalPlayback` instances (`max_polyphony` > 1). The node keeps a mutex-protected registry; `_process` **broadcasts** the same `PlaybackParameters` (and shared `source_handle`) to every active voice so none fall back to dry passthrough. **Reverb split** sums `read_reverb_frames` across all registered voices (with clamp). `ResonancePlayer::~` orphans playbacks so their destructors never touch a freed owner. `ResonanceServer::record_convolution_feed` is instrumentation-only (tracks min/max gain/RMS); convolution still runs per voice via the reflection mixer — multiple feeds per frame from overlapping voices are normal.
+- **ResonancePlayer vs `AudioStreamPlayer3D` (with `player_config`):**
+  - `**set_stream` / `get_stream`:** Overridden so the serialized/inspector stream is the user’s `AudioStream`; the engine plays `ResonanceInternalStream`. Clearing `player_config` unwraps to the plain parent stream slot.
+  - **Volume:** `owner_effective_volume_linear` applies `min(volume_db, max_db)` → linear (Godot-style ceiling); the engine does not apply node volume to GDExtension `_mix` output.
+  - **Ignored for distance (use `ResonancePlayerConfig`):** Godot `attenuation_model`, `unit_size`, `max_distance` — `_ready` sets `ATTENUATION_DISABLED`.
+  - **Weak / no Steam wiring:** `emission_angle`*, `attenuation_filter*`, `panning_strength`.
+  - `**get_audio_instrumentation`:** Adds `godot_`* snapshot keys for the fields above plus pitch/max_db/unit_size.
+  - **Reverb split child:** Separate `AudioStreamPlayer` bus; not auto-synced to parent bus/mute.
+  - **Follow-ups (manual / future):** Verify `stream_paused` / `set_playing` with split child; verify `seek` across all polyphony voices if Godot only seeks one playback.
 - **ResonanceGeometry** (C++): Mesh → Steam Audio scene (static/dynamic, asset or runtime).
 - **ResonanceProbeVolume** (C++): Baked reverb/pathing probes.
 
@@ -67,6 +76,7 @@ Unit tests (GUT) in `audio_resonance_tool/test/unit/`:
 - `test_probe_data_loader.gd` - Probe data loading
 - `test_probe_data_saver.gd` - Probe data saving
 - `test_resonance_bake_settings.gd` - Bake settings
+- `test_resonance_player_polyphony.gd` - ResonancePlayer `max_polyphony` / instrumentation API
 
 Run via Godot with GUT addon or CLI.
 
@@ -96,11 +106,12 @@ Cursor: Regel `[.cursor/rules/before-push.mdc](.cursor/rules/before-push.mdc)` �
 
 - **build.yml** - Builds all platforms on push/PR to main (Linux/Windows/Android on ubuntu, macOS/iOS on macos-latest)
 - **release.yml** - Full build + GitHub Release on version tags (`v`*)
-- **tests.yml** - C++unit tests + GDScript GUT tests on push/PR; **clang-format-14** check via `[scripts/check_clang_format.sh](scripts/check_clang_format.sh)` (`--dry-run -Werror` — no in-tree edits, no `git diff` drift). Those `**.sh` files must be committed** with the workflow; if they are missing on GitHub, the format step fails with **exit 127** (script/binary not found). Before pushing C++ changes, run `[scripts/format_cpp.sh](scripts/format_cpp.sh)` (or `CLANG_FORMAT_BIN=…` if your binary is not named `clang-format-14`). **clang-tidy** (first 80 `src` units, `bugprone-`* / `cert-*` / `clang-analyzer-*`) runs with warnings as errors but **excludes** `bugprone-easily-swappable-parameters`, which is too noisy for multi-`float` / multi-`int` engine callbacks.
+- **tests.yml** - C++unit tests + GDScript GUT tests on push/PR; **clang-format-14** check via `[scripts/check_clang_format.sh](scripts/check_clang_format.sh)` (`--dry-run -Werror` — no in-tree edits, no `git diff` drift). Those `**.sh` files must be committed** with the workflow; if they are missing on GitHub, the format step fails with **exit 127** (script/binary not found). Before pushing C++ changes, run `[scripts/format_cpp.sh](scripts/format_cpp.sh)` (or `CLANG_FORMAT_BIN=…` if your binary is not named `clang-format-14`). **clang-tidy** (first 80 `src` units, `bugprone-`* / `cert-`* / `clang-analyzer-*`) runs with warnings as errors but **excludes** `bugprone-easily-swappable-parameters`, which is too noisy for multi-`float` / multi-`int` engine callbacks.
 - **codeql.yml** - CodeQL security analysis (manual trigger)
 
 ## Known Limits and Workarounds
 
+- **ResonancePlayer sounds dry (no reverb/occlusion)** — Often was: child `ResonancePlayer` `_ready` ran before parent `ResonanceServer` init, so `create_source_handle` never ran again. Fixed by retrying handle creation from `play()` / `_process` when the server becomes ready. If you still hear dry audio, check `ResonanceServer.is_simulating()`, probe batches / geometry, and mix levels—not only `_ready` ordering.
 - **Editor shutdown**: Do not call `ResourceSaver.remove_resource_format_saver` / `ResourceLoader.remove_resource_format_loader` in plugin `_exit_tree`; Godot may tear these down before the plugin, causing SIGSEGV.
 - **GDExtension unload**: `clear_probe_batches` is now called in `_disable_plugin` only when `Engine.has_singleton("ResonanceServer")` is true. On editor close the GDExtension may be unloaded first—then the singleton is gone and we skip safely. When the user disables the plugin from project settings, we clean up.
 - **Probe volume deletion**: Probe Volume clears refs on EXIT_TREE; ResonancePlayer auto-clears `pathing_probe_volume` when the target node is gone. If the error still occurs, use Tools > Unlink Probe Volume References before deleting.
@@ -112,7 +123,7 @@ Cursor: Regel `[.cursor/rules/before-push.mdc](.cursor/rules/before-push.mdc)` �
 - **Errors**: Use `ResonanceLog::error()` / `ResonanceLog::warn()` in C++; these forward to ResonanceLogger when available.
 - **IPL calls**: Always check `IPL_STATUS_SUCCESS`; on failure log and cleanup.
 
-## Audio Processor Pattern (Steam Audio Unity Alignment)
+## Audio Processor Pattern
 
 All Steam Audio processors (Direct, Reflection, Path, Mixer, Ambisonic) follow a consistent pattern:
 
@@ -146,10 +157,6 @@ All Steam Audio processors (Direct, Reflection, Path, Mixer, Ambisonic) follow a
 
 - Listener coordinates, parametric reverb cache, HRTF, ReflectionMixer use main-write / audio-read double-buffers.
 - Atomic flags trigger swap on consume; lock-free for the audio hot path.
-
-## Reference: Steam Audio Unity Bug to Avoid
-
-In `references/steam-audio-4.8.1/unity/src/native/mix_return_effect.cpp` (lines 150–164), the `memset` for `inBuffer` and `outBuffer` incorrectly uses `effect->reflectionsBuffer.data[i]` instead of `effect->inBuffer.data[i]` and `effect->outBuffer.data[i]`. When adding similar lazy-init buffer allocations, ensure the correct buffer is used in each loop.
 
 ## Key Files for Common Tasks
 

@@ -428,6 +428,17 @@ void ResonanceGeometry::_create_meshes() {
     }
     server_init_retry_count_ = 0;
 
+    if (server->get_scene_type() == IPL_SCENETYPE_CUSTOM) {
+        static bool warned_custom_geometry = false;
+        if (!warned_custom_geometry) {
+            warned_custom_geometry = true;
+            UtilityFunctions::push_warning(
+                "Nexus Resonance: ResonanceGeometry is ignored when scene_type is Custom; use Godot 3D colliders. "
+                "Optional String meta resonance_physics_material_preset on colliders: generic, concrete, wood, metal, glass, carpet, brick.");
+        }
+        return;
+    }
+
     Transform3D xform = dynamic_object ? Transform3D() : get_mesh_bake_transform();
 
     if (use_asset_path) {
@@ -436,7 +447,7 @@ void ResonanceGeometry::_create_meshes() {
         // --- Load from serialized asset (iplStaticMeshLoad) ---
         // Sub-scene must match global scene ray tracer (Embree / Default / Radeon Rays); see ResonanceServer::_init_scene_and_simulator.
         IPLSceneSettings sceneSettings{};
-        sceneSettings.type = server->get_scene_type();
+        sceneSettings.type = server->get_phonon_mesh_scene_type();
         sceneSettings.embreeDevice = server->get_embree_device_handle();
         sceneSettings.radeonRaysDevice = server->get_radeon_rays_device_handle();
 
@@ -524,7 +535,7 @@ void ResonanceGeometry::_create_meshes() {
 
             if (dynamic_object) {
                 IPLSceneSettings sceneSettings{};
-                sceneSettings.type = server->get_scene_type();
+                sceneSettings.type = server->get_phonon_mesh_scene_type();
                 sceneSettings.embreeDevice = server->get_embree_device_handle();
                 sceneSettings.radeonRaysDevice = server->get_radeon_rays_device_handle();
 

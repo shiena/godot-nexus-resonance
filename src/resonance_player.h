@@ -17,8 +17,11 @@
 #include <atomic>
 #include <chrono>
 #include <limits>
+#include <mutex>
 #include <phonon.h>
 #include <vector>
+
+#include <godot_cpp/variant/rid.hpp>
 
 #include "resonance_constants.h"
 #include "resonance_debug_drawer.h"
@@ -35,7 +38,7 @@ class ResonancePlayer;
 
 struct PlaybackParameters {
     int32_t source_handle = -1;              // Source handle for Steam Audio
-    float occlusion = 0.0f;                  // 0=Visible, 1=Blocked
+    float occlusion = 1.0f;                  // Steam: 1=line-of-sight, 0=occluded (see direct_simulator / direct_effect)
     float transmission[3] = {1, 1, 1};       // Wall transparency
     float attenuation = 1.0f;                // Distance attenuation factor (direct, reverb, pathing)
     float reverb_pathing_attenuation = 1.0f; // Attenuation for reverb/pathing; capped to inverse-level when curve/linear (prevents overdrive)
@@ -79,6 +82,7 @@ struct PlaybackParameters {
 
 class ResonanceInternalPlayback : public AudioStreamPlayback {
     GDCLASS(ResonanceInternalPlayback, AudioStreamPlayback)
+    friend class ResonancePlayer;
 
   private:
     /// AudioStreamPlayer3D volume is not applied by the engine to this GDExtension playback's _mix output; scale explicitly.
@@ -175,7 +179,7 @@ class ResonanceInternalPlayback : public AudioStreamPlayback {
     std::atomic<int32_t> instrumentation_last_pathing_order{-1}; // -1 = n/a this block
     std::atomic<float> debug_signal_direct{0.0f};                // Effective direct gain (for Debug Sources display)
     std::atomic<float> debug_signal_reverb{0.0f};                // Effective reverb gain (for Debug Sources display)
-    std::atomic<float> debug_signal_pathing{0.0f};               // pathing_mix_level (input ramp end; no distance attenuation on wet)
+    std::atomic<float> debug_signal_pathing{0.0f};               // Path wet stereo RMS after path sim (per block, clamped 0..1 for HUD)
     std::chrono::steady_clock::time_point last_mix_time_;        // For inter-callback timing (audio thread only)
 
     void _lazy_init_steam_audio(int sampling_rate);                                            // Lazy init to avoid overhead if not needed
@@ -185,6 +189,7 @@ class ResonanceInternalPlayback : public AudioStreamPlayback {
     void _add_reverb_to_output(IPLAudioBuffer* reverb_buf, float refl_mix, bool split_output); // Parametric vs Convolution, split vs mix
     void _write_output_rings_folded();                                                         // sa_final_mix_buffer (N ch) -> stereo rings via temp_process_buffer_*
     void _zero_sa_final_mix();                                                                 // memset all direct_out_channels_
+    void internal_orphan_owner_player() { owner_player_ = nullptr; }
 
   public:
     ResonanceInternalPlayback();
@@ -203,7 +208,7 @@ class ResonanceInternalPlayback : public AudioStreamPlayback {
     virtual int32_t _mix(AudioFrame* buffer, double rate_scale, int32_t frames); // Mixes audio frames into the buffer
     virtual void _start(double from_pos) override;                               // Starts playback from a specific position
 
-    /// Debug Sources: effective D/R/P gains from last audio block. Safe to call from main thread.
+    /// Debug Sources: last block — direct gain, reverb send, path wet output RMS (clamped 0..1). Safe from main thread.
     void get_debug_signal_levels(float& out_direct, float& out_reverb, float& out_pathing) const;
     /// Snapshot of instrumentation counters for debugging dropouts. Safe to call from main thread.
     void get_instrumentation_snapshot(uint64_t& out_input_dropped, uint64_t& out_output_underrun,
@@ -290,6 +295,9 @@ class ResonanceReverbStream : public AudioStream {
 
 class ResonancePlayer : public AudioStreamPlayer3D {
     GDCLASS(ResonancePlayer, AudioStreamPlayer3D)
+    friend class ResonanceInternalPlayback;
+    friend class ResonanceReverbPlayback;
+
   public:
     enum AttenuationMode {
         ATTENUATION_INVERSE,        // Physics based (1/dist), Steam distance attenuation on
@@ -300,6 +308,16 @@ class ResonancePlayer : public AudioStreamPlayer3D {
 
   private:
     Ref<ResonanceInternalStream> internal_stream;
+    /// User-facing stream when player_config is set (serialization / inspector); engine stream is ResonanceInternalStream.
+    Ref<AudioStream> logical_stream_;
+    /// Active ResonanceInternalPlayback voices (polyphony); audio + main thread; see internal_register_playback.
+    mutable std::mutex internal_playbacks_mutex_;
+    std::vector<ResonanceInternalPlayback*> internal_playbacks_;
+    void internal_register_playback(ResonanceInternalPlayback* p);
+    void internal_unregister_playback(ResonanceInternalPlayback* p);
+    void internal_copy_internal_playbacks(std::vector<ResonanceInternalPlayback*>& out) const;
+    void _broadcast_update_parameters(const PlaybackParameters& p);
+
     int32_t source_handle = -1;
     NodePath pathing_probe_volume; // Scene-specific: which ProbeVolume to use for pathing
     Ref<Resource> player_config;   // ResonancePlayerConfig; null = behave as plain AudioStreamPlayer3D
@@ -365,8 +383,14 @@ class ResonancePlayer : public AudioStreamPlayer3D {
     bool debug_overlay_has_last_data_ = false;
     double debug_overlay_grace_timer_ = 0.0;
 
-    void _update_stream_setup();                                 // Ensures the internal stream is set up correctly
-    void _ensure_source_exists();                                // Ensures the source handle exists in the ResonanceServer
+    void _update_stream_setup();  // Ensures the internal stream is set up correctly
+    void _ensure_source_exists(); // Ensures the source handle exists in the ResonanceServer
+    /// Creates Steam source handle when server becomes available (children _ready before parent ResonanceRuntime).
+    /// Returns true if a new handle was created. Optionally defers playback param push when already playing.
+    bool _try_ensure_source_and_sync(ResonanceServer* srv, bool deferred_playback_push_if_playing);
+    void _deferred_try_ensure_source_after_config();
+    void _start_reverb_split_child_if_needed();
+    bool warned_source_handle_create_failed_ = false;
     void _ensure_config_valid();                                 // Refreshes config cache if countdown expired or invalid
     void _ensure_config_and_apply_source(int32_t pathing_batch); // Ensures config valid, then applies update_source (blocking; clear_pathing etc.)
     /// defer_if_sim_mutex_busy: enqueue (batched) or try_update_source from _process so the main thread does not wait on RunReflections.
@@ -392,10 +416,17 @@ class ResonancePlayer : public AudioStreamPlayer3D {
                                               bool has_reverb, bool direct_enabled, bool reverb_enabled);
 
     ResonanceInternalPlayback* _get_resonance_playback();
+    void _aggregate_debug_signal_levels(float& out_direct, float& out_reverb, float& out_pathing);
     void _update_reverb_split_child(const StringName& p_reverb_bus = StringName());
 
     bool reverb_split_output_ = false;
     bool exclude_from_debug_ = false;
+    /// When true (default), register descendant CollisionObject3D RIDs with ResonanceServer for Custom-scene ray excludes.
+    bool physics_ray_auto_exclude_collision_bodies_ = true;
+    int physics_auto_exclude_resync_counter_ = 0;
+    std::vector<RID> registered_physics_auto_exclude_rids_;
+    void _sync_physics_ray_auto_exclude_rids();
+    void _clear_physics_ray_auto_exclude_rids();
 
     float _config_float(const char* key, float default_val) const;
     int _config_int(const char* key, int default_val) const;
@@ -408,14 +439,20 @@ class ResonancePlayer : public AudioStreamPlayer3D {
 
   protected:
     static void _bind_methods();
+    void _notification(int p_what);
 
   public:
     ResonancePlayer() = default;
-    ~ResonancePlayer() = default;
+    ~ResonancePlayer() override;
 
     void _ready() override;
     void _process(double delta) override;
     void _exit_tree() override;
+    /// Wraps AudioStreamPlayer3D::play: ensures internal stream, retries source handle, reverb split child, deferred sim push.
+    void set_stream(const Ref<AudioStream>& p_stream);
+    Ref<AudioStream> get_stream() const;
+
+    void play(float from_position = 0.0f);
     void play_stream(double from_position = 0.0);
     void stop();
 
@@ -431,8 +468,13 @@ class ResonancePlayer : public AudioStreamPlayer3D {
     void set_exclude_from_debug(bool p_exclude);
     bool get_exclude_from_debug() const { return exclude_from_debug_; }
 
+    void set_physics_ray_auto_exclude_collision_bodies(bool p_enable);
+    bool get_physics_ray_auto_exclude_collision_bodies() const { return physics_ray_auto_exclude_collision_bodies_; }
+
     /// Returns audio instrumentation dict for dropout debugging. Keys include pathing_sh_rms, pathing_sh_energy (sum c^2),
-    /// pathing_out_rms (path effect stereo RMS before add to final mix), pathing_sh_order (-1 if n/a). Empty when no player_config.
+    /// pathing_out_rms (path effect stereo RMS before add to final mix), pathing_sh_order (-1 if n/a). When player_config is set,
+    /// also godot_attenuation_model, godot_pitch_scale, godot_max_distance, godot_max_db, godot_unit_size (AudioStreamPlayer3D snapshot).
+    /// Empty when no player_config.
     Dictionary get_audio_instrumentation();
     /// Reset instrumentation counters on this player's playback. Call to clear and re-observe dropouts.
     void reset_audio_instrumentation();

@@ -234,6 +234,26 @@ func _refresh_resonance_geometry_for_debug_viz() -> void:
 	)
 
 
+## CollisionObject3D RIDs along the active camera parent chain plus [code]resonance_listener[/code] group nodes.
+## Used with Custom scene type so occlusion/reflection rays do not hit the listener body.
+func _collect_listener_physics_exclude_rids(vp: Viewport) -> Array[RID]:
+	var out: Array[RID] = []
+	var cam = vp.get_camera_3d()
+	if cam:
+		var n: Node = cam
+		while n:
+			if n is CollisionObject3D:
+				out.append(n.get_rid())
+			n = n.get_parent()
+	var tree = get_tree()
+	if tree:
+		var listeners = tree.get_nodes_in_group("resonance_listener")
+		for node in listeners:
+			if node is CollisionObject3D:
+				out.append(node.get_rid())
+	return out
+
+
 func _process(delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
@@ -252,6 +272,12 @@ func _process(delta: float) -> void:
 				call_deferred("_reload_after_reinit")
 			var vp = get_viewport()
 			if vp:
+				if srv.has_method("set_physics_world"):
+					var w3 = vp.get_world_3d()
+					if w3:
+						srv.set_physics_world(w3)
+				if srv.uses_custom_ray_tracer() and srv.has_method("set_listener_physics_ray_exclude_rids"):
+					srv.set_listener_physics_ray_exclude_rids(_collect_listener_physics_exclude_rids(vp))
 				var cam = vp.get_camera_3d()
 				if cam and is_inside_tree():
 					var listeners = get_tree().get_nodes_in_group("resonance_listener")
