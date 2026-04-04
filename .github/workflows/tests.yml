@@ -99,6 +99,8 @@ jobs:
             echo "compile_commands.json missing (expected from SCons compiledb=1 build)"
             exit 1
           fi
+          # g++ flags such as -fno-gnu-unique break clang-tidy (unknown argument).
+          python3 scripts/strip_compile_commands_for_clang_tidy.py compile_commands.json
           CHECKS='-*,bugprone-*,-bugprone-easily-swappable-parameters,cert-*,clang-analyzer-*'
           echo "Clang-tidy (strict): src/handle_manager.cpp src/test/test_ipl_guard.cpp"
           clang-tidy -p . src/handle_manager.cpp src/test/test_ipl_guard.cpp \
