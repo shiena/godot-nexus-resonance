@@ -170,7 +170,7 @@ var _scene_type: int = 0
 ## Radeon Rays = OpenCL GPU path supported on 64-bit Windows only; Linux/macOS/Android/iOS fall back to Default with a warning.
 ## For realtime rays with reflections/pathing, prefer Embree (or Radeon Rays on Windows) — Unity docs warn the slowest tracer is unsuitable for heavy simulation.
 ## Godot often omits `scene_type = 0` in .tres; initializer 0 keeps „Default“ after reload. Embree/Radeon/Custom serialize as 1/2/3.
-## Custom = Steam Audio [code]IPL_SCENETYPE_CUSTOM[/code]: raycasts use Godot 3D physics (see [member physics_ray_collision_mask]). Simulation runs on the main thread; ResonanceGeometry meshes are not uploaded to Phonon.
+## Custom = Steam Audio [code]IPL_SCENETYPE_CUSTOM[/code]: raycasts use Godot 3D physics (see [member physics_ray_collision_mask]). Simulation runs on the main thread during the physics frame ([code]_physics_process[/code] in **ResonanceRuntime**) so [code]PhysicsDirectSpaceState3D[/code] is valid when **Project Settings → Physics → 3D → Run on Separate Thread** is on. ResonanceGeometry meshes are not uploaded to Phonon.
 @export_enum("Default:0", "Embree:1", "Radeon Rays:2", "Custom (Godot Physics):3") var scene_type: int:
 	get:
 		return _scene_type

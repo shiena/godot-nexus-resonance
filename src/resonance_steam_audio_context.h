@@ -29,6 +29,9 @@ struct ResonanceSteamAudioContextConfig {
 
 /// Manages Steam Audio context and all device handles (Context, Embree, OpenCL, Radeon Rays, TAN, HRTF).
 /// ResonanceServer delegates device creation and shutdown to this class.
+///
+/// Lifetime: If init() returns false, native handles may be partially allocated (e.g. IPL context without a valid HRTF).
+/// Call shutdown() or destroy the object before calling init() again; do not retry init() without cleaning up first.
 class ResonanceSteamAudioContext {
   public:
     ResonanceSteamAudioContext() = default;
@@ -41,7 +44,7 @@ class ResonanceSteamAudioContext {
 
     /// Initialize context and devices. reflection_type in config may be modified (TAN fallback).
     /// config.scene_type is set to the effective tracer index (0–3) after device setup.
-    /// Returns true on success.
+    /// Returns true on success. On false, call shutdown() or destroy this object (see class lifetime note).
     bool init(ResonanceSteamAudioContextConfig& config);
 
     void shutdown();
@@ -51,7 +54,8 @@ class ResonanceSteamAudioContext {
     IPLOpenCLDevice get_opencl_device() const { return opencl_device_; }
     IPLRadeonRaysDevice get_radeon_rays_device() const { return radeon_rays_device_; }
     IPLTrueAudioNextDevice get_tan_device() const { return tan_device_; }
-    /// Returns HRTF for audio thread. Uses double-buffer: main/init writes [1], audio reads [0].
+    /// Returns HRTF for the audio thread. Double-buffer: init/main writes [1]; this call may sync [1] to [0].
+    /// Despite const, updates internal handles and atomics; use only with the server's init/audio thread split.
     IPLHRTF get_hrtf() const;
     IPLSceneType get_scene_type() const { return scene_type_; }
 

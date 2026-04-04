@@ -106,7 +106,7 @@ func _add_probe_batch_edit_section(vol: Object) -> void:
 		var vol_nodes: Array[Node] = []
 		vol_nodes.append(vol as Node)
 		bake_runner.ensure_resonance_server_for_volumes(vol_nodes)
-	var srv = Engine.get_singleton("ResonanceServer")
+	var srv = ResonanceServerAccess.get_server()
 	var server_ready: bool = srv != null and srv.is_initialized()
 	var fold := FoldableContainer.new()
 	fold.title = tr(UIStrings.INSPECTOR_PROBE_BATCH_EDIT)
@@ -180,7 +180,7 @@ func _refresh_probe_batch_section_ui(vol: Object, batch_ui: Dictionary) -> void:
 		return
 	var pd: Variant = vol.get_probe_data() if vol.has_method("get_probe_data") else null
 	var has_data: bool = pd != null and not pd.get_data().is_empty()
-	var srv: Variant = Engine.get_singleton("ResonanceServer")
+	var srv: Variant = ResonanceServerAccess.get_server()
 	var server_ready: bool = srv != null and srv.is_initialized()
 	var num_probes := -1
 	if srv and srv.is_initialized() and srv.has_method("editor_probe_data_get_num_probes") and pd:
@@ -224,7 +224,7 @@ func _ensure_server_for_probe_edit(vol: Object) -> bool:
 		var vol_nodes: Array[Node] = []
 		vol_nodes.append(vol as Node)
 		return bake_runner.ensure_resonance_server_for_volumes(vol_nodes)
-	var srv = Engine.get_singleton("ResonanceServer")
+	var srv = ResonanceServerAccess.get_server()
 	return srv != null and srv.is_initialized()
 
 
@@ -235,7 +235,7 @@ func _on_remove_probe_at_index_pressed(vol: Object, spin: SpinBox, batch_ui: Dic
 	if not _ensure_server_for_probe_edit(vol):
 		ResonanceEditorDialogs.show_warning(editor_interface, tr(UIStrings.WARN_PROBE_EDIT_NO_SERVER))
 		return
-	var srv = Engine.get_singleton("ResonanceServer")
+	var srv = ResonanceServerAccess.get_server()
 	if srv == null or not srv.is_initialized() or not srv.has_method("editor_probe_data_remove_probe"):
 		ResonanceEditorDialogs.show_warning(editor_interface, tr(UIStrings.WARN_PROBE_EDIT_NO_SERVER))
 		return
@@ -253,7 +253,7 @@ func _on_remove_baked_pathing_pressed(vol: Object, batch_ui: Dictionary) -> void
 	if not _ensure_server_for_probe_edit(vol):
 		ResonanceEditorDialogs.show_warning(editor_interface, tr(UIStrings.WARN_PROBE_EDIT_NO_SERVER))
 		return
-	var srv = Engine.get_singleton("ResonanceServer")
+	var srv = ResonanceServerAccess.get_server()
 	if srv == null or not srv.is_initialized() or not srv.has_method("editor_probe_data_remove_baked_layer"):
 		ResonanceEditorDialogs.show_warning(editor_interface, tr(UIStrings.WARN_PROBE_EDIT_NO_SERVER))
 		return
@@ -271,7 +271,7 @@ func _on_remove_baked_reflection_reverb_pressed(vol: Object, batch_ui: Dictionar
 	if not _ensure_server_for_probe_edit(vol):
 		ResonanceEditorDialogs.show_warning(editor_interface, tr(UIStrings.WARN_PROBE_EDIT_NO_SERVER))
 		return
-	var srv = Engine.get_singleton("ResonanceServer")
+	var srv = ResonanceServerAccess.get_server()
 	if srv == null or not srv.is_initialized() or not srv.has_method("editor_probe_data_remove_baked_layer"):
 		ResonanceEditorDialogs.show_warning(editor_interface, tr(UIStrings.WARN_PROBE_EDIT_NO_SERVER))
 		return

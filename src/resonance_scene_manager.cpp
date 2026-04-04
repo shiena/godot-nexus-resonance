@@ -45,6 +45,23 @@ String globalize_scene_file_path(const String& filename) {
 }
 
 // Best-effort removal of _nexus_obj_staging contents and the directory itself.
+/// Pack IPLMaterial fields in API order for hashing (avoids struct padding / unspecified padding bytes in IPLMaterial).
+static void append_ipl_materials_hash_bytes(const std::vector<IPLMaterial>& materials, uint8_t* dst) {
+    uint8_t* p = dst;
+    for (const IPLMaterial& m : materials) {
+        memcpy(p, m.absorption, sizeof(m.absorption));
+        p += sizeof(m.absorption);
+        memcpy(p, &m.scattering, sizeof(m.scattering));
+        p += sizeof(m.scattering);
+        memcpy(p, m.transmission, sizeof(m.transmission));
+        p += sizeof(m.transmission);
+    }
+}
+
+static size_t ipl_materials_hash_byte_count(size_t num_materials) {
+    return num_materials * (sizeof(IPLfloat32) * (IPL_NUM_BANDS + 1 + IPL_NUM_BANDS));
+}
+
 void clear_nexus_obj_staging_best_effort(const String& staging_dir, const String& staging_obj, const String& staging_mtl) {
     if (FileAccess::file_exists(staging_obj))
         DirAccess::remove_absolute(staging_obj);
@@ -330,6 +347,7 @@ void ResonanceSceneManager::save_scene_data(IPLContext ctx, IPLScene scene, cons
         ResonanceLog::error("ResonanceSceneManager: iplSerializedObjectCreate failed (save_scene_data).");
         return;
     }
+    // Phonon API: iplSceneSave is void (no IPLerror). Failure is inferred from empty serialized data below.
     iplSceneSave(scene, serializedObject);
 
     IPLsize size = iplSerializedObjectGetSize(serializedObject);
@@ -805,14 +823,14 @@ int64_t ResonanceSceneManager::get_static_scene_hash(Node* scene_root, std::func
 
     const int64_t geom_bytes = (int64_t)(ipl_vertices.size() * sizeof(IPLVector3) + ipl_triangles.size() * sizeof(IPLTriangle));
     const int64_t mat_idx_bytes = (int64_t)(ipl_mat_indices.size() * sizeof(IPLint32));
-    const int64_t mat_tbl_bytes = (int64_t)(ipl_materials.size() * sizeof(IPLMaterial));
+    const int64_t mat_tbl_bytes = (int64_t)ipl_materials_hash_byte_count(ipl_materials.size());
     PackedByteArray pba;
     pba.resize((int)(geom_bytes + mat_idx_bytes + mat_tbl_bytes));
     uint8_t* w = pba.ptrw();
     memcpy(w, ipl_vertices.data(), ipl_vertices.size() * sizeof(IPLVector3));
     memcpy(w + ipl_vertices.size() * sizeof(IPLVector3), ipl_triangles.data(), ipl_triangles.size() * sizeof(IPLTriangle));
     memcpy(w + geom_bytes, ipl_mat_indices.data(), (size_t)mat_idx_bytes);
-    memcpy(w + geom_bytes + mat_idx_bytes, ipl_materials.data(), (size_t)mat_tbl_bytes);
+    append_ipl_materials_hash_bytes(ipl_materials, w + geom_bytes + mat_idx_bytes);
     return (int64_t)hash_fn(pba);
 }
 

@@ -5,6 +5,7 @@ extends RefCounted
 ## Reduces plugin.gd size and centralizes DRY helpers for GDExtension, main scene, and directory checks.
 
 const ResonancePaths = preload("res://addons/nexus_resonance/scripts/resonance_paths.gd")
+const ResonanceFsPaths = preload("res://addons/nexus_resonance/scripts/resonance_fs_paths.gd")
 const ResonanceSceneUtils = preload("res://addons/nexus_resonance/scripts/resonance_scene_utils.gd")
 const UIStrings = preload("res://addons/nexus_resonance/scripts/resonance_ui_strings.gd")
 const ResonanceEditorDialogs = preload(
@@ -32,10 +33,10 @@ func _show_gdextension_error() -> void:
 
 ## Returns ResonanceServer singleton or null after showing error. Checks required_method if non-empty.
 func get_resonance_server_or_show_error(required_method: String = "") -> Variant:
-	if not Engine.has_singleton("ResonanceServer"):
+	if not ResonanceServerAccess.has_server():
 		_show_gdextension_error()
 		return null
-	var srv: Variant = Engine.get_singleton("ResonanceServer")
+	var srv: Variant = ResonanceServerAccess.get_server()
 	if srv and not required_method.is_empty() and not srv.has_method(required_method):
 		ResonanceEditorDialogs.show_error_dialog(
 			editor_interface,
@@ -66,10 +67,11 @@ func get_main_scene_path_or_show_error() -> String:
 ## Ensures audio_data directory exists. Returns true on success.
 func ensure_audio_data_dir() -> bool:
 	var path: String = ResonancePaths.get_audio_data_dir()
-	if DirAccess.dir_exists_absolute(path):
+	var fs_path: String = ResonanceFsPaths.filesystem_path_for_dir_access(path)
+	if DirAccess.dir_exists_absolute(fs_path):
 		return true
-	var err: int = DirAccess.make_dir_recursive_absolute(path)
-	if err != OK or not DirAccess.dir_exists_absolute(path):
+	var err: int = DirAccess.make_dir_recursive_absolute(fs_path)
+	if err != OK or not DirAccess.dir_exists_absolute(fs_path):
 		ResonanceEditorDialogs.show_error_dialog(
 			editor_interface,
 			tr(UIStrings.DIALOG_EXPORT_FAILED_TITLE),
@@ -83,10 +85,13 @@ func ensure_audio_data_dir() -> bool:
 
 ## Ensures resonance_meshes directory exists. Returns true on success.
 func ensure_resonance_meshes_dir() -> bool:
-	if DirAccess.dir_exists_absolute(ResonancePaths.PATH_RESONANCE_MESHES):
+	var fs_meshes: String = ResonanceFsPaths.filesystem_path_for_dir_access(
+		ResonancePaths.PATH_RESONANCE_MESHES
+	)
+	if DirAccess.dir_exists_absolute(fs_meshes):
 		return true
-	var err: int = DirAccess.make_dir_recursive_absolute(ResonancePaths.PATH_RESONANCE_MESHES)
-	if err != OK or not DirAccess.dir_exists_absolute(ResonancePaths.PATH_RESONANCE_MESHES):
+	var err: int = DirAccess.make_dir_recursive_absolute(fs_meshes)
+	if err != OK or not DirAccess.dir_exists_absolute(fs_meshes):
 		ResonanceEditorDialogs.show_error_dialog(
 			editor_interface,
 			tr(UIStrings.DIALOG_EXPORT_FAILED_TITLE),
@@ -152,7 +157,7 @@ func filter_scene_paths_by_exportable_static(paths_dict: Dictionary) -> PackedSt
 
 
 func collect_tscn_files_recursive(dir: String, out: PackedStringArray) -> void:
-	var d: DirAccess = DirAccess.open(dir)
+	var d: DirAccess = ResonanceFsPaths.open_dir_for_path(dir)
 	if not d:
 		return
 	d.list_dir_begin()
@@ -339,7 +344,7 @@ func export_active_scene(_unused: Variant = null) -> void:
 		var has_valid: bool = (
 			static_scene_node.has_method("has_valid_asset") and static_scene_node.has_valid_asset()
 		)
-		var file_exists: bool = FileAccess.file_exists(save_path)
+		var file_exists: bool = ResonanceFsPaths.file_exists_for_path(save_path)
 		if has_valid and file_exists:
 			ResonanceEditorDialogs.show_info(tr(UIStrings.INFO_STATIC_UNCHANGED))
 			return
@@ -583,14 +588,15 @@ func export_dynamic_objects_in_project(_unused: Variant = null) -> void:
 
 func list_probe_data_files() -> PackedStringArray:
 	var out: PackedStringArray = []
-	var d: DirAccess = DirAccess.open(ResonancePaths.get_audio_data_dir())
+	var logical_dir: String = ResonancePaths.get_audio_data_dir()
+	var d: DirAccess = ResonanceFsPaths.open_dir_for_path(logical_dir)
 	if not d:
 		return out
 	d.list_dir_begin()
 	var name_str: String = d.get_next()
 	while name_str != "":
 		if name_str.get_extension().to_lower() == "tres" and "_baked_probes" in name_str:
-			out.append(ResonancePaths.get_audio_data_dir() + name_str)
+			out.append(logical_dir + name_str)
 		name_str = d.get_next()
 	d.list_dir_end()
 	return out
@@ -604,12 +610,12 @@ func find_referenced_probe_data_paths() -> PackedStringArray:
 	# Cache scene contents to avoid O(probes * scenes) file I/O. Load each scene once.
 	var scene_contents: Dictionary = {}
 	for scene_path in tscn_files:
-		var content: String = FileAccess.get_file_as_string(scene_path)
+		var content: String = ResonanceFsPaths.read_file_as_string(scene_path)
 		if not content.is_empty():
 			scene_contents[scene_path] = content
 	for probe_path in probe_files:
 		for content in scene_contents.values():
-			if probe_path in content or probe_path.get_file() in content:
+			if ResonanceFsPaths.scene_text_references_probe_path(content, probe_path):
 				if probe_path not in referenced:
 					referenced.append(probe_path)
 				break
@@ -642,7 +648,8 @@ func clear_unreferenced_probe_data(_unused: Variant = null) -> void:
 		func() -> void:
 			var deleted: int = 0
 			for p in to_delete:
-				var err: int = DirAccess.remove_absolute(p)
+				var abs_p: String = ResonanceFsPaths.filesystem_path_for_dir_access(p)
+				var err: int = DirAccess.remove_absolute(abs_p)
 				if err == OK:
 					deleted += 1
 			if deleted > 0:

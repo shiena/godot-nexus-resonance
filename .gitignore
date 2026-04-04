@@ -21,6 +21,8 @@ src/lib/steamaudio/
 build/
 *.o
 *.obj
+# Transient OBJ+MTL staging for editor export (not C++ object files)
+**/_nexus_obj_staging/
 src/gen/
 
 # GDExtension binaries (built by CI, distributed via GitHub Releases)

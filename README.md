@@ -72,6 +72,22 @@ Baked probe data must match the runtime configuration. Incompatible combinations
 - Godot 4.6 (or compatible 4.x)
 - Steam Audio (Phonon) - bundled with the GDExtension
 
+## Developing
+
+Before you open a PR, build with unit tests enabled and run the Catch2 binary (this matches what CI runs on Linux and Windows):
+
+```bash
+# Linux / macOS
+scons platform=linux target=editor build_tests=1 -j$(nproc)
+./build/tests/nexus_resonance_tests
+
+# Windows (e.g. Git Bash or MSVC environment)
+scons platform=windows target=editor build_tests=1
+./build/tests/nexus_resonance_tests.exe
+```
+
+When you fix a bug in native code, add a small focused test under `src/test/` if you can check the behavior without loading the full Godot editor (follow the existing `test_*.cpp` patterns).
+
 ## Support & Community
 
 Join the [Discord server](https://discord.gg/VTSpAEHHhW) to ask questions, suggest features, or show off your projects made with this addon.

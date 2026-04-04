@@ -12,6 +12,9 @@ namespace godot {
 
 namespace ResonanceUtils {
 
+/// Minimum vector length before treating the direction as degenerate (avoids divide-by-zero).
+inline constexpr real_t kSafeUnitVectorMinLength = (real_t)1e-3;
+
 static inline IPLVector3 to_ipl_vector3(const Vector3& v) {
     return {(float)v.x, (float)v.y, (float)v.z};
 }
@@ -21,10 +24,10 @@ static inline Vector3 to_godot_vector3(const IPLVector3& v) {
 }
 
 /// Normalize vector with minimum length guard to avoid division-by-zero from degenerate transforms.
-/// Returns fallback when length < min_length.
+/// Returns fallback when length is below kSafeUnitVectorMinLength.
 static inline Vector3 safe_unit_vector(const Vector3& v, const Vector3& fallback = Vector3(0, 1, 0)) {
     real_t len = v.length();
-    if (len < (real_t)1e-3)
+    if (len < kSafeUnitVectorMinLength)
         return fallback;
     return v / len;
 }

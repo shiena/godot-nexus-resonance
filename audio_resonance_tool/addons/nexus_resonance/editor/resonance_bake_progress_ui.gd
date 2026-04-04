@@ -93,7 +93,7 @@ func show_ui() -> void:
 	Callable(cancel_btn, "grab_focus").call_deferred()
 
 	var srv: Variant = (
-		Engine.get_singleton("ResonanceServer") if Engine.has_singleton("ResonanceServer") else null
+		ResonanceServerAccess.get_server()
 	)
 	if srv and srv.has_signal("bake_progress") and _progress_bar:
 		srv.bake_progress.connect(_on_bake_progress)
@@ -101,7 +101,7 @@ func show_ui() -> void:
 
 func hide_ui() -> void:
 	var srv: Variant = (
-		Engine.get_singleton("ResonanceServer") if Engine.has_singleton("ResonanceServer") else null
+		ResonanceServerAccess.get_server()
 	)
 	if (
 		srv
@@ -159,7 +159,7 @@ func _on_bake_progress(progress: float) -> void:
 func _on_cancel_pressed() -> void:
 	cancel_requested = true
 	var srv: Variant = (
-		Engine.get_singleton("ResonanceServer") if Engine.has_singleton("ResonanceServer") else null
+		ResonanceServerAccess.get_server()
 	)
 	if srv:
 		srv.cancel_reflections_bake()

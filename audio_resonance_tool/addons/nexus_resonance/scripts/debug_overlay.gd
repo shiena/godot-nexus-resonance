@@ -207,10 +207,9 @@ func _toggle_fold_index(i: int) -> void:
 
 
 func _reset_meters() -> void:
-	if Engine.has_singleton("ResonanceServer"):
-		var srv = Engine.get_singleton("ResonanceServer")
-		if srv and srv.has_method("reset_reverb_bus_instrumentation"):
-			srv.reset_reverb_bus_instrumentation()
+	var srv_reset: Variant = ResonanceServerAccess.get_server()
+	if srv_reset != null and srv_reset.has_method("reset_reverb_bus_instrumentation"):
+		srv_reset.reset_reverb_bus_instrumentation()
 	var tree = get_tree()
 	if tree:
 		for p in tree.get_nodes_in_group("resonance_player"):
@@ -235,11 +234,11 @@ func _process(delta: float) -> void:
 
 
 func _refresh_status() -> void:
-	if not Engine.has_singleton("ResonanceServer"):
+	if not ResonanceServerAccess.has_server():
 		_status_label.text = "[color=%s]ResonanceServer not loaded[/color]" % COLOR_ERROR
 		return
 
-	var srv = Engine.get_singleton("ResonanceServer")
+	var srv = ResonanceServerAccess.get_server()
 	var parts: PackedStringArray = []
 
 	var out_direct = srv.is_output_direct_enabled()
@@ -282,15 +281,25 @@ func _refresh_status() -> void:
 	var tree := get_tree()
 	var rt: Node = tree.get_first_node_in_group("resonance_runtime") if tree else null
 	var mtu := 0
+	var ptu := 0
 	if rt:
 		var v: Variant = rt.get("main_thread_last_tick_usec")
 		mtu = int(v) if v != null else 0
+		var pv: Variant = rt.get("runtime_physics_tick_usec")
+		ptu = int(pv) if pv != null else 0
 	parts.append(
 		(
-			"[color=%s]Main thread:[/color] [i]ResonanceRuntime._process[/i] last tick [color=%s]%d µs[/color]"
+			"[color=%s]Main thread:[/color] [i]ResonanceRuntime._process[/i] last [color=%s]%d µs[/color]"
 			% [COLOR_NEUTRAL, COLOR_NEUTRAL, mtu]
 		)
 	)
+	if ptu > 0:
+		parts.append(
+			(
+				"[color=%s]Physics tick (Custom scene):[/color] [i]_physics_process[/i] [color=%s]%d µs[/color]"
+				% [COLOR_NEUTRAL, COLOR_NEUTRAL, ptu]
+			)
+		)
 	if init_ok and srv.has_method("get_simulation_worker_timing"):
 		var wtim: Dictionary = srv.get_simulation_worker_timing()
 		var w_d := int(wtim.get("us_run_direct", 0))
@@ -482,10 +491,9 @@ func _refresh_audio_instrumentation() -> void:
 		return
 
 	var block_size := -1
-	if Engine.has_singleton("ResonanceServer"):
-		var srv = Engine.get_singleton("ResonanceServer")
-		if srv and srv.has_method("get_audio_frame_size"):
-			block_size = srv.get_audio_frame_size()
+	var srv_audio: Variant = ResonanceServerAccess.get_server()
+	if srv_audio != null and srv_audio.has_method("get_audio_frame_size"):
+		block_size = srv_audio.get_audio_frame_size()
 
 	var idle_n := 0
 	var run_no_data := 0
@@ -563,9 +571,7 @@ func _refresh_audio_instrumentation() -> void:
 func _refresh_reverb_bus() -> void:
 	if not _reverb_compact_label or not _reverb_expert_label:
 		return
-	var srv = (
-		Engine.get_singleton("ResonanceServer") if Engine.has_singleton("ResonanceServer") else null
-	)
+	var srv: Variant = ResonanceServerAccess.get_server()
 	if not srv or not srv.has_method("get_reverb_bus_instrumentation"):
 		_reverb_compact_label.text = "[color=%s]ResonanceServer not available[/color]" % COLOR_ERROR
 		_reverb_expert_label.text = ""

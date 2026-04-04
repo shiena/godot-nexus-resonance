@@ -207,6 +207,7 @@ class ResonanceServer : public Object {
     // Helpers
     ResonanceBaker baker;
     SourceManager source_manager;
+    /// Parsed config (Dictionary via apply). Member fields in the "Configuration (Defaults)" block are copied in _apply_config for hot paths; keep both in sync when adding keys.
     ResonanceServerConfig config_;
 
     // Simulation State

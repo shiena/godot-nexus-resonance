@@ -20,7 +20,7 @@ var _bridge: Object = null
 func init_bridge() -> bool:
 	if (
 		_bridge == null
-		and Engine.has_singleton("ResonanceServer")
+		and ResonanceServerAccess.has_server()
 		and ClassDB.class_exists("ResonanceFMODBridge")
 	):
 		_bridge = ClassDB.instantiate("ResonanceFMODBridge")

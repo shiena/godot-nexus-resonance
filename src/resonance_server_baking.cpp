@@ -57,6 +57,7 @@ PackedVector3Array ResonanceServer::generate_probes_scene_aware(const Transform3
     genParams.spacing = spacing;
     genParams.height = height_above_floor;
     genParams.transform = ResonanceUtils::create_volume_transform_rotated(volume_transform, extents);
+    // Phonon API: iplProbeArrayGenerateProbes is void (no IPLerror); failures surface as zero probes or invalid data.
     iplProbeArrayGenerateProbes(probeArray, bake_scene, &genParams);
     int num_probes = iplProbeArrayGetNumProbes(probeArray);
     for (int i = 0; i < num_probes; i++) {

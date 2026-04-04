@@ -97,6 +97,7 @@ class ProbeBatchManager : public HandleManagerBase<IPLProbeBatch, _handle_releas
     IPLProbeBatch take_batch(int32_t handle);
     /// Transfers all batches to out and clears the manager. Caller must release each batch.
     void get_all_batches(std::vector<IPLProbeBatch>& out);
+    /// Returns a retained probe batch from an arbitrary map entry (unordered_map iteration order is undefined).
     IPLProbeBatch get_first_batch();
     IPLProbeBatch get_batch(int32_t handle) const;
 };

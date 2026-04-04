@@ -6,6 +6,32 @@
 
 using namespace godot;
 
+namespace {
+
+/// Steam Audio requires batched ray callbacks to fill outputs; use miss state when bailing out (shutdown / null server).
+void clear_custom_batched_closest_misses(IPLint32 numRays, IPLHit* hits) {
+    if (!hits || numRays <= 0)
+        return;
+    const IPLfloat32 inf = std::numeric_limits<IPLfloat32>::infinity();
+    for (IPLint32 i = 0; i < numRays; ++i) {
+        hits[i].distance = inf;
+        hits[i].triangleIndex = -1;
+        hits[i].objectIndex = -1;
+        hits[i].materialIndex = -1;
+        hits[i].normal = IPLVector3{0.0f, 0.0f, 0.0f};
+        hits[i].material = nullptr;
+    }
+}
+
+void clear_custom_batched_any_not_occluded(IPLint32 numRays, IPLuint8* occluded) {
+    if (!occluded || numRays <= 0)
+        return;
+    for (IPLint32 i = 0; i < numRays; ++i)
+        occluded[i] = 0;
+}
+
+} // namespace
+
 void IPLCALL ResonanceServer::_pathing_vis_callback(IPLVector3 from, IPLVector3 to, IPLbool occluded, void* userData) {
     if (ResonanceServer::is_shutting_down_flag.load(std::memory_order_acquire))
         return;
@@ -22,11 +48,15 @@ void IPLCALL ResonanceServer::_pathing_vis_callback(IPLVector3 from, IPLVector3 
 
 void IPLCALL ResonanceServer::_custom_batched_closest_hit(IPLint32 numRays, const IPLRay* rays,
                                                           const IPLfloat32* minDistances, const IPLfloat32* maxDistances, IPLHit* hits, void* userData) {
-    if (ResonanceServer::is_shutting_down_flag.load(std::memory_order_acquire))
+    if (ResonanceServer::is_shutting_down_flag.load(std::memory_order_acquire)) {
+        clear_custom_batched_closest_misses(numRays, hits);
         return;
+    }
     ResonanceServer* server = static_cast<ResonanceServer*>(userData);
-    if (!server)
+    if (!server) {
+        clear_custom_batched_closest_misses(numRays, hits);
         return;
+    }
 
     int bounce = server->ray_debug_bounce_index_.load(std::memory_order_relaxed);
     server->ray_trace_debug_context_.trace_batch(numRays, rays, minDistances, maxDistances, hits, bounce);
@@ -36,11 +66,15 @@ void IPLCALL ResonanceServer::_custom_batched_closest_hit(IPLint32 numRays, cons
 
 void IPLCALL ResonanceServer::_custom_batched_any_hit(IPLint32 numRays, const IPLRay* rays,
                                                       const IPLfloat32* minDistances, const IPLfloat32* maxDistances, IPLuint8* occluded, void* userData) {
-    if (ResonanceServer::is_shutting_down_flag.load(std::memory_order_acquire))
+    if (ResonanceServer::is_shutting_down_flag.load(std::memory_order_acquire)) {
+        clear_custom_batched_any_not_occluded(numRays, occluded);
         return;
+    }
     ResonanceServer* server = static_cast<ResonanceServer*>(userData);
-    if (!server)
+    if (!server) {
+        clear_custom_batched_any_not_occluded(numRays, occluded);
         return;
+    }
 
     std::vector<IPLHit> hits(numRays);
     int bounce = server->ray_debug_bounce_index_.load(std::memory_order_relaxed);

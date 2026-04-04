@@ -1,7 +1,10 @@
 extends GutTest
 
-## Unit tests for ResonanceBakeRunner (estimate_probe_count, estimate_bake_time, validation helpers).
+## Unit tests for ResonanceBakeRunner and ResonanceBakeEstimates (probe/time estimates).
 ## EditorInterface-dependent paths are not tested here.
+
+const BakeConfigScript = preload("res://addons/nexus_resonance/scripts/resonance_bake_config.gd")
+const BakeEstimates = preload("res://addons/nexus_resonance/editor/resonance_bake_estimates.gd")
 
 
 class MockProbeVolume extends Node:
@@ -79,3 +82,22 @@ func test_estimate_bake_time_null_returns_empty():
 	var runner = BakeRunner.new(null)
 	var result = runner.estimate_bake_time(null)
 	assert_true(result.is_empty(), "null volume should return empty string")
+
+
+func test_resonance_bake_estimates_static_matches_runner_probe_count():
+	var vol = MockProbeVolume.new()
+	var from_static = BakeEstimates.estimate_probe_count(vol)
+	var BakeRunner = load("res://addons/nexus_resonance/editor/resonance_bake_runner.gd") as GDScript
+	var runner = BakeRunner.new(null)
+	var from_runner = runner.estimate_probe_count(vol)
+	vol.free()
+	assert_eq(from_static, from_runner, "static estimates should match runner delegation")
+
+
+func test_resonance_bake_estimates_bake_time_with_config():
+	var vol = MockProbeVolume.new()
+	var bc = BakeConfigScript.create_default()
+	var s = BakeEstimates.estimate_bake_time(vol, bc)
+	vol.free()
+	assert_false(s.is_empty(), "BakeEstimates.estimate_bake_time should return text")
+	assert_true(s.begins_with("~"), "estimate should start with ~")

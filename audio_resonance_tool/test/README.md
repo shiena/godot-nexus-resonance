@@ -41,11 +41,30 @@ Or use the helper script (set `$env:GODOT_PATH` if godot is not in PATH):
 
 | Script | Covers |
 |--------|--------|
-| `test/unit/test_resonance_config.gd` | ResonanceConfig (get_fallback_config, get_resonance_config, type coercion, get_effective_realtime_rays) |
-| `test/unit/test_probe_data_loader.gd` | ResonanceProbeDataLoader (_parse_tres_data, extensions, handles_type, recognize_path, get_resource_type) |
-| `test/unit/test_probe_data_saver.gd` | ResonanceProbeDataSaver (_recognize, _get_recognized_extensions, _save) |
-| `test/unit/test_resonance_bake_settings.gd` | ResonanceBakeSettings (DEFAULTS, HINTS, register_bake_project_settings) |
-| `test/unit/test_probe_toolbar.gd` | ProbeToolbar (_is_valid_config, _get_safe_resonance_config, _collect_resonance_geometry) |
+| `test/unit/test_resonance_config.gd` | ResonanceConfig (defaults, get_config, sample rate, HRTF, effective realtime rays) |
+| `test/unit/test_probe_data_loader.gd` | ResonanceProbeDataLoader (_parse_tres_data, extensions, handles_type, recognize_path) |
+| `test/unit/test_probe_data_saver.gd` | ResonanceProbeDataSaver (_recognize, extensions, _save) |
+| `test/unit/test_resonance_bake_settings.gd` | ResonanceBakeConfig (get_bake_params, pathing hash vs C++ format) |
+| `test/unit/test_resonance_bake_runner.gd` | ResonanceBakeRunner / ResonanceBakeEstimates (probe count, bake time estimates) |
+| `test/unit/test_resonance_bake_discovery.gd` | ResonanceBakeDiscovery (find_resonance_runtime, resolve_bake_node_for_volume) |
+| `test/unit/test_resonance_bake_hashes.gd` | ResonanceBakeHashes (hash_dict, pathing hash, position/radius hash) |
+| `test/unit/test_resonance_paths.gd` | ResonancePaths.get_audio_data_dir |
+| `test/unit/test_resonance_fs_paths.gd` | ResonanceFsPaths (globalize, open/read/exists, probe needles, scene text match) |
+| `test/unit/test_resonance_fs_paths_fixtures.gd` | Disk fixtures under `test/fixtures/` + probe reference detection |
+| `test/unit/test_resonance_export_handler.gd` | ResonanceExportHandler.collect_scene_paths_for_obj, server null guard |
+| `test/unit/test_resonance_scene_utils.gd` | ResonanceSceneUtils (static scene, volumes, exportable content) |
+| `test/unit/test_resonance_server_access.gd` | ResonanceServerAccess singleton helpers |
+| `test/unit/test_resonance_server_geometry_refresh.gd` | GDExtension geometry API surface (has_method checks) |
+| `test/unit/test_resonance_runtime_perf_monitors.gd` | ResonanceRuntimePerfMonitors timing sums |
+| `test/unit/test_resonance_player_config.gd` | ResonancePlayerConfig |
+| `test/unit/test_resonance_player_init_retry.gd` | ResonancePlayer play API |
+| `test/unit/test_resonance_player_polyphony.gd` | ResonancePlayer max_polyphony / instrumentation |
+
+Support scripts (not listed as GUT suites by name): `test/unit/bake_discovery_runtime_stub.gd` (runtime script match tests).
+
+### Fixtures
+
+`test/fixtures/` holds minimal `.tscn` files for substring and PackedScene tests (probe path lines, `minimal_root_for_collect.tscn` for scene path collection).
 
 ## C++ Unit Tests
 

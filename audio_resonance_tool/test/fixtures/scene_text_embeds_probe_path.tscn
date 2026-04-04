@@ -1,0 +1,5 @@
+[gd_scene load_steps=2 format=3 uid="uid://cnxrsfixtureprobepath"]
+
+[ext_resource type="Resource" path="res://audio_data/fixture_embedded_probe_baked_probes.tres" id="1"]
+
+[node name="Root" type="Node"]

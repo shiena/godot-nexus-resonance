@@ -47,8 +47,8 @@ func _exit_tree() -> void:
 func _process(_delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
-	if _resonance_handle >= 0 and _bridge and Engine.has_singleton("ResonanceServer"):
-		var srv = Engine.get_singleton("ResonanceServer")
+	if _resonance_handle >= 0 and _bridge and ResonanceServerAccess.has_server():
+		var srv = ResonanceServerAccess.get_server()
 		srv.update_source(_resonance_handle, global_position, 1.0)
 
 
@@ -78,9 +78,9 @@ func _setup_bridge() -> void:
 func _on_play() -> void:
 	if not _bridge or not _bridge.is_bridge_loaded():
 		return
-	if not Engine.has_singleton("ResonanceServer"):
+	if not ResonanceServerAccess.has_server():
 		return
-	var srv = Engine.get_singleton("ResonanceServer")
+	var srv = ResonanceServerAccess.get_server()
 	_resonance_handle = srv.create_source_handle(global_position, 1.0)
 	if _resonance_handle < 0:
 		return
@@ -104,6 +104,6 @@ func _release_handles() -> void:
 	if _bridge and _fmod_handle >= 0:
 		_bridge.remove_fmod_source(_fmod_handle)
 		_fmod_handle = -1
-	if _resonance_handle >= 0 and Engine.has_singleton("ResonanceServer"):
-		Engine.get_singleton("ResonanceServer").destroy_source_handle(_resonance_handle)
+	if _resonance_handle >= 0 and ResonanceServerAccess.has_server():
+		ResonanceServerAccess.get_server().destroy_source_handle(_resonance_handle)
 		_resonance_handle = -1

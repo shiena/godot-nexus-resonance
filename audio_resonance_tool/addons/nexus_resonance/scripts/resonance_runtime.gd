@@ -15,15 +15,6 @@ const ResonanceSceneUtils = preload("res://addons/nexus_resonance/scripts/resona
 const ResonanceFMODBridgeScript = preload(
 	"res://addons/nexus_resonance/scripts/resonance_fmod_bridge.gd"
 )
-const EFFECT_CLASS := "ResonanceAudioEffect"
-
-## Custom Performance monitor IDs (Debugger → Monitors). Unregistered in [method _exit_tree].
-const _NEXUS_PERF_MON_MAIN := "Nexus Resonance/Main/runtime_last_tick_us"
-const _NEXUS_PERF_MON_W_DIRECT := "Nexus Resonance/Worker/us_run_direct"
-const _NEXUS_PERF_MON_W_REFL := "Nexus Resonance/Worker/us_run_reflections"
-const _NEXUS_PERF_MON_W_PATH := "Nexus Resonance/Worker/us_run_pathing"
-const _NEXUS_PERF_MON_W_SYNC := "Nexus Resonance/Worker/us_sync_fetch"
-const _NEXUS_PERF_MON_W_SUM := "Nexus Resonance/Worker/last_tick_sum_us"
 
 var _runtime: ResonanceRuntimeConfig
 ## Runtime configuration resource. Create or link .tres. Auto-created default if empty.
@@ -67,16 +58,19 @@ var _performance_overlay_visible: bool = false
 var _player_overlay_visible: bool = false
 
 var _fmod_bridge: RefCounted = null  # ResonanceFMODBridgeScript
-var _activator: AudioStreamPlayer
+var _runtime_bus: ResonanceRuntimeBus
+var _reverb_activator: ResonanceReverbActivator
 
 ## Reverb Bus activator instrumentation (for debugging convolution routing).
 ## Read from debug overlay via get_tree().get_first_node_in_group("resonance_runtime").
-var activator_instrumentation: Dictionary = {}
-var _activator_frames_pushed: int = 0
-var _activator_fill_calls: int = 0
+var activator_instrumentation: Dictionary:
+	get:
+		return _reverb_activator.instrumentation if _reverb_activator else {}
 
-## Duration of the last [method _process] tick in microseconds (activator, listener, [method ResonanceServer.tick]). Shown in overlays; compare to worker timings from the ResonanceServer singleton.
+## Duration of the last [method _process] work in microseconds (activator, reinit, and when not Custom: viewport sync + [method ResonanceServer.tick]). Custom scene type runs [method ResonanceServer.tick] in [method _physics_process]; see [member runtime_physics_tick_usec].
 var main_thread_last_tick_usec: int = 0
+## When [method ResonanceServer.uses_custom_ray_tracer] is true: microseconds for the last [method _physics_process] block (viewport sync, tick, flush). Otherwise 0.
+var runtime_physics_tick_usec: int = 0
 
 
 ## Returns bake params from first Probe Volume with bake_config, or default. Used before init so pathing visibility params are set.
@@ -116,6 +110,7 @@ func _ready() -> void:
 		_runtime = ResonanceRuntimeConfig.create_default()
 	add_to_group("resonance_runtime")
 	set_process_priority(100)
+	set_physics_process_priority(100)
 	_connect_runtime_signals()
 	if Engine.is_editor_hint():
 		call_deferred("_notify_volumes_runtime_config_changed")
@@ -222,10 +217,8 @@ func _disable_runtime_debug_ui() -> void:
 func _refresh_resonance_geometry_for_debug_viz() -> void:
 	if not is_inside_tree():
 		return
-	if not Engine.has_singleton("ResonanceServer"):
-		return
-	var srv = Engine.get_singleton("ResonanceServer")
-	if not srv.is_initialized():
+	var srv: Variant = ResonanceServerAccess.get_server_if_initialized()
+	if srv == null:
 		return
 	# sync_reflection_debug_viz updates RayTraceDebugContext only. Full refresh_geometry() rebuilds
 	# IPL InstancedMesh/sub-scenes and breaks Embree dynamic occlusion when toggling F3.
@@ -254,39 +247,60 @@ func _collect_listener_physics_exclude_rids(vp: Viewport) -> Array[RID]:
 	return out
 
 
+## Pushes active viewport world, optional Custom-tracer exclude RIDs, and default-camera listener into [ResonanceServer].
+func _apply_resonance_viewport_to_server(vp: Viewport) -> void:
+	var srv: Variant = ResonanceServerAccess.get_server_if_initialized()
+	if srv == null:
+		return
+	if srv.has_method("set_physics_world"):
+		var w3 = vp.get_world_3d()
+		if w3:
+			srv.set_physics_world(w3)
+	if srv.uses_custom_ray_tracer() and srv.has_method("set_listener_physics_ray_exclude_rids"):
+		srv.set_listener_physics_ray_exclude_rids(_collect_listener_physics_exclude_rids(vp))
+	var cam = vp.get_camera_3d()
+	if cam and is_inside_tree():
+		var listeners = get_tree().get_nodes_in_group("resonance_listener")
+		if listeners.is_empty():
+			srv.update_listener(
+				cam.global_position,
+				-cam.global_transform.basis.z,
+				cam.global_transform.basis.y
+			)
+
+
+## Custom (Godot Physics) scene type must run [method ResonanceServer.tick] during the physics frame so
+## [code]PhysicsDirectSpaceState3D[/code] queries are valid when 3D physics uses a dedicated thread.
+func _sync_physics_process_for_custom_tracer() -> void:
+	if Engine.is_editor_hint():
+		set_physics_process(false)
+		return
+	var srv: Variant = ResonanceServerAccess.get_server()
+	if srv == null or not srv.is_initialized():
+		set_physics_process(false)
+		return
+	set_physics_process(srv.uses_custom_ray_tracer())
+
+
 func _process(delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
 	var t0_usec := Time.get_ticks_usec()
 	_fill_activator_buffer()
-	if Engine.has_singleton("ResonanceServer"):
-		var srv = Engine.get_singleton("ResonanceServer")
-		if srv.is_initialized():
-			# Runtime frame_size detection: reverb bus may have requested reinit with actual Godot frame_count
-			var pending: int = srv.consume_pending_reinit_frame_size()
-			if pending > 0:
-				var cfg := get_config_dict()
-				cfg["audio_frame_size"] = pending
-				_prepare_geometry_before_reinit()
-				srv.reinit_audio_engine(cfg)
-				call_deferred("_reload_after_reinit")
-			var vp = get_viewport()
-			if vp:
-				if srv.has_method("set_physics_world"):
-					var w3 = vp.get_world_3d()
-					if w3:
-						srv.set_physics_world(w3)
-				if srv.uses_custom_ray_tracer() and srv.has_method("set_listener_physics_ray_exclude_rids"):
-					srv.set_listener_physics_ray_exclude_rids(_collect_listener_physics_exclude_rids(vp))
-				var cam = vp.get_camera_3d()
-				if cam and is_inside_tree():
-					var listeners = get_tree().get_nodes_in_group("resonance_listener")
-					if listeners.is_empty():
-						srv.update_listener(
-							cam.global_position,
-							-cam.global_transform.basis.z,
-							cam.global_transform.basis.y
-						)
+	var srv: Variant = ResonanceServerAccess.get_server()
+	if srv != null and srv.is_initialized():
+		# Runtime frame_size detection: reverb bus may have requested reinit with actual Godot frame_count
+		var pending: int = srv.consume_pending_reinit_frame_size()
+		if pending > 0:
+			var cfg := get_config_dict()
+			cfg["audio_frame_size"] = pending
+			_prepare_geometry_before_reinit()
+			srv.reinit_audio_engine(cfg)
+			call_deferred("_reload_after_reinit")
+		var custom_tracer: bool = srv.uses_custom_ray_tracer()
+		var vp = get_viewport()
+		if vp and not custom_tracer:
+			_apply_resonance_viewport_to_server(vp)
 			srv.tick(delta)
 			if srv.has_method("flush_pending_source_updates"):
 				srv.flush_pending_source_updates()
@@ -294,11 +308,29 @@ func _process(delta: float) -> void:
 	main_thread_last_tick_usec = dt_usec if dt_usec > 0 else 0
 
 
+func _physics_process(delta: float) -> void:
+	if Engine.is_editor_hint():
+		return
+	var srv: Variant = ResonanceServerAccess.get_server()
+	if srv == null or not srv.is_initialized() or not srv.uses_custom_ray_tracer():
+		return
+	var t0_usec := Time.get_ticks_usec()
+	var vp = get_viewport()
+	if vp:
+		_apply_resonance_viewport_to_server(vp)
+	srv.tick(delta)
+	if srv.has_method("flush_pending_source_updates"):
+		srv.flush_pending_source_updates()
+	var dt_usec := Time.get_ticks_usec() - t0_usec
+	runtime_physics_tick_usec = dt_usec if dt_usec > 0 else 0
+
+
 func _initialize_server() -> void:
 	# In editor, probe_toolbar inits when needed for bake. Avoid Steam Audio init on scene load (can crash).
 	if Engine.is_editor_hint():
 		return
-	if not Engine.has_singleton("ResonanceServer"):
+	var srv: Variant = ResonanceServerAccess.get_server()
+	if srv == null:
 		push_error("Nexus Resonance: GDExtension not loaded.")
 		return
 
@@ -306,14 +338,14 @@ func _initialize_server() -> void:
 	if cfg.is_empty():
 		push_error("Nexus Resonance: Failed to build config.")
 		return
-
-	var srv = Engine.get_singleton("ResonanceServer")
 	if srv.is_initialized() and srv.has_method("reinit_audio_engine"):
 		_prepare_geometry_before_reinit()
 		srv.reinit_audio_engine(cfg)
 		call_deferred("_reload_after_reinit")
+		_sync_physics_process_for_custom_tracer()
 		return
 	if srv.is_initialized():
+		_sync_physics_process_for_custom_tracer()
 		return
 	# Set bake params before init so pathing visibility params (from bake_config) are available.
 	var bake_params = _get_bake_params_for_runtime()
@@ -352,31 +384,26 @@ func _initialize_server() -> void:
 	_apply_perspective_correction()
 	# Mute spatialized player output until several worker RunDirect ticks after scene/geometry settle (see kSpatialAudioWarmupWorkerPasses).
 	call_deferred("_deferred_reset_spatial_audio_warmup_passes")
+	_sync_physics_process_for_custom_tracer()
 
 
 func _deferred_reset_spatial_audio_warmup_passes() -> void:
-	if not Engine.has_singleton("ResonanceServer"):
-		return
-	var srv = Engine.get_singleton("ResonanceServer")
-	if srv.is_initialized() and srv.has_method("reset_spatial_audio_warmup_passes"):
+	var srv: Variant = ResonanceServerAccess.get_server_if_initialized()
+	if srv != null and srv.has_method("reset_spatial_audio_warmup_passes"):
 		srv.reset_spatial_audio_warmup_passes()
 
 
 func _apply_debug_flags() -> void:
-	if not Engine.has_singleton("ResonanceServer"):
-		return
-	var srv = Engine.get_singleton("ResonanceServer")
-	if srv.is_initialized():
+	var srv: Variant = ResonanceServerAccess.get_server_if_initialized()
+	if srv != null:
 		srv.set_debug_occlusion(_player_overlay_visible)
 		if srv.has_method("set_debug_reflections"):
 			srv.set_debug_reflections(_player_overlay_visible)
 
 
 func _apply_perspective_correction() -> void:
-	if not Engine.has_singleton("ResonanceServer"):
-		return
-	var srv = Engine.get_singleton("ResonanceServer")
-	if srv.is_initialized():
+	var srv: Variant = ResonanceServerAccess.get_server_if_initialized()
+	if srv != null:
 		srv.set_perspective_correction_enabled(runtime.perspective_correction_enabled)
 		srv.set_perspective_correction_factor(runtime.perspective_correction_factor)
 		srv.set_reverb_transmission_amount(runtime.reverb_transmission_amount)
@@ -397,109 +424,32 @@ func _get_reverb_bus_send() -> StringName:
 	return _get_bus_effective()
 
 
-func _ensure_reverb_bus_exists() -> bool:
-	var bus_name := _get_reverb_bus_name()
-	var send_name := _get_reverb_bus_send()
-	var idx = AudioServer.get_bus_index(bus_name)
-	if idx == -1:
-		AudioServer.add_bus()
-		idx = AudioServer.bus_count - 1
-		AudioServer.set_bus_name(idx, bus_name)
-		if idx > 1:
-			AudioServer.move_bus(idx, 1)
-			idx = 1
-		if ClassDB.class_exists(EFFECT_CLASS):
-			var effect = ClassDB.instantiate(EFFECT_CLASS)
-			effect.resource_name = "Resonance Reverb"
-			AudioServer.add_bus_effect(idx, effect)
-	if idx >= 0:
-		AudioServer.set_bus_send(idx, send_name)
-	return idx >= 0
-
-
 func _apply_bus_to_players() -> void:
-	if not is_inside_tree():
+	if not is_inside_tree() or _runtime_bus == null:
 		return
 	var tree = get_tree()
 	if not tree:
 		return
-	var global_bus := _get_bus_effective()
-	var reverb_bus := _get_reverb_bus_send()
-	var reflection_type := -1
-	if Engine.has_singleton("ResonanceServer"):
-		var srv = Engine.get_singleton("ResonanceServer")
-		if srv and srv.is_initialized() and srv.has_method("get_reflection_type"):
-			reflection_type = srv.get_reflection_type()
-	var players = tree.get_nodes_in_group("resonance_player")
-	for p in players:
-		var cfg = p.get("player_config") if "player_config" in p else null
-		var effective_bus: StringName
-		if cfg and cfg.has_method("get_bus_name_effective"):
-			effective_bus = cfg.get_bus_name_effective(global_bus)
-		else:
-			effective_bus = global_bus
-		if p.has_method("set_bus"):
-			p.set_bus(effective_bus)
-		# Parametric (1) / Hybrid (2): enable split when bus != reverb_bus
-		var reverb_split := (
-			(reflection_type == 1 or reflection_type == 2) and str(effective_bus) != str(reverb_bus)
-		)
-		if p.has_method("set_reverb_split_output"):
-			p.set_reverb_split_output(reverb_split, reverb_bus)
+	_runtime_bus.apply_bus_to_players(tree)
 
 
 func _setup_activator() -> void:
-	if not _ensure_reverb_bus_exists():
-		return
-	var bus_name := _get_reverb_bus_name()
-	_activator = AudioStreamPlayer.new()
-	_activator.name = "ResonanceInternalActivator"
-	_activator.bus = bus_name
-	var gen = AudioStreamGenerator.new()
-	gen.buffer_length = 0.1
-	_activator.stream = gen
-	add_child(_activator)
-	_activator.play()
+	_runtime_bus = ResonanceRuntimeBus.new(
+		Callable(self, "_get_bus_effective"),
+		Callable(self, "_get_reverb_bus_name"),
+		Callable(self, "_get_reverb_bus_send")
+	)
+	_reverb_activator = ResonanceReverbActivator.new()
+	_reverb_activator.setup(self, _runtime_bus)
 
 
 func _fill_activator_buffer() -> void:
 	## Keeps the Reverb Bus active so Godot does not disable it after silence.
 	## The activator feeds a low-level signal so the bus stays active; the effect
 	## overwrites output with mixer content.
-	if not _activator or not _activator.playing:
-		activator_instrumentation = {"active": false, "reason": "no_activator_or_not_playing"}
+	if _reverb_activator == null or _runtime_bus == null:
 		return
-	var playback = _activator.get_stream_playback()
-	if not playback:
-		activator_instrumentation = {"active": false, "reason": "no_playback"}
-		return
-	if not playback is AudioStreamGeneratorPlayback:
-		activator_instrumentation = {"active": false, "reason": "not_generator"}
-		return
-	var avail = playback.get_frames_available()
-	if avail <= 0:
-		activator_instrumentation["active"] = true
-		activator_instrumentation["avail_zero_count"] = (
-			activator_instrumentation.get("avail_zero_count", 0) + 1
-		)
-		return
-	const AMP := 1e-5
-	var to_push = min(avail, 512)
-	for i in to_push:
-		playback.push_frame(Vector2(AMP, AMP))
-	_activator_frames_pushed += to_push
-	_activator_fill_calls += 1
-	var bus_idx = AudioServer.get_bus_index(_get_reverb_bus_name())
-	var skips = playback.get_skips() if playback.has_method("get_skips") else -1
-	activator_instrumentation = {
-		"active": true,
-		"frames_pushed_total": _activator_frames_pushed,
-		"fill_calls": _activator_fill_calls,
-		"bus_index": bus_idx,
-		"bus_muted": AudioServer.is_bus_mute(bus_idx) if bus_idx >= 0 else true,
-		"bus_send": str(AudioServer.get_bus_send(bus_idx)) if bus_idx >= 0 else "",
-		"skips": skips,
-	}
+	_reverb_activator.fill_buffer(_runtime_bus)
 
 
 func _prepare_geometry_before_reinit() -> void:
@@ -513,7 +463,7 @@ func _reload_after_reinit() -> void:
 	var tree = get_tree()
 	var static_scene = ResonanceSceneUtils.find_resonance_static_scene(tree.get_root())
 	if static_scene and static_scene.static_scene_asset and static_scene.has_valid_asset():
-		var srv = Engine.get_singleton("ResonanceServer")
+		var srv: Variant = ResonanceServerAccess.get_server()
 		if srv and srv.has_method("load_static_scene_from_asset"):
 			srv.load_static_scene_from_asset(
 				static_scene.static_scene_asset, static_scene.get_global_transform()
@@ -527,6 +477,7 @@ func _reload_after_reinit() -> void:
 		SceneTree.GROUP_CALL_DEFERRED, "resonance_geometry", "refresh_geometry"
 	)
 	call_deferred("_deferred_reset_spatial_audio_warmup_passes")
+	_sync_physics_process_for_custom_tracer()
 
 
 func _connect_runtime_signals() -> void:
@@ -570,10 +521,8 @@ func _disconnect_runtime_signals() -> void:
 
 
 func _on_reflection_type_changed(_arg = null) -> void:
-	if not Engine.has_singleton("ResonanceServer"):
-		return
-	var srv = Engine.get_singleton("ResonanceServer")
-	if not srv or not srv.is_initialized():
+	var srv: Variant = ResonanceServerAccess.get_server_if_initialized()
+	if srv == null:
 		return
 	var cfg = get_config_dict()
 	if cfg.is_empty():
@@ -585,10 +534,8 @@ func _on_reflection_type_changed(_arg = null) -> void:
 
 
 func _on_audio_frame_size_changed(_arg = null) -> void:
-	if not Engine.has_singleton("ResonanceServer"):
-		return
-	var srv = Engine.get_singleton("ResonanceServer")
-	if not srv or not srv.is_initialized():
+	var srv: Variant = ResonanceServerAccess.get_server_if_initialized()
+	if srv == null:
 		return
 	var cfg = get_config_dict()
 	if cfg.is_empty():
@@ -600,15 +547,14 @@ func _on_audio_frame_size_changed(_arg = null) -> void:
 
 
 func _on_runtime_affecting_probes_changed(_arg = null) -> void:
-	if Engine.has_singleton("ResonanceServer"):
-		var srv = Engine.get_singleton("ResonanceServer")
-		if srv and srv.is_initialized():
-			srv.set_pathing_enabled(_runtime.pathing_enabled)
-			var removed = srv.revalidate_probe_batches_with_config()
-			if removed > 0 and is_inside_tree():
-				get_tree().call_group_flags(
-					SceneTree.GROUP_CALL_DEFERRED, "resonance_probe_volume", "reload_probe_batch"
-				)
+	var srv: Variant = ResonanceServerAccess.get_server_if_initialized()
+	if srv != null:
+		srv.set_pathing_enabled(_runtime.pathing_enabled)
+		var removed = srv.revalidate_probe_batches_with_config()
+		if removed > 0 and is_inside_tree():
+			get_tree().call_group_flags(
+				SceneTree.GROUP_CALL_DEFERRED, "resonance_probe_volume", "reload_probe_batch"
+			)
 	_notify_volumes_runtime_config_changed()
 
 
@@ -630,85 +576,41 @@ func _notify_volumes_runtime_config_changed() -> void:
 func _warn_restart_if_needed() -> void:
 	if Engine.is_editor_hint():
 		return
-	if (
-		Engine.has_singleton("ResonanceServer")
-		and Engine.get_singleton("ResonanceServer").is_initialized()
-	):
+	if ResonanceServerAccess.get_server_if_initialized() != null:
 		print_rich(
 			"[color=yellow][Nexus Resonance] Change requires game restart to take effect.[/color]"
 		)
 
 
 func _register_nexus_performance_monitors() -> void:
-	var existing: Array = Performance.get_custom_monitor_names()
-	var ids: Array[String] = [
-		_NEXUS_PERF_MON_MAIN,
-		_NEXUS_PERF_MON_W_DIRECT,
-		_NEXUS_PERF_MON_W_REFL,
-		_NEXUS_PERF_MON_W_PATH,
-		_NEXUS_PERF_MON_W_SYNC,
-		_NEXUS_PERF_MON_W_SUM,
-	]
-	for id in ids:
-		if id in existing:
-			Performance.remove_custom_monitor(id)
-	Performance.add_custom_monitor(_NEXUS_PERF_MON_MAIN, Callable(self, "_nexus_perf_read_main_usec"))
-	Performance.add_custom_monitor(
-		_NEXUS_PERF_MON_W_DIRECT, Callable(self, "_nexus_perf_worker_field").bind("us_run_direct")
-	)
-	Performance.add_custom_monitor(
-		_NEXUS_PERF_MON_W_REFL, Callable(self, "_nexus_perf_worker_field").bind("us_run_reflections")
-	)
-	Performance.add_custom_monitor(
-		_NEXUS_PERF_MON_W_PATH, Callable(self, "_nexus_perf_worker_field").bind("us_run_pathing")
-	)
-	Performance.add_custom_monitor(
-		_NEXUS_PERF_MON_W_SYNC, Callable(self, "_nexus_perf_worker_field").bind("us_sync_fetch")
-	)
-	Performance.add_custom_monitor(_NEXUS_PERF_MON_W_SUM, Callable(self, "_nexus_perf_read_worker_sum"))
+	ResonanceRuntimePerfMonitors.register(self)
 
 
 func _unregister_nexus_performance_monitors() -> void:
-	if Engine.is_editor_hint():
-		return
-	var ids: Array[String] = [
-		_NEXUS_PERF_MON_MAIN,
-		_NEXUS_PERF_MON_W_DIRECT,
-		_NEXUS_PERF_MON_W_REFL,
-		_NEXUS_PERF_MON_W_PATH,
-		_NEXUS_PERF_MON_W_SYNC,
-		_NEXUS_PERF_MON_W_SUM,
-	]
-	for id in ids:
-		Performance.remove_custom_monitor(id)
+	ResonanceRuntimePerfMonitors.unregister_all()
 
 
 func _nexus_perf_read_main_usec() -> int:
 	return main_thread_last_tick_usec
 
 
+func _nexus_perf_read_physics_tick_usec() -> int:
+	return runtime_physics_tick_usec
+
+
 func _nexus_perf_worker_field(field: String) -> int:
-	if not Engine.has_singleton("ResonanceServer"):
-		return 0
-	var srv = Engine.get_singleton("ResonanceServer")
-	if not srv.is_initialized() or not srv.has_method("get_simulation_worker_timing"):
+	var srv: Variant = ResonanceServerAccess.get_server_if_initialized()
+	if srv == null or not srv.has_method("get_simulation_worker_timing"):
 		return 0
 	return int(srv.get_simulation_worker_timing().get(field, 0))
 
 
 func _nexus_perf_read_worker_sum() -> int:
-	if not Engine.has_singleton("ResonanceServer"):
-		return 0
-	var srv = Engine.get_singleton("ResonanceServer")
-	if not srv.is_initialized() or not srv.has_method("get_simulation_worker_timing"):
+	var srv: Variant = ResonanceServerAccess.get_server_if_initialized()
+	if srv == null or not srv.has_method("get_simulation_worker_timing"):
 		return 0
 	var w: Dictionary = srv.get_simulation_worker_timing()
-	return (
-		int(w.get("us_run_direct", 0))
-		+ int(w.get("us_run_reflections", 0))
-		+ int(w.get("us_run_pathing", 0))
-		+ int(w.get("us_sync_fetch", 0))
-	)
+	return ResonanceRuntimePerfMonitors.simulation_worker_timing_sum(w)
 
 
 func _update_debug_overlay_visibility() -> void:

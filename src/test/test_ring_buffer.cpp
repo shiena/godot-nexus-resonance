@@ -105,3 +105,31 @@ TEST_CASE("RingBuffer write clamps to available space", "[ring_buffer]") {
     REQUIRE(out[0] == 1.0f);
     REQUIRE(out[3] == 4.0f);
 }
+
+TEST_CASE("RingBuffer zero capacity write and read are no-ops", "[ring_buffer]") {
+    RingBuffer<float> rb;
+    rb.resize(0);
+    REQUIRE(rb.get_available_read() == 0);
+    REQUIRE(rb.get_available_write() == 0);
+
+    float in[4] = {9.0f, 9.0f, 9.0f, 9.0f};
+    rb.write(in, 4);
+    REQUIRE(rb.get_available_read() == 0);
+
+    float out[4] = {1.0f, 2.0f, 3.0f, 4.0f};
+    rb.read(out, 4);
+    REQUIRE(out[0] == 1.0f);
+    REQUIRE(out[1] == 2.0f);
+}
+
+TEST_CASE("RingBuffer zero-length write and read are no-ops", "[ring_buffer]") {
+    RingBuffer<float> rb;
+    rb.resize(8);
+    float in[2] = {5.0f, 6.0f};
+    rb.write(in, 0);
+    REQUIRE(rb.get_available_read() == 0);
+
+    float out[2] = {};
+    rb.read(out, 0);
+    REQUIRE(rb.get_available_read() == 0);
+}

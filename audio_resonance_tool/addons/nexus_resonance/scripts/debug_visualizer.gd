@@ -33,7 +33,7 @@ func _ready() -> void:
 	add_child(debug_mesh_instance)
 
 
-func _process(_delta: float) -> void:
+func _physics_process(_delta: float) -> void:
 	if not listener_camera or not audio_source_node:
 		return
 

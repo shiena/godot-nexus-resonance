@@ -1,4 +1,5 @@
 #include "ray_trace_debug_context.h"
+#include "ray_trace_debug_intersect.h"
 #include "resonance_debug_log.h"
 #include "resonance_utils.h"
 #include <algorithm>
@@ -114,39 +115,8 @@ void RayTraceDebugContext::unregister_mesh(int mesh_id) {
 
 bool RayTraceDebugContext::ray_triangle_intersect(const IPLRay& ray, float t_min, float t_max,
                                                   const TriangleData& tri, float& out_t, IPLVector3& out_normal) {
-
-    const float eps = kRayTriangleEpsilon;
-    IPLVector3 edge1 = {tri.v1.x - tri.v0.x, tri.v1.y - tri.v0.y, tri.v1.z - tri.v0.z};
-    IPLVector3 edge2 = {tri.v2.x - tri.v0.x, tri.v2.y - tri.v0.y, tri.v2.z - tri.v0.z};
-    IPLVector3 h = {
-        ray.direction.y * edge2.z - ray.direction.z * edge2.y,
-        ray.direction.z * edge2.x - ray.direction.x * edge2.z,
-        ray.direction.x * edge2.y - ray.direction.y * edge2.x};
-    float a = edge1.x * h.x + edge1.y * h.y + edge1.z * h.z;
-    if (a > -eps && a < eps)
-        return false;
-
-    float f = 1.0f / a;
-    IPLVector3 s = {ray.origin.x - tri.v0.x, ray.origin.y - tri.v0.y, ray.origin.z - tri.v0.z};
-    float u = f * (s.x * h.x + s.y * h.y + s.z * h.z);
-    if (u < 0.0f || u > 1.0f)
-        return false;
-
-    IPLVector3 q = {
-        s.y * edge1.z - s.z * edge1.y,
-        s.z * edge1.x - s.x * edge1.z,
-        s.x * edge1.y - s.y * edge1.x};
-    float v = f * (ray.direction.x * q.x + ray.direction.y * q.y + ray.direction.z * q.z);
-    if (v < 0.0f || u + v > 1.0f)
-        return false;
-
-    float t = f * (edge2.x * q.x + edge2.y * q.y + edge2.z * q.z);
-    if (t < t_min || t > t_max)
-        return false;
-
-    out_t = t;
-    out_normal = tri.normal;
-    return true;
+    const resonance::RayDebugTriangle rt{tri.v0, tri.v1, tri.v2, tri.normal};
+    return resonance::ray_debug_ray_triangle_intersect(ray, t_min, t_max, rt, kRayTriangleEpsilon, out_t, out_normal);
 }
 
 void RayTraceDebugContext::trace_batch(IPLint32 num_rays, const IPLRay* rays,
@@ -271,14 +241,21 @@ void RayTraceDebugContext::trace_reflection_rays_for_viz(const IPLVector3& origi
         return;
 
     static constexpr float kPi = 3.14159265f;
-    static constexpr float kGoldenRatio = 1.6180339887f;
+    const float n = static_cast<float>(num_rays);
     for (int i = 0; i < num_rays && (int)out_segments.size() < resonance::kRayDebugMaxSegments; i++) {
-        float phi = 2.0f * kPi * (float)i / kGoldenRatio;
-        float theta = std::acos(1.0f - 2.0f * (i + 0.5f) / (float)num_rays);
-        IPLVector3 dir;
-        dir.x = std::sin(phi) * std::cos(theta);
-        dir.y = std::sin(phi) * std::sin(theta);
-        dir.z = std::cos(phi);
+        // Uniform on sphere: z uniform in [-1,1], azimuth phi uniform in [0, 2pi).
+        const float z = 1.0f - (2.0f * (static_cast<float>(i) + 0.5f) / n);
+        const float phi = 2.0f * kPi * static_cast<float>(i) / n;
+        const float r_xy = std::sqrt(std::max(0.0f, 1.0f - z * z));
+        IPLVector3 dir{r_xy * std::cos(phi), r_xy * std::sin(phi), z};
+        const float len = std::sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
+        if (len > 1e-8f) {
+            dir.x /= len;
+            dir.y /= len;
+            dir.z /= len;
+        } else {
+            dir = IPLVector3{0.0f, 0.0f, 1.0f};
+        }
         IPLRay ray = {origin, dir};
         float t_min = kMinRayT;
         float t_max = max_distance;

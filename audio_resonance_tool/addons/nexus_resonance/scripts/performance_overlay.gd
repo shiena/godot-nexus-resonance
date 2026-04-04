@@ -77,6 +77,7 @@ func _refresh() -> void:
 	var process_ms := Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
 	var physics_ms := Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0
 	var mtu := 0
+	var ptu := 0
 	var w_d := 0
 	var w_r := 0
 	var w_p := 0
@@ -87,21 +88,29 @@ func _refresh() -> void:
 		if rt:
 			var v: Variant = rt.get("main_thread_last_tick_usec")
 			mtu = int(v) if v != null else 0
-	if Engine.has_singleton("ResonanceServer"):
-		var srv = Engine.get_singleton("ResonanceServer")
-		if srv and srv.is_initialized() and srv.has_method("get_simulation_worker_timing"):
-			var wtim: Dictionary = srv.get_simulation_worker_timing()
-			w_d = int(wtim.get("us_run_direct", 0))
-			w_r = int(wtim.get("us_run_reflections", 0))
-			w_p = int(wtim.get("us_run_pathing", 0))
-			w_s = int(wtim.get("us_sync_fetch", 0))
+			var pv: Variant = rt.get("runtime_physics_tick_usec")
+			ptu = int(pv) if pv != null else 0
+	var srv: Variant = ResonanceServerAccess.get_server_if_initialized()
+	if srv != null and srv.has_method("get_simulation_worker_timing"):
+		var wtim: Dictionary = srv.get_simulation_worker_timing()
+		w_d = int(wtim.get("us_run_direct", 0))
+		w_r = int(wtim.get("us_run_reflections", 0))
+		w_p = int(wtim.get("us_run_pathing", 0))
+		w_s = int(wtim.get("us_sync_fetch", 0))
 	var w_sum := w_d + w_r + w_p + w_s
 	# Use String.format — C-style "%" formatting can miscount vs BBCode / float specifiers in this engine.
-	_label.text = (
-		"[color={c}]FPS: {fps}[/color]\n[color={c}]Frame: {proc_ms} ms[/color]\n[color={c}]Physics: {phy_ms} ms[/color]\n"
-		+ "[color={c}]Nexus main _process:[/color] {mtu} µs\n"
+	var custom_phys_line := ""
+	if ptu > 0:
+		custom_phys_line = "[color={c}]Nexus Custom _physics_process:[/color] {ptu} µs\n"
+	var nexus_lines := (
+		"[color={c}]Nexus main _process:[/color] {mtu} µs\n"
+		+ custom_phys_line
 		+ "[color={c}]Worker last (µs):[/color] d={w_d} r={w_r} p={w_p} s={w_s} [color={h}](Σ {w_sum})[/color]\n"
 		+ "[color={c}]CPU:[/color] if one core is pegged, check main vs worker vs audio thread."
+	)
+	_label.text = (
+		"[color={c}]FPS: {fps}[/color]\n[color={c}]Frame: {proc_ms} ms[/color]\n[color={c}]Physics: {phy_ms} ms[/color]\n"
+		+ nexus_lines
 	).format(
 		{
 			"c": COLOR_NEUTRAL,
@@ -110,6 +119,7 @@ func _refresh() -> void:
 			"proc_ms": String.num(process_ms, 2),
 			"phy_ms": String.num(physics_ms, 2),
 			"mtu": mtu,
+			"ptu": ptu,
 			"w_d": w_d,
 			"w_r": w_r,
 			"w_p": w_p,

@@ -132,14 +132,14 @@ if env["platform"] == "windows":
 
     env.AddPostAction(library, env.Action(copy_steam_dlls))
 
-# --- C++ UNIT TESTS (no Godot/Steam Audio) ---
+# --- C++ UNIT TESTS (no Godot / no link to phonon; Steam Audio headers only for IPL types in ray tests) ---
 build_tests = ARGUMENTS.get("build_tests", "1") == "1"
 test_exe = None
 if build_tests:
     env_test = env.Clone()
     env_test.Replace(LIBS=[], LIBPATH=[])
-    env_test.Append(CPPPATH=["src", "src/lib/catch2/single_include/catch2"])
-    test_sources = ["src/test/test_main.cpp", "src/test/test_ring_buffer.cpp", "src/test/test_volume_ramp.cpp", "src/test/test_resonance_hash.cpp", "src/test/test_bake_ambisonics_order.cpp", "src/test/test_handle_manager.cpp", "src/test/test_ipl_guard.cpp", "src/test/test_custom_scene_invariants.cpp"]
+    env_test.Append(CPPPATH=["src", "src/lib/catch2/single_include/catch2", "src/lib/steamaudio/include"])
+    test_sources = ["src/test/test_main.cpp", "src/test/test_ring_buffer.cpp", "src/test/test_volume_ramp.cpp", "src/test/test_resonance_math_more.cpp", "src/test/test_resonance_hash.cpp", "src/test/test_bake_ambisonics_order.cpp", "src/test/test_handle_manager.cpp", "src/test/test_ipl_guard.cpp", "src/test/test_custom_scene_invariants.cpp", "src/test/test_constants_helpers.cpp", "src/test/test_ray_trace_debug_intersect.cpp"]
     test_dir = "build/tests"
     test_exe = env_test.Program(os.path.join(test_dir, "nexus_resonance_tests"), test_sources)
     env.Alias("test", test_exe)

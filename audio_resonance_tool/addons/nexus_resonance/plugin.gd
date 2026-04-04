@@ -293,8 +293,8 @@ func _enable_plugin() -> void:
 
 
 func _disable_plugin() -> void:
-	if Engine.has_singleton("ResonanceServer"):
-		var srv: Variant = Engine.get_singleton("ResonanceServer")
+	if ResonanceServerAccess.has_server():
+		var srv: Variant = ResonanceServerAccess.get_server()
 		if srv and srv.has_method("clear_probe_batches"):
 			srv.clear_probe_batches()
 	remove_autoload_singleton("ResonanceLogger")
@@ -515,8 +515,8 @@ func _on_tool_bake_all_probe_volumes(_unused: Variant = null) -> void:
 
 
 func _on_tool_clear_probe_batches(_unused: Variant = null) -> void:
-	if Engine.has_singleton("ResonanceServer"):
-		var srv: Variant = Engine.get_singleton("ResonanceServer")
+	if ResonanceServerAccess.has_server():
+		var srv: Variant = ResonanceServerAccess.get_server()
 		if srv and srv.has_method("clear_probe_batches"):
 			srv.clear_probe_batches()
 			ResonanceEditorDialogs.show_info(tr(UIStrings.INFO_PROBE_BATCHES_CLEARED))

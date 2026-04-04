@@ -64,5 +64,8 @@ void ResonanceSOFAAsset::_bind_methods() {
 
     ADD_PROPERTY(PropertyInfo(Variant::PACKED_BYTE_ARRAY, "sofa_data", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE), "set_sofa_data", "get_sofa_data");
     ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "volume_db", PROPERTY_HINT_RANGE, "-60,24,0.5"), "set_volume_db", "get_volume_db");
-    ADD_PROPERTY(PropertyInfo(Variant::INT, "norm_type", PROPERTY_HINT_ENUM, "None,RMS"), "set_norm_type", "get_norm_type");
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "norm_type", PROPERTY_HINT_ENUM, "NORM_NONE,NORM_RMS"), "set_norm_type", "get_norm_type");
+
+    BIND_ENUM_CONSTANT(NORM_NONE);
+    BIND_ENUM_CONSTANT(NORM_RMS);
 }

@@ -94,10 +94,17 @@ jobs:
 
       - name: Clang-Tidy (static analysis)
         run: |
-          sudo apt-get install -y clang-tidy
-          if [ -f compile_commands.json ]; then
-            find src -type f \( -name "*.cpp" -o -name "*.h" \) ! -path "*/lib/*" ! -path "*/gen/*" | head -80 | xargs -r clang-tidy -p . -checks='-*,bugprone-*,-bugprone-easily-swappable-parameters,cert-*,clang-analyzer-*' --warnings-as-errors=* 2>/dev/null || true
+          sudo apt-get update -qq && sudo apt-get install -y clang-tidy
+          if [ ! -f compile_commands.json ]; then
+            echo "compile_commands.json missing (expected from SCons compiledb=1 build)"
+            exit 1
           fi
+          CHECKS='-*,bugprone-*,-bugprone-easily-swappable-parameters,cert-*,clang-analyzer-*'
+          echo "Clang-tidy (strict): src/handle_manager.cpp src/test/test_ipl_guard.cpp"
+          clang-tidy -p . src/handle_manager.cpp src/test/test_ipl_guard.cpp \
+            -checks="$CHECKS" --warnings-as-errors=*
+          echo "Clang-tidy (optional wider scan, failures ignored)"
+          find src -type f \( -name "*.cpp" -o -name "*.h" \) ! -path "*/lib/*" ! -path "*/gen/*" | head -80 | xargs -r clang-tidy -p . -checks="$CHECKS" --warnings-as-errors=* 2>/dev/null || true
 
       - name: Upload bin artifact
         uses: actions/upload-artifact@v5

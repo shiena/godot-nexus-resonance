@@ -69,17 +69,16 @@ func test_pathing_hash_changes_with_params():
 	assert_ne(h_default, h_modified, "different pathing params should produce different hash")
 
 
-## Ensures ResonanceBakeRunner._compute_pathing_hash matches the dict format used by C++ ResonanceBaker::bake_pathing.
+## Ensures ResonanceBakeHashes.compute_pathing_hash matches the dict format used by C++ ResonanceBaker::bake_pathing.
 ## Both must use hash(var_to_str({vis_range, path_range, num_samples, radius, threshold})) for consistency.
 func test_pathing_hash_bake_runner_matches_cpp_format():
-	var BakeRunner = load("res://addons/nexus_resonance/editor/resonance_bake_runner.gd") as GDScript
-	var runner = BakeRunner.new(null)
+	const BakeHashes = preload("res://addons/nexus_resonance/editor/resonance_bake_hashes.gd")
 	var bc = ResonanceBakeConfig.create_default()
 	bc.pathing_enabled = true
-	var runner_hash = runner._compute_pathing_hash(bc)
+	var runner_hash = BakeHashes.compute_pathing_hash(bc)
 	var manual_hash = _pathing_hash_from_params(bc.get_bake_params())
-	assert_eq(runner_hash, manual_hash, "BakeRunner hash must match C++ dict format (vis_range, path_range, num_samples, radius, threshold)")
+	assert_eq(runner_hash, manual_hash, "BakeHashes must match C++ dict format (vis_range, path_range, num_samples, radius, threshold)")
 	bc.bake_pathing_threshold = 0.05
-	runner_hash = runner._compute_pathing_hash(bc)
+	runner_hash = BakeHashes.compute_pathing_hash(bc)
 	manual_hash = _pathing_hash_from_params(bc.get_bake_params())
-	assert_eq(runner_hash, manual_hash, "BakeRunner hash must match for modified params too")
+	assert_eq(runner_hash, manual_hash, "BakeHashes must match for modified params too")

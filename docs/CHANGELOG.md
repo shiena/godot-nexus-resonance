@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),  
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.11] - 2026-04-04
+
+### Fixed
+
+- **Custom scene (Godot Physics)** – If 3D physics runs on its **own thread** (for example with Jolt), live occlusion and reflection rays no longer trigger endless *space not accessible* errors. Audio simulation now lines up with the physics step; debug ray lines follow the same timing. The performance overlay can show how long that physics-aligned tick takes.
+
+### Changed
+
+- **Editor & addon scripts** – Baking, export/cleanup paths, and runtime wiring were split into smaller internal modules; **how you use the inspector and menus is unchanged**. Probe cleanup is a bit smarter about which baked files are still referenced.
+- **HRTF SOFA asset** – Normalization in the inspector uses clearer enum names (**None** / **RMS**).
+
 ## [0.9.10] - 2026-04-02
 
 ### Added

@@ -1,0 +1,288 @@
+extends RefCounted
+class_name ResonanceBakePipeline
+
+## Main-thread and threaded bake steps for [ResonanceProbeVolume]. Owned by [ResonanceBakeRunner].
+
+const ResonancePaths = preload("res://addons/nexus_resonance/scripts/resonance_paths.gd")
+const ResonanceFsPaths = preload("res://addons/nexus_resonance/scripts/resonance_fs_paths.gd")
+const UIStrings = preload("res://addons/nexus_resonance/scripts/resonance_ui_strings.gd")
+const _VolumeCtx = preload("res://addons/nexus_resonance/editor/resonance_bake_volume_context.gd")
+const _BakeDiscovery = preload("res://addons/nexus_resonance/editor/resonance_bake_discovery.gd")
+const _BakeEstimates = preload("res://addons/nexus_resonance/editor/resonance_bake_estimates.gd")
+const _BakeHashes = preload("res://addons/nexus_resonance/editor/resonance_bake_hashes.gd")
+
+const BAKE_INITIAL_DELAY_SEC := 1.5
+const BAKE_VOLUME_DELAY_SEC := 0.5
+const DEFAULT_BAKE_INFLUENCE_RADIUS := 10000.0
+
+var _runner: Object
+
+
+func _init(runner: Object) -> void:
+	_runner = runner
+
+
+func run_bake_pipeline_main_thread(volumes: Array[Node]) -> void:
+	var progress_ui = _runner._progress_ui
+	progress_ui.clear_details()
+	progress_ui.set_bake_status(tr(UIStrings.PROGRESS_PREPARING))
+	progress_ui.set_stage(0, volumes.size())
+	if not await _wait_before_bake():
+		return
+	if not ResonanceServerAccess.has_server():
+		_runner._log_and_show_error(
+			"GDExtension unloaded", "ResonanceServer is no longer available. Bake aborted."
+		)
+		_runner._finish_pipeline(false, null, volumes)
+		return
+	var srv = ResonanceServerAccess.get_server()
+	if not srv:
+		_runner._finish_pipeline(false, null, volumes)
+		return
+	var root: Node = _runner._get_edited_scene_root(volumes)
+	if not root:
+		_runner._log_and_show_error("No scene open", "Open a scene before baking.")
+		_runner._finish_pipeline(false, null, volumes)
+		return
+	var static_scene_node = _BakeDiscovery.find_resonance_static_scene_for_bake(volumes, root)
+	var static_asset = static_scene_node.get("static_scene_asset") if static_scene_node else null
+	var baked_probe_datas: Array = []
+	var tree = (
+		_runner.editor_interface.get_base_control().get_tree() if _runner.editor_interface else null
+	)
+	var vol_index := 0
+	for vol in volumes:
+		if progress_ui.cancel_requested:
+			_runner.call_deferred("_on_bake_pipeline_finished", false, null, volumes)
+			return
+		vol_index += 1
+		var ctx = _VolumeCtx.build(
+			vol,
+			root,
+			vol_index,
+			volumes.size(),
+			static_asset,
+			Callable(_runner, "_get_bake_config_for_volume"),
+			DEFAULT_BAKE_INFLUENCE_RADIUS
+		)
+		var bc = _runner._get_bake_config_for_volume(vol)
+		progress_ui.set_stage(
+			vol_index,
+			volumes.size(),
+			_BakeEstimates.estimate_bake_time(vol, bc) if vol_index == 1 else ""
+		)
+		progress_ui.set_bake_status(tr(UIStrings.PROGRESS_PROCESSING) + ctx.vol_info)
+		if tree:
+			await tree.process_frame
+			await tree.create_timer(BAKE_VOLUME_DELAY_SEC).timeout
+		srv.set_bake_params(ctx.bc.get_bake_params())
+		var ok = await _run_bake_for_volume(ctx)
+		if not ok:
+			_runner._log_and_show_error(
+				"Reflections bake failed for %s" % ctx.vol.name,
+				"Check geometry and probe volume settings.",
+				"bake_probes_for_volume returned false",
+				ctx.vol.name,
+				"reflections"
+			)
+			_runner._finish_pipeline(false, null, volumes)
+			return
+		if progress_ui.cancel_requested:
+			_runner._finish_pipeline(false, null, volumes)
+			return
+		baked_probe_datas.append(vol.get_probe_data())
+	_runner._finish_pipeline(true, baked_probe_datas, volumes)
+
+
+func _wait_before_bake() -> bool:
+	var tree = (
+		_runner.editor_interface.get_base_control().get_tree() if _runner.editor_interface else null
+	)
+	if tree:
+		await tree.process_frame
+		await tree.create_timer(BAKE_INITIAL_DELAY_SEC).timeout
+	return not _runner._progress_ui.cancel_requested
+
+
+func _run_in_thread_with_cancel_poll(bake_callable: Callable) -> Variant:
+	var result: Variant = null
+	var thread = Thread.new()
+	thread.start(func() -> void: result = bake_callable.call())
+	var tree = (
+		_runner.editor_interface.get_base_control().get_tree() if _runner.editor_interface else null
+	)
+	var srv = ResonanceServerAccess.get_server()
+	while thread.is_alive():
+		if tree:
+			await tree.process_frame
+		if _runner._progress_ui.cancel_requested and srv:
+			srv.cancel_reflections_bake()
+			srv.cancel_pathing_bake()
+	thread.wait_to_finish()
+	return result
+
+
+func _prepare_probe_data_for_bake(vol: Node, probe_data: Resource, root: Node) -> void:
+	if not probe_data or not vol or not root:
+		return
+	var scene_name := "unsaved"
+	var scene_path = root.get_scene_file_path()
+	if not scene_path.is_empty():
+		scene_name = scene_path.get_file().get_basename()
+	var node_key: String
+	if vol.is_inside_tree():
+		var rel_str: String = str(root.get_path_to(vol))
+		if rel_str.begins_with("."):
+			rel_str = rel_str.substr(1)
+		node_key = rel_str.replace("/", "_").replace("@", "_").replace("\\", "_").replace(":", "_")
+		node_key = node_key.to_lower().replace(" ", "_")
+	else:
+		node_key = str(vol.name).to_lower().replace(" ", "_")
+	if node_key.is_empty():
+		node_key = str(vol.name).to_lower().replace(" ", "_")
+	if node_key.length() > 128:
+		node_key = "h_%s" % str(abs(hash(str(root.get_path_to(vol)) if vol.is_inside_tree() else vol.name)))
+	var audio_dir: String = ResonancePaths.get_audio_data_dir()
+	var fs_audio: String = ResonanceFsPaths.filesystem_path_for_dir_access(audio_dir)
+	var path: String = audio_dir + "%s_%s_baked_probes.tres" % [scene_name, node_key]
+	if not DirAccess.dir_exists_absolute(fs_audio):
+		var mkdir_err: int = DirAccess.make_dir_recursive_absolute(fs_audio)
+		if mkdir_err != OK or not DirAccess.dir_exists_absolute(fs_audio):
+			if Engine.has_singleton("ResonanceLogger"):
+				Engine.get_singleton("ResonanceLogger").log(
+					&"bake",
+					"Failed to create audio output directory: %s" % mkdir_err,
+					{"step": "prepare", "error": mkdir_err}
+				)
+			return
+	if probe_data.has_method("take_over_path"):
+		probe_data.take_over_path(path)
+	probe_data.emit_changed()
+	if vol.has_method("get_bake_params_hash") and probe_data.has_method("set_bake_params_hash"):
+		probe_data.set_bake_params_hash(vol.get_bake_params_hash())
+
+
+func _skip_if_up_to_date(ctx: Variant) -> bool:
+	return (
+		not ctx.need_reflections
+		and not ctx.need_pathing
+		and not ctx.need_static_source
+		and not ctx.need_static_listener
+	)
+
+
+func _bake_reflections(ctx: Variant) -> bool:
+	var srv = ResonanceServerAccess.get_server()
+	var progress_ui = _runner._progress_ui
+	progress_ui.set_bake_status(tr(UIStrings.PROGRESS_BAKING_REVERB) + ctx.vol_info)
+	_prepare_probe_data_for_bake(ctx.vol, ctx.probe_data, ctx.root)
+	var volume_transform = ctx.vol.global_transform
+	var extents = ctx.vol.get("region_size") * 0.5
+	var spacing = ctx.vol.get("spacing")
+	var gen_type = ctx.vol.get("generation_type")
+	var height = ctx.vol.get("height_above_floor")
+	var do_bake = func() -> bool:
+		return srv.bake_probes_for_volume(
+			volume_transform, extents, spacing, gen_type, height, ctx.probe_data
+		)
+	await _run_in_thread_with_cancel_poll(do_bake)
+	if progress_ui.cancel_requested:
+		return false
+	ctx.probe_data = ctx.vol.get_probe_data()
+	if not ctx.probe_data or ctx.probe_data.get_data().is_empty():
+		if Engine.has_singleton("ResonanceLogger"):
+			Engine.get_singleton("ResonanceLogger").log(
+				&"bake",
+				"Reflections bake returned empty data for %s" % ctx.vol.name,
+				{"volume": ctx.vol.name, "step": "reflections"}
+			)
+		return false
+	if ctx.probe_data.has_method("set_pathing_params_hash"):
+		ctx.probe_data.set_pathing_params_hash(0)
+	if ctx.probe_data.has_method("set_static_source_params_hash"):
+		ctx.probe_data.set_static_source_params_hash(0)
+	if ctx.probe_data.has_method("set_static_listener_params_hash"):
+		ctx.probe_data.set_static_listener_params_hash(0)
+	if ctx.bc.pathing_enabled:
+		ctx.need_pathing = true
+	if (
+		ctx.static_asset
+		and ctx.probe_data.has_method("set_static_scene_params_hash")
+		and srv.has_method("get_geometry_asset_hash")
+	):
+		ctx.probe_data.set_static_scene_params_hash(srv.get_geometry_asset_hash(ctx.static_asset))
+	return true
+
+
+func _run_bake_step(
+	ctx: Variant,
+	status_key: String,
+	bake_callable: Callable,
+	hash_setter: String,
+	hash_value: int
+) -> void:
+	var progress_ui = _runner._progress_ui
+	progress_ui.set_bake_status(status_key + ctx.vol_info)
+	var ok = await _run_in_thread_with_cancel_poll(bake_callable)
+	if ok and ctx.probe_data.has_method(hash_setter):
+		ctx.probe_data.call(hash_setter, hash_value)
+	ctx.probe_data = ctx.vol.get_probe_data()
+
+
+func _bake_pathing(ctx: Variant) -> void:
+	if ctx.probe_data.get_data().is_empty():
+		return
+	var srv = ResonanceServerAccess.get_server()
+	var do_pathing = func() -> bool: return srv.bake_pathing(ctx.probe_data)
+	await _run_bake_step(
+		ctx,
+		tr(UIStrings.PROGRESS_BAKING_PATHING),
+		do_pathing,
+		"set_pathing_params_hash",
+		_BakeHashes.compute_pathing_hash(ctx.bc)
+	)
+
+
+func _bake_static_source(ctx: Variant) -> void:
+	var srv = ResonanceServerAccess.get_server()
+	var do_static_source = func() -> bool:
+		return srv.bake_static_source(ctx.probe_data, ctx.player_pos, ctx.player_radius)
+	await _run_bake_step(
+		ctx,
+		tr(UIStrings.PROGRESS_BAKING_STATIC_SOURCE),
+		do_static_source,
+		"set_static_source_params_hash",
+		_BakeHashes.compute_position_radius_hash(ctx.player_pos, ctx.player_radius)
+	)
+
+
+func _bake_static_listener(ctx: Variant) -> void:
+	var srv = ResonanceServerAccess.get_server()
+	var do_static_listener = func() -> bool:
+		return srv.bake_static_listener(ctx.probe_data, ctx.listener_pos, ctx.listener_radius)
+	await _run_bake_step(
+		ctx,
+		tr(UIStrings.PROGRESS_BAKING_STATIC_LISTENER),
+		do_static_listener,
+		"set_static_listener_params_hash",
+		_BakeHashes.compute_position_radius_hash(ctx.listener_pos, ctx.listener_radius)
+	)
+
+
+func _run_bake_for_volume(ctx: Variant) -> bool:
+	var srv = ResonanceServerAccess.get_server()
+	var progress_ui = _runner._progress_ui
+	srv.set_bake_params(ctx.bc.get_bake_params())
+	srv.set_bake_pipeline_pathing(ctx.need_pathing)
+	if _skip_if_up_to_date(ctx):
+		progress_ui.set_bake_status(tr(UIStrings.PROGRESS_SKIPPING) + ctx.vol_info)
+		return true
+	if not await _bake_reflections(ctx):
+		return false
+	if ctx.need_pathing and ctx.bc.pathing_enabled:
+		await _bake_pathing(ctx)
+	if ctx.need_static_source and ctx.add_flags.static_source:
+		await _bake_static_source(ctx)
+	if ctx.need_static_listener and ctx.add_flags.static_listener:
+		await _bake_static_listener(ctx)
+	return true

@@ -3,6 +3,7 @@
 
 #include <godot_cpp/classes/global_constants.hpp>
 #include <godot_cpp/classes/resource.hpp>
+#include <godot_cpp/core/binder_common.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
 
 namespace godot {
@@ -53,5 +54,7 @@ class ResonanceSOFAAsset : public Resource {
 };
 
 } // namespace godot
+
+VARIANT_ENUM_CAST(ResonanceSOFAAsset::NormType);
 
 #endif
