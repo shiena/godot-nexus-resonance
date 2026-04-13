@@ -73,7 +73,7 @@
 			Sample rate override. 0 = Use Godot Mix Rate (follow project settings). Other values = override; mismatch may cause audio issues (no resampling).
 		</member>
 		<member name="audio_frame_size" type="int" default="0">
-			Steam Audio block size. Auto (0) = derive from Project Settings audio/driver/output_latency. Manual (256/512/1024/2048) = override for performance tuning. After changing while the game runs from the editor, [ResonanceRuntime] triggers [method ResonanceServer.reinit_audio_engine] via [signal audio_frame_size_changed] (same pattern as [signal reflection_type_changed]).
+			Steam Audio processing block size (samples per channel per effect apply). Should match Godot’s mix buffer for stable reverb routing. Auto (0) = closest of 256 / 512 / 1024 / 2048 from Project Settings [code]audio/driver/output_latency[/code] and mix rate. Manual = override for latency vs CPU; wrong values risk dropouts. After changing while the game runs from the editor, [ResonanceRuntime] triggers [method ResonanceServer.reinit_audio_engine] via [signal audio_frame_size_changed].
 		</member>
 		<member name="ambisonic_order" type="int" default="1">
 			Ambisonic order for reverb encoding: 1st Order, 2nd Order, or 3rd Order. Higher = more spatial detail, more CPU.
@@ -82,7 +82,7 @@
 			Upper bound for simulator / ReflectionMixer IR allocation (seconds): caps [code]simulation_settings.maxDuration[/code] and bundled convolution IR size. Not the per-run simulation length (see [member realtime_simulation_duration]).
 		</member>
 		<member name="realtime_rays" type="int" default="0">
-			Realtime raytracing rays: 0 (baked-only reflections/reverb; typical with parametric + baked pathing), 64–8192. High counts dominate CPU. Simulation uses [member scene_type]; on platforms without Embree or OpenCL the native layer falls back to the built-in (Default) tracer.
+			[code]IPLSimulationSharedInputs.numRays[/code] for realtime reflection simulation. [code]0[/code] = Off (no realtime rays). Presets include 8, 16, 32, 64, … up to 8192; higher counts cost more CPU. Uses [member scene_type]; without Embree/OpenCL features the native layer may use the built-in (Default) tracer.
 		</member>
 		<member name="realtime_bounces" type="int" default="4">
 			Realtime reflection bounces (1–64).
@@ -92,6 +92,9 @@
 		</member>
 		<member name="physics_ray_collision_mask" type="int" default="-1">
 			Physics ray collision mask when [member scene_type] is Custom. [code]-1[/code] means all layers. Same semantics as [code]PhysicsRayQueryParameters3D.collision_mask[/code].
+		</member>
+		<member name="physics_ray_batch_size" type="int" default="16">
+			When [member scene_type] is Custom: [code]IPLSimulationSettings.rayBatchSize[/code] and batched Godot trace callbacks when [code]&gt; 1[/code] (Phonon BatchedReflectionSimulator). Clamped to 1–256 in the native layer. Ignored for Default/Embree/Radeon (Nexus passes batch size 1).
 		</member>
 		<member name="opencl_device_type" type="int" default="0">
 			OpenCL device type when scene_type is Radeon Rays or reflection_type is TrueAudio Next: GPU (0), CPU (1), or Any (2). Helps when GPU has OpenCL issues.
@@ -109,7 +112,7 @@
 			Diffuse samples per reflection point (8–64).
 		</member>
 		<member name="default_reflections_mode" type="int" default="0">
-			When sources use Use Global reflections_type: Baked (0) = probe interpolation; Realtime (1) = raytracing (requires realtime_rays &gt; 0).
+			Applies only to [ResonancePlayer] sources with reflections type Use Global. Other players can override per source. [code]0[/code] = Baked (probes); [code]1[/code] = Realtime (set [member realtime_rays] &gt; 0 for useful simulation). Each source uses one path per update.
 		</member>
 		<member name="reflection_type" type="int" default="0">
 			Reverb algorithm: Convolution (0), Parametric (1), Hybrid (2), TrueAudio Next (3, AMD GPU only).
@@ -177,6 +180,9 @@
 		<member name="transmission_type" type="int" default="1">
 			Direct-effect transmission frequency mode (Steam Audio [code]IPLTransmissionType[/code]): FreqIndependent (0) = one blended coefficient; FreqDependent (1) = low/mid/high bands. Controls how material transmission is applied in the direct processor, not geometry-edge blending. Steam Audio [code]IPLSimulationInputs[/code] has no separate “volumetric transmission” switch (only [code]numTransmissionRays[/code] for path depth).
 		</member>
+		<member name="max_transmission_surfaces" type="int" default="16">
+			Global default for Steam Audio [code]numTransmissionRays[/code] (max surfaces along the transmission path, 1–256): initial simulator source state and when [member ResonancePlayerConfig.max_transmission_surfaces_override] is **Use Global** ([code]0[/code]), or as C++ fallback when reading per-source [member ResonancePlayerConfig.max_transmission_surfaces].
+		</member>
 		<member name="occlusion_type" type="int" default="1">
 			Occlusion: Raycast (0) = binary hit test; Volumetric (1) = fractional occlusion from samples ([code]numOcclusionSamples[/code]). Independent of [member transmission_type].
 		</member>
@@ -187,7 +193,10 @@
 			Maximum simultaneous sources for realtime reflection simulation ([code]maxNumSources[/code]) and TrueAudio Next [code]maxSources[/code].
 		</member>
 		<member name="geometry_update_throttle" type="int" default="4">
-			Throttle geometry updates: apply every Nth update (1–16). Reduces CPU with animated objects.
+			Throttle transform updates from moving geometry: every Nth transform-only [code]notify_geometry_changed[/code] (no triangle change) and every Nth dynamic [ResonanceGeometry] [code]NOTIFICATION_TRANSFORM_CHANGED[/code] (queues [code]iplInstancedMeshUpdateTransform[/code] for [ResonanceDynamicGeometry], etc.). [code]1[/code] = enqueue every notify; higher values reduce CPU during animation. Range [code]1–64[/code]. Call [method ResonanceGeometry.flush_dynamic_acoustic_transform] after motion ends for an exact final pose. Use [code]1[/code] when [member path_validation_enabled] must track very fast dynamic occluders with minimal lag.
+		</member>
+		<member name="dynamic_scene_commit_min_interval" type="float" default="0.0">
+			Minimum seconds between worker applications of queued dynamic instanced-mesh transforms to Steam Audio (one [code]iplSceneCommit[/code] batch per apply). [code]0[/code] = apply every simulation tick that has queued updates. [code]&gt; 0[/code] can lower [code]rtcCommitScene[/code] cost on large Embree scenes at the cost of stale occlusion during motion. Pair with [method ResonanceGeometry.flush_dynamic_acoustic_transform] when motion stops.
 		</member>
 		<member name="simulation_tick_throttle" type="int" default="1">
 			Run the simulation worker every Nth frame from [ResonanceRuntime] (1 = every frame). Higher values reduce CPU from direct simulation and cache sync; occlusion updates less often. Pairs with [member simulation_update_interval] (Steam Audio Unity: combined simulation load vs. frame rate).
@@ -197,12 +206,6 @@
 		</member>
 		<member name="simulation_cpu_cores_percent" type="float" default="0.15">
 			Fraction of CPU cores for Steam Audio simulation threads (0–1). Default 0.15; higher = more parallelism for reflections/pathing, more CPU.
-		</member>
-		<member name="context_simd_level" type="int" default="-1">
-			SIMD level cap: -1 = default (AVX512), 0 = AVX512, 1 = AVX2, 2 = AVX, 3 = SSE4, 4 = SSE2. Lower = more CPU compatible.
-		</member>
-		<member name="context_validation" type="bool" default="false">
-			Enable Steam Audio context validation ([code]IPL_CONTEXTFLAGS_VALIDATION[/code]). Extra API checks; may log warnings (use for debugging).
 		</member>
 		<member name="perspective_correction_enabled" type="bool" default="false">
 			Enable perspective correction for reverb.

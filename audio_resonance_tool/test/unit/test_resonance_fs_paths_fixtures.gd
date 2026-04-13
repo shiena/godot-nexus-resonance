@@ -4,7 +4,7 @@ extends GutTest
 
 const FsPathsScript = preload("res://addons/nexus_resonance/scripts/resonance_fs_paths.gd")
 const FIXTURE_SCENE_WITH_PROBE := "res://test/fixtures/scene_text_embeds_probe_path.tscn"
-const PROBE_PATH_IN_FIXTURE := "res://audio_data/fixture_embedded_probe_baked_probes.tres"
+const PROBE_PATH_IN_FIXTURE := "res://audio_data/fixture_embedded_probe_batch.tres"
 
 
 func test_fixture_tscn_file_is_readable():

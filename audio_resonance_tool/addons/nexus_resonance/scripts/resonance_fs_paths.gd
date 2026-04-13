@@ -48,7 +48,7 @@ static func read_file_as_string(path: String) -> String:
 	return FileAccess.get_file_as_string(path)
 
 
-## Needles to detect a probe [.tres] path inside [.tscn] text (full path, absolute, basename, [code]res://[/code] form).
+## Needles to detect a probe resource path inside [.tscn] text (full path, absolute, basename, [code]res://[/code] form).
 static func probe_reference_needles_for_path(probe_logical_path: String) -> PackedStringArray:
 	var out: PackedStringArray = []
 	if probe_logical_path.is_empty():

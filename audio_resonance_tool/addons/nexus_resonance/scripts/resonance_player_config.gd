@@ -4,6 +4,7 @@ class_name ResonancePlayerConfig
 
 ## Per-source configuration for ResonancePlayer. Link for reusable presets.
 ## Create or link in ResonancePlayer. Falls back to create_default() when null.
+## Where an option is **Use Global** (vs per-source override), that is the default unless a feature needs a different baseline (e.g. Simulation Defined for occlusion/transmission coefficients).
 
 # --- Distance / Attenuation ---
 @export_group("Distance")
@@ -129,10 +130,25 @@ var _occlusion_input: int = 0
 			notify_property_list_changed()
 ## Occlusion attenuation (0-1). 0 = fully occluded, 1 = not occluded. Only when occlusion_input is User Defined.
 @export_range(0.0, 1.0, 0.01) var occlusion_value: float = 1.0
-## Overrides [member ResonanceRuntimeConfig.occlusion_type] for this source when using simulation occlusion. Raycast = single ray; Volumetric = sphere samples ([member occlusion_samples]).
-@export_enum("Use Global:-1", "Raycast:0", "Volumetric:1") var occlusion_type_override: int = -1
-## Number of rays per source for volumetric occlusion (1–64; Steam Audio [code]numOcclusionSamples[/code]). Used when runtime [member ResonanceRuntimeConfig.occlusion_type] is Volumetric. Higher values stabilize the occlusion fraction (less binary on/off) near geometry boundaries; lower = less CPU. Unrelated to [member ResonanceRuntimeConfig.transmission_type] (FreqIndependent vs FreqDependent on the direct effect). Default 64 is the simulator maximum.
+var _occlusion_type_override: int = 2
+## Overrides [member ResonanceRuntimeConfig.occlusion_type] for this source when using simulation occlusion. [code]2[/code] = Use Global, [code]0[/code] = Raycast, [code]1[/code] = Volumetric ([member occlusion_samples]). Values [code]0[/code]/[code]1[/code] match the native engine; [code]2[/code] avoids negative enum storage so the inspector shows **Use Global** correctly (legacy [code]-1[/code] is migrated on load). The [code]= 2[/code] on the export is required: without it, Godot defaults the property to [code]0[/code] (Raycast) for new resources.
+@export_enum("Use Global:2", "Raycast:0", "Volumetric:1") var occlusion_type_override: int = 2:
+	get:
+		return _occlusion_type_override
+	set(v):
+		var nv := v
+		if nv == -1:
+			nv = 2
+		if nv != 0 and nv != 1 and nv != 2:
+			nv = 2
+		if _occlusion_type_override != nv:
+			_occlusion_type_override = nv
+			notify_property_list_changed()
+## Number of rays per source for volumetric occlusion (1–64; Steam Audio [code]numOcclusionSamples[/code]). Editable only when [member occlusion_type_override] is **Volumetric**. Higher values stabilize the occlusion fraction near geometry boundaries; lower = less CPU.
 @export_range(1, 64, 1) var occlusion_samples: int = 64
+
+# --- Transmission ---
+@export_group("Transmission")
 ## When off, transmission through geometry is not simulated; use User Defined [member transmission_input] for manual bands.
 @export var simulation_transmission_enabled: bool = true
 var _transmission_input: int = 0
@@ -157,13 +173,27 @@ var _transmission_input: int = 0
 	"Frequency Dependent:1"
 )
 var transmission_type_override: int = -1
-## Max surfaces along the transmission path from listener (1–256; maps to Steam Audio [code]numTransmissionRays[/code]). Increase for deep stacks of walls along one ray; it does not blend two materials at a lateral edge.
+var _max_transmission_surfaces_override: int = 0
+## Use Global = follow [member ResonanceRuntimeConfig.max_transmission_surfaces]. User Defined = use [member max_transmission_surfaces] (1–256). Default **Use Global** (same rule as other overrides with a global option). Values [code]0[/code] / [code]1[/code] keep the inspector enum reliable; legacy [code]-1[/code] maps to Use Global.
+@export_enum("Use Global:0", "User Defined:1") var max_transmission_surfaces_override: int = 0:
+	get:
+		return _max_transmission_surfaces_override
+	set(v):
+		var nv := v
+		if nv == -1:
+			nv = 0
+		if nv != 0 and nv != 1:
+			nv = 0
+		if _max_transmission_surfaces_override != nv:
+			_max_transmission_surfaces_override = nv
+			notify_property_list_changed()
+## Max surfaces along the transmission path from listener (1–256; Steam Audio [code]numTransmissionRays[/code]). Only when [member max_transmission_surfaces_override] is User Defined. Increase for deep stacks of walls along one ray; it does not blend two materials at a lateral edge.
 @export_range(1, 256, 1) var max_transmission_surfaces: int = 16
 
 # --- Reflections (per-source) ---
 @export_group("Reflections")
 var _reflections_type: int = -1
-## Reflections simulation: Use Global = runtime's default_reflections_mode (Baked or Realtime). Realtime = raytracing (requires realtime_rays > 0). Baked Reverb/Static Source/Listener = use baked probe data.
+## Reflections simulation: [b]Use Global[/b] = runtime [member ResonanceRuntimeConfig.default_reflections_mode] (Baked or Realtime). [b]Realtime[/b] here = per-source ray tracing (requires runtime [member ResonanceRuntimeConfig.realtime_rays] &gt; 0). Baked Reverb / Static Source / Listener = probe data modes.
 @export_enum(
 	"Use Global:-1",
 	"Realtime:0",
@@ -263,6 +293,12 @@ func _validate_property(property: Dictionary) -> void:
 	elif property.name in ["transmission_low", "transmission_mid", "transmission_high"]:
 		if transmission_input != 1:
 			property["usage"] = property["usage"] | PROPERTY_USAGE_READ_ONLY
+	elif property.name == "occlusion_samples":
+		if occlusion_type_override != 1:
+			property["usage"] = property["usage"] | PROPERTY_USAGE_READ_ONLY
+	elif property.name == "max_transmission_surfaces":
+		if max_transmission_surfaces_override != 1:
+			property["usage"] = property["usage"] | PROPERTY_USAGE_READ_ONLY
 	elif property.name in ["directivity_weight", "directivity_power"]:
 		if not directivity_enabled or directivity_input != 0:
 			property["usage"] = property["usage"] | PROPERTY_USAGE_READ_ONLY
@@ -289,4 +325,7 @@ func get_reverb_bus_name_effective(global_fallback: StringName) -> StringName:
 
 ## Creates default player config for sources without one assigned.
 static func create_default() -> ResonancePlayerConfig:
-	return ResonancePlayerConfig.new()
+	var cfg := ResonancePlayerConfig.new()
+	cfg.occlusion_type_override = 2
+	cfg.max_transmission_surfaces_override = 0
+	return cfg

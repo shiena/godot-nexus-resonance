@@ -1,6 +1,11 @@
 @tool
 extends EditorPlugin
 
+## This EditorPlugin registers gizmos, inspectors, menus, and probe resource I/O. Disabling it in
+## Project Settings only tears that down. Native node types (ResonanceProbeVolume, etc.) come from
+## GDExtension (nexus_resonance.gdextension) and stay in ClassDB for the rest of the editor session,
+## so Add Node can still offer them until the editor is restarted.
+
 const LOGGER_AUTOLOAD_PATH = "res://addons/nexus_resonance/scripts/resonance_logger.tscn"
 const GIZMO_SCRIPT = "res://addons/nexus_resonance/editor/resonance_probe_gizmo.gd"
 
@@ -25,9 +30,7 @@ const ResonanceEditorDialogs = preload(
 enum ToolMenuId {
 	EXPORT_ACTIVE_SCENE,
 	EXPORT_ALL_OPEN_SCENES,
-	EXPORT_ALL_SCENES_IN_BUILD,
 	EXPORT_ACTIVE_SCENE_OBJ,
-	EXPORT_ALL_SCENES_OBJ,
 	EXPORT_DYNAMIC_OBJECTS_ACTIVE,
 	EXPORT_DYNAMIC_OBJECTS_IN_BUILD,
 	EXPORT_DYNAMIC_OBJECTS_IN_PROJECT,
@@ -38,6 +41,8 @@ enum ToolMenuId {
 }
 
 var gizmo_instance: EditorNode3DGizmoPlugin = null
+## False during/after _exit_tree so deferred gizmo registration does not run after the plugin is off.
+var _editor_plugin_ui_active: bool = false
 var resonance_geometry_inspector: EditorInspectorPlugin = null
 var resonance_fmod_event_emitter_inspector: EditorInspectorPlugin = null
 var resonance_probe_volume_inspector: EditorInspectorPlugin = null
@@ -56,13 +61,27 @@ const LEGACY_SETTINGS_PREFIX := "audio/nexus_resonance/"
 
 
 func _enter_tree() -> void:
+	_editor_plugin_ui_active = true
 	_migrate_legacy_project_settings()
 	_migrate_nexus_bake_output_dir()
 	_clear_obsolete_resonance_project_settings()
 	_clear_bus_project_settings()
 	_register_logger_project_settings()
 	_register_bake_project_settings()
+	_register_export_project_settings()
 	_init_editor_plugin_ui()
+	_warn_if_gdextension_missing()
+
+
+func _warn_if_gdextension_missing() -> void:
+	if ResonanceServerAccess.has_server():
+		return
+	var msg := (
+		"GDExtension did not load. Native Nexus Resonance features and baking will not work. "
+		+ "Verify addons/nexus_resonance/bin matches your OS and CPU (e.g. Linux x86_64), "
+		+ "and check the Output panel for loader errors."
+	)
+	ResonanceEditorDialogs.show_warning(get_editor_interface(), msg)
 
 
 func _migrate_legacy_project_settings() -> void:
@@ -159,20 +178,9 @@ func _init_editor_plugin_ui() -> void:
 		resonance_probe_volume_inspector.editor_interface = get_editor_interface()
 		add_inspector_plugin(resonance_probe_volume_inspector)
 
-	if FileAccess.file_exists(GIZMO_SCRIPT):
-		var script: Script = load(GIZMO_SCRIPT) as Script
-		if script:
-			var inst: EditorNode3DGizmoPlugin = script.new()
-			if inst:
-				gizmo_instance = inst
-				if "undo_redo" in gizmo_instance:
-					gizmo_instance.undo_redo = get_undo_redo()
-				var base: Control = get_editor_interface().get_base_control()
-				if base and "fallback_icon" in gizmo_instance:
-					gizmo_instance.fallback_icon = ResonanceEditorDialogs.get_icon(
-						base, UIStrings.ICON_PROBE_VOLUME_GIZMO, "ReflectionProbe"
-					)
-				add_node_3d_gizmo_plugin(gizmo_instance)
+	# Deferred so the 3D editor viewport has finished updating; then refresh existing probe volumes
+	# (otherwise gizmos can stay missing after disable → enable without restarting the editor).
+	call_deferred("_register_probe_volume_gizmo_deferred")
 
 	_tool_submenu = PopupMenu.new()
 	var base: Control = get_editor_interface().get_base_control()
@@ -188,15 +196,7 @@ func _init_editor_plugin_ui() -> void:
 		icon_export, tr(UIStrings.MENU_EXPORT_ALL_OPEN_SCENES), ToolMenuId.EXPORT_ALL_OPEN_SCENES
 	)
 	_tool_submenu.add_icon_item(
-		icon_export,
-		tr(UIStrings.MENU_EXPORT_ALL_SCENES_IN_BUILD),
-		ToolMenuId.EXPORT_ALL_SCENES_IN_BUILD
-	)
-	_tool_submenu.add_icon_item(
 		icon_export, tr(UIStrings.MENU_EXPORT_ACTIVE_SCENE_OBJ), ToolMenuId.EXPORT_ACTIVE_SCENE_OBJ
-	)
-	_tool_submenu.add_icon_item(
-		icon_export, tr(UIStrings.MENU_EXPORT_ALL_SCENES_OBJ), ToolMenuId.EXPORT_ALL_SCENES_OBJ
 	)
 	_tool_submenu.add_icon_item(
 		icon_export,
@@ -257,11 +257,76 @@ func _init_editor_plugin_ui() -> void:
 
 	print_rich("[color=green]Nexus Resonance: Ready.[/color]")
 
+	if not scene_changed.is_connected(_on_editor_scene_changed_refresh_probe_gizmos):
+		scene_changed.connect(_on_editor_scene_changed_refresh_probe_gizmos)
+
+
+func _on_editor_scene_changed_refresh_probe_gizmos(_scene_root: Node) -> void:
+	if gizmo_instance == null:
+		return
+	call_deferred("_refresh_resonance_probe_volume_gizmos_in_edited_scene")
+
+
+func _register_probe_volume_gizmo_deferred() -> void:
+	if not _editor_plugin_ui_active:
+		return
+	if gizmo_instance != null:
+		return
+	if not FileAccess.file_exists(GIZMO_SCRIPT):
+		return
+	var script: Script = load(GIZMO_SCRIPT) as Script
+	if script == null:
+		return
+	var inst: EditorNode3DGizmoPlugin = script.new()
+	if inst == null:
+		return
+	gizmo_instance = inst
+	if "undo_redo" in gizmo_instance:
+		gizmo_instance.undo_redo = get_undo_redo()
+	var base: Control = get_editor_interface().get_base_control()
+	if base and "fallback_icon" in gizmo_instance:
+		gizmo_instance.fallback_icon = ResonanceEditorDialogs.get_icon(
+			base, UIStrings.ICON_PROBE_VOLUME_GIZMO, "ReflectionProbe"
+		)
+	add_node_3d_gizmo_plugin(gizmo_instance)
+	_refresh_resonance_probe_volume_gizmos_in_edited_scene()
+
+
+func _refresh_resonance_probe_volume_gizmos_in_edited_scene() -> void:
+	var scene_root: Node = get_editor_interface().get_edited_scene_root()
+	if scene_root == null:
+		return
+	_refresh_probe_gizmos_recursive(scene_root)
+
+
+func _refresh_probe_gizmos_recursive(n: Node) -> void:
+	if n is Node3D:
+		var n3 := n as Node3D
+		if n3.is_class(UIStrings.GIZMO_PROBE_VOLUME_CLASS):
+			n3.update_gizmos()
+	for c in n.get_children():
+		_refresh_probe_gizmos_recursive(c)
+
+
+## Unregisters custom probe [.tres]/[.bak] I/O so toggling the plugin does not stack duplicate savers/loaders.
+## Skips removal while the editor is quitting (ResourceSaver/Loader teardown order can be fragile then).
+func _unregister_probe_resource_io_if_safe() -> void:
+	var base: Control = get_editor_interface().get_base_control()
+	var st: SceneTree = base.get_tree() if base else null
+	if st and st.has_method("is_quitting") and st.is_quitting():
+		return
+	if probe_data_saver:
+		ResourceSaver.remove_resource_format_saver(probe_data_saver)
+	if probe_data_loader:
+		ResourceLoader.remove_resource_format_loader(probe_data_loader)
+
 
 func _exit_tree() -> void:
+	_editor_plugin_ui_active = false
+	if scene_changed.is_connected(_on_editor_scene_changed_refresh_probe_gizmos):
+		scene_changed.disconnect(_on_editor_scene_changed_refresh_probe_gizmos)
 	_detach_reverb_effect()
-	# Do NOT call ResourceSaver.remove_resource_format_saver/ResourceLoader.remove_resource_format_loader:
-	# On editor exit Godot may tear these down before _exit_tree; calling remove can trigger SIGSEGV.
+	_unregister_probe_resource_io_if_safe()
 	probe_data_saver = null
 	probe_data_loader = null
 	if resonance_geometry_inspector:
@@ -275,6 +340,10 @@ func _exit_tree() -> void:
 		resonance_probe_volume_inspector = null
 	bake_runner = null
 	export_handler = null
+	if _tool_submenu:
+		var cb := Callable(self, "_on_tool_submenu_id_pressed")
+		if _tool_submenu.id_pressed.is_connected(cb):
+			_tool_submenu.id_pressed.disconnect(cb)
 	remove_tool_menu_item(_tool_submenu_name)
 	_tool_submenu = null
 	if steam_audio_export_plugin:
@@ -285,6 +354,7 @@ func _exit_tree() -> void:
 		sofa_importer = null
 	if gizmo_instance:
 		remove_node_3d_gizmo_plugin(gizmo_instance)
+		gizmo_instance = null
 
 
 func _enable_plugin() -> void:
@@ -293,10 +363,9 @@ func _enable_plugin() -> void:
 
 
 func _disable_plugin() -> void:
-	if ResonanceServerAccess.has_server():
-		var srv: Variant = ResonanceServerAccess.get_server()
-		if srv and srv.has_method("clear_probe_batches"):
-			srv.clear_probe_batches()
+	# Do not call ResonanceServer.clear_probe_batches() here: it wipes the native registry while
+	# ResonanceProbeVolume nodes still hold stale probe_batch_handle values, corrupting state after
+	# re-enable. Use Project → Tools → Nexus Resonance → Clear Probe Batches when you want that.
 	remove_autoload_singleton("ResonanceLogger")
 
 
@@ -426,6 +495,56 @@ func _register_bake_project_settings() -> void:
 	)
 
 
+func _ensure_int_enum_project_setting(key: String, default_value: int) -> bool:
+	# set_initial_value + normalized int so the inspector shows "Text (.tres)" instead of raw null.
+	ProjectSettings.set_initial_value(key, default_value)
+	var needs_save := false
+	if not ProjectSettings.has_setting(key):
+		ProjectSettings.set_setting(key, default_value)
+		return true
+	var cur: Variant = ProjectSettings.get_setting(key)
+	var t := typeof(cur)
+	if cur == null or (t != TYPE_INT and t != TYPE_FLOAT):
+		ProjectSettings.set_setting(key, default_value)
+		needs_save = true
+	elif t == TYPE_FLOAT:
+		ProjectSettings.set_setting(key, clampi(int(round(cur)), 0, 1))
+		needs_save = true
+	else:
+		var iv := int(cur)
+		if iv != 0 and iv != 1:
+			ProjectSettings.set_setting(key, default_value)
+			needs_save = true
+	return needs_save
+
+
+func _register_export_project_settings() -> void:
+	const EXPORT_PREFIX := SETTINGS_PREFIX + "export/"
+	const KEY_STATIC := "static_scene_asset_format"
+	const KEY_PROBE := "probe_data_format"
+	var save_needed := false
+	save_needed = _ensure_int_enum_project_setting(EXPORT_PREFIX + KEY_STATIC, 0) or save_needed
+	save_needed = _ensure_int_enum_project_setting(EXPORT_PREFIX + KEY_PROBE, 0) or save_needed
+	ProjectSettings.add_property_info(
+		{
+			"name": EXPORT_PREFIX + KEY_STATIC,
+			"type": TYPE_INT,
+			"hint": PROPERTY_HINT_ENUM,
+			"hint_string": "Text (.tres),Binary (.res)",
+		}
+	)
+	ProjectSettings.add_property_info(
+		{
+			"name": EXPORT_PREFIX + KEY_PROBE,
+			"type": TYPE_INT,
+			"hint": PROPERTY_HINT_ENUM,
+			"hint_string": "Text (.tres),Binary (.res)",
+		}
+	)
+	if save_needed:
+		ProjectSettings.save()
+
+
 func _register_tool_shortcuts() -> void:
 	var sc_static: Shortcut = Shortcut.new()
 	var ev_static: InputEventKey = InputEventKey.new()
@@ -463,15 +582,9 @@ func _on_tool_submenu_id_pressed(id: int) -> void:
 		ToolMenuId.EXPORT_ALL_OPEN_SCENES:
 			if export_handler:
 				export_handler.export_all_open_scenes(null)
-		ToolMenuId.EXPORT_ALL_SCENES_IN_BUILD:
-			if export_handler:
-				export_handler.export_all_scenes_in_build(null)
 		ToolMenuId.EXPORT_ACTIVE_SCENE_OBJ:
 			if export_handler:
 				export_handler.export_scene_obj(null)
-		ToolMenuId.EXPORT_ALL_SCENES_OBJ:
-			if export_handler:
-				export_handler.export_all_scenes_obj(null)
 		ToolMenuId.EXPORT_DYNAMIC_OBJECTS_ACTIVE:
 			if export_handler:
 				export_handler.export_dynamic_mesh(null)

@@ -4,6 +4,7 @@
 #include "resonance_scene_manager.h"
 #include "resonance_server.h"
 #include "resonance_utils.h"
+#include <chrono>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/main_loop.hpp>
 #include <godot_cpp/classes/node.hpp>
@@ -15,6 +16,10 @@
 #include <godot_cpp/variant/utility_functions.hpp>
 
 using namespace godot;
+
+// scene_dirty: set when triangle count changes or geometry_update_throttle fires (notify_geometry_changed_assume_locked
+// for transform-only updates), after the worker drains dynamic instanced-mesh transform queue, or explicitly via
+// mark_scene_commit_pending_assume_locked. The worker runs iplSceneCommit only when scene_dirty is true.
 
 namespace {
 
@@ -146,4 +151,62 @@ int64_t ResonanceServer::get_geometry_asset_hash(const Ref<ResonanceGeometryAsse
 uint64_t ResonanceServer::_hash_probe_data(const PackedByteArray& pba) {
     const uint8_t* ptr = pba.ptr();
     return resonance::fnv1a_hash(ptr, static_cast<size_t>(pba.size()));
+}
+
+void ResonanceServer::enqueue_dynamic_instanced_mesh_transform(IPLInstancedMesh mesh, const IPLMatrix4x4& transform) {
+    if (!mesh || !_ctx())
+        return;
+    const auto t0 = std::chrono::steady_clock::now();
+    {
+        std::lock_guard<std::mutex> qlock(dynamic_instanced_transform_queue_mutex_);
+        dynamic_instanced_transform_queue_[mesh] = transform;
+    }
+    const auto t1 = std::chrono::steady_clock::now();
+    const uint64_t us = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count());
+    instrumentation_main_us_last_dynamic_transform_enqueue_.store(us, std::memory_order_relaxed);
+    instrumentation_main_us_dynamic_transform_enqueue_.fetch_add(us, std::memory_order_relaxed);
+    instrumentation_dynamic_transform_enqueue_events_.fetch_add(1, std::memory_order_relaxed);
+}
+
+void ResonanceServer::cancel_pending_dynamic_instanced_mesh_transform(IPLInstancedMesh mesh) {
+    if (!mesh)
+        return;
+    std::lock_guard<std::mutex> qlock(dynamic_instanced_transform_queue_mutex_);
+    dynamic_instanced_transform_queue_.erase(mesh);
+}
+
+void ResonanceServer::_apply_queued_dynamic_instanced_mesh_transforms_assume_locked() {
+    if (!_ctx() || !scene)
+        return;
+
+    std::unordered_map<IPLInstancedMesh, IPLMatrix4x4> local;
+    {
+        std::lock_guard<std::mutex> qlock(dynamic_instanced_transform_queue_mutex_);
+        local.swap(dynamic_instanced_transform_queue_);
+    }
+
+    if (local.empty())
+        return;
+
+    const bool static_wants_commit = scene_dirty.load(std::memory_order_acquire);
+    const auto now = std::chrono::steady_clock::now();
+    bool apply_now = static_wants_commit || dynamic_scene_commit_min_interval_ <= 0.0f;
+    if (!apply_now) {
+        const float dt_sec = std::chrono::duration<float>(now - last_dynamic_scene_commit_time_).count();
+        apply_now = (dt_sec >= dynamic_scene_commit_min_interval_);
+    }
+
+    if (!apply_now) {
+        std::lock_guard<std::mutex> qlock(dynamic_instanced_transform_queue_mutex_);
+        for (auto& kv : local)
+            dynamic_instanced_transform_queue_[kv.first] = kv.second;
+        return;
+    }
+
+    for (auto& kv : local) {
+        if (kv.first)
+            iplInstancedMeshUpdateTransform(kv.first, scene, kv.second);
+    }
+    last_dynamic_scene_commit_time_ = now;
+    mark_scene_commit_pending_assume_locked();
 }

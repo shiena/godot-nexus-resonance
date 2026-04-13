@@ -69,8 +69,6 @@ func apply_bus_to_players(tree: SceneTree) -> void:
 			effective_bus = global_bus
 		if p.has_method("set_bus"):
 			p.set_bus(effective_bus)
-		var reverb_split := (
-			(reflection_type == 1 or reflection_type == 2) and str(effective_bus) != str(reverb_bus)
-		)
+		var reverb_split := (reflection_type == 1 or reflection_type == 2) and effective_bus != reverb_bus
 		if p.has_method("set_reverb_split_output"):
 			p.set_reverb_split_output(reverb_split, reverb_bus)

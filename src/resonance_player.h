@@ -342,6 +342,8 @@ class ResonancePlayer : public AudioStreamPlayer3D {
         int occlusion_input, transmission_input, directivity_input;
         float occlusion_value, transmission_low, transmission_mid, transmission_high, directivity_value;
         int occlusion_samples, max_transmission_surfaces;
+        /// 0 = use ResonanceRuntimeConfig.max_transmission_surfaces; 1 = use max_transmission_surfaces from resource. (-1 from legacy .tres is normalized to 0 in refresh.)
+        int max_transmission_surfaces_override = 0;
         float direct_mix_level, reflections_mix_level, pathing_mix_level;
         float reflections_eq_low, reflections_eq_mid, reflections_eq_high;
         int reflections_delay;

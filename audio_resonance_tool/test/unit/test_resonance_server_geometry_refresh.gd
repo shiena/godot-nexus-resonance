@@ -26,3 +26,13 @@ func test_resonance_geometry_has_refresh_geometry() -> void:
 		pass_test("ResonanceGeometry not available (GDExtension not loaded)")
 		return
 	assert_true(ClassDB.class_has_method("ResonanceGeometry", "refresh_geometry"))
+
+
+func test_resonance_geometry_has_flush_dynamic_acoustic_transform() -> void:
+	if not ClassDB.class_exists("ResonanceGeometry"):
+		pass_test("ResonanceGeometry not available (GDExtension not loaded)")
+		return
+	assert_true(
+		ClassDB.class_has_method("ResonanceGeometry", "flush_dynamic_acoustic_transform"),
+		"ResonanceGeometry should expose flush_dynamic_acoustic_transform for throttled dynamic commits"
+	)

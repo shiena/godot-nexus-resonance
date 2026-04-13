@@ -2,6 +2,7 @@
 #include "resonance_log.h"
 #include "resonance_math.h"
 #include "resonance_server.h"
+#include <chrono>
 #include <godot_cpp/variant/string.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
@@ -175,10 +176,24 @@ bool ResonanceMixerProcessor::process_mixer_return(IPLReflectionMixer mixer_hand
     params.reverbTimes[0] = params.reverbTimes[1] = params.reverbTimes[2] = resonance::kMixerParametricDummyReverbTime;
 
     iplReflectionMixerApply(mixer_handle, &params, &sa_ambisonic_buffer);
-    _sanitize_audio_buffer(&sa_ambisonic_buffer);
+    {
+        const auto t0 = std::chrono::steady_clock::now();
+        _sanitize_audio_buffer(&sa_ambisonic_buffer);
+        const auto t1 = std::chrono::steady_clock::now();
+        if (ResonanceServer* srv = ResonanceServer::get_singleton())
+            srv->record_mixer_sanitize_ambi_usec(static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count()));
+    }
 
     _decode_ambisonic_to_stereo_buffer(&sa_ambisonic_buffer, listener_coords);
-    _sanitize_audio_buffer(&sa_stereo_buffer);
+    {
+        const auto t0 = std::chrono::steady_clock::now();
+        _sanitize_audio_buffer(&sa_stereo_buffer);
+        const auto t1 = std::chrono::steady_clock::now();
+        if (ResonanceServer* srv = ResonanceServer::get_singleton())
+            srv->record_mixer_sanitize_stereo_usec(static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count()));
+    }
 
     int safe_frames = (frame_count < frame_size) ? frame_count : frame_size;
     if (frame_count < frame_size && !s_frame_count_small_warned) {
@@ -195,7 +210,14 @@ bool ResonanceMixerProcessor::decode_ambisonic_to_stereo(IPLAudioBuffer* ambi_bu
         return false;
 
     _decode_ambisonic_to_stereo_buffer(ambi_buf, listener_coords);
-    _sanitize_audio_buffer(&sa_stereo_buffer);
+    {
+        const auto t0 = std::chrono::steady_clock::now();
+        _sanitize_audio_buffer(&sa_stereo_buffer);
+        const auto t1 = std::chrono::steady_clock::now();
+        if (ResonanceServer* srv = ResonanceServer::get_singleton())
+            srv->record_mixer_sanitize_stereo_usec(static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count()));
+    }
 
     int safe_frames = (frame_count < frame_size) ? frame_count : frame_size;
     _write_stereo_to_audio_frames(sa_stereo_buffer.data[0], sa_stereo_buffer.data[1], out_frames, safe_frames);

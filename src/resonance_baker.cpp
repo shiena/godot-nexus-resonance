@@ -114,6 +114,7 @@ static String _build_tres_content(const PackedByteArray& pba, Ref<ResonanceProbe
     int64_t pph = probe_data_res->get_pathing_params_hash();
     int64_t ssp = probe_data_res->get_static_source_params_hash();
     int64_t slp = probe_data_res->get_static_listener_params_hash();
+    int64_t ssc = probe_data_res->get_static_scene_params_hash();
     String data_str = UtilityFunctions::var_to_str(pba);
     String probe_pos_str = UtilityFunctions::var_to_str(probe_data_res->get_probe_positions());
     return "[gd_resource type=\"ResonanceProbeData\" format=3]\n\n[resource]\ndata = " + data_str +
@@ -122,7 +123,8 @@ static String _build_tres_content(const PackedByteArray& pba, Ref<ResonanceProbe
            "\nbaked_reflection_type = " + String::num_int64(reflection_type) +
            "\npathing_params_hash = " + String::num_int64(pph) +
            "\nstatic_source_params_hash = " + String::num_int64(ssp) +
-           "\nstatic_listener_params_hash = " + String::num_int64(slp) + "\n";
+           "\nstatic_listener_params_hash = " + String::num_int64(slp) +
+           "\nstatic_scene_params_hash = " + String::num_int64(ssc) + "\n";
 }
 
 /// Save probe_data to disk. path must be non-empty. Returns true on success.
@@ -134,8 +136,13 @@ static bool _save_probe_data_to_disk(Ref<ResonanceProbeData> probe_data_res, con
     Error err = ResourceSaver::get_singleton()->save(probe_data_res, path, ResourceSaver::FLAG_CHANGE_PATH);
     if (err == OK)
         return true;
-    String tres_path = path.get_basename() + ".tres";
-    Ref<FileAccess> f = FileAccess::open(tres_path, FileAccess::WRITE);
+    const String fallback_ext = path.get_extension().to_lower() == String("res") ? String("res") : String("tres");
+    const String text_fallback_path = path.get_basename() + "." + fallback_ext;
+    if (fallback_ext == String("res")) {
+        UtilityFunctions::push_error("ResonanceBaker: ResourceSaver failed for .res path (", (int)err, "); cannot fall back to hand-written binary.");
+        return false;
+    }
+    Ref<FileAccess> f = FileAccess::open(text_fallback_path, FileAccess::WRITE);
     if (!f.is_valid()) {
         UtilityFunctions::push_error("ResonanceBaker: Could not save file. ResourceSaver failed (", (int)err, ") and fallback open failed.");
         return false;
@@ -143,7 +150,7 @@ static bool _save_probe_data_to_disk(Ref<ResonanceProbeData> probe_data_res, con
     String content = _build_tres_content(pba, probe_data_res, reflection_type);
     f->store_string(content);
     f->close();
-    probe_data_res->take_over_path(tres_path);
+    probe_data_res->take_over_path(text_fallback_path);
     return true;
 }
 
@@ -170,7 +177,8 @@ static String _resolve_save_path(Ref<ResonanceProbeData> probe_data_res) {
             }
         }
         int n = s_fallback_counter.fetch_add(1) + 1;
-        path = base_dir + "baked_probe_data_" + String::num_int64(n) + ".tres";
+        const String ext = resonance_probe_data_save_extension_from_settings();
+        path = base_dir + "probe_batch_fallback_" + String::num_int64(n) + "." + ext;
         UtilityFunctions::push_warning("Nexus Resonance Bake: probe_data has no path. Using fallback: ", path);
         String dir = path.get_base_dir();
         if (!dir.is_empty()) {

@@ -32,6 +32,9 @@ class ResonanceReflectionProcessor {
     int reflection_type = resonance::kReflectionConvolution; // 0=Convolution, 1=Parametric, 2=Hybrid, 3=TAN
     /// IR length (seconds) used for iplReflectionEffectCreate and param sanitize; aligned with ResonanceServer max_reverb_duration.
     float effect_ir_duration_sec_ = resonance::kDefaultReverbDurationSec;
+    /// 0 = no cap. Clamp applied IR length (convolution/hybrid/tan) to at most this and effect allocation.
+    int convolution_ir_max_samples_ = 0;
+    int effect_max_ir_samples_ = 0;
 
   public:
     ResonanceReflectionProcessor() = default;
@@ -43,8 +46,9 @@ class ResonanceReflectionProcessor {
     ResonanceReflectionProcessor& operator=(ResonanceReflectionProcessor&&) = delete;
 
     /// [param p_max_reverb_duration_sec] clamped to [0.1, 10.0] like server config; must match simulation IR cap.
+    /// [param p_convolution_ir_max_samples] 0 = no cap; otherwise min with allocated IR.
     void initialize(IPLContext p_context, int p_sample_rate, int p_frame_size, int p_ambisonic_order, int p_reflection_type,
-                    float p_max_reverb_duration_sec);
+                    float p_max_reverb_duration_sec, int p_convolution_ir_max_samples = 0);
     void cleanup();
 
     // Mixes into the provided Mixer handle (unused if using direct path).

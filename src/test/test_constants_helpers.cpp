@@ -18,6 +18,18 @@ TEST_CASE("is_valid_ambisonic_channel_count rejects other counts", "[constants]"
     REQUIRE_FALSE(is_valid_ambisonic_channel_count(17));
 }
 
+TEST_CASE("ambisonic_num_channels_for_order matches (order+1)^2 for 1..3", "[constants]") {
+    REQUIRE(ambisonic_num_channels_for_order(1) == 4);
+    REQUIRE(ambisonic_num_channels_for_order(2) == 9);
+    REQUIRE(ambisonic_num_channels_for_order(3) == 16);
+}
+
+TEST_CASE("ambisonic_num_channels_for_order clamps order to 1..3", "[constants]") {
+    REQUIRE(ambisonic_num_channels_for_order(0) == 4);
+    REQUIRE(ambisonic_num_channels_for_order(-99) == 4);
+    REQUIRE(ambisonic_num_channels_for_order(99) == 16);
+}
+
 TEST_CASE("ambisonic and path EQ constants match documented values", "[constants]") {
     REQUIRE(kAmbisonicWChannelScale == Approx(1.0f / std::sqrt(2.0f)));
     REQUIRE(kPathEQCoeffMin == Approx(1e-6f));

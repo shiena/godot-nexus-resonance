@@ -31,12 +31,12 @@ func test_probe_reference_needles_empty_path():
 
 
 func test_probe_reference_needles_res_includes_norm_basename_and_globalized_when_differs():
-	var probe := "res://audio_data/fs_paths_needle_case_baked_probes.tres"
+	var probe := "res://audio_data/fs_paths_needle_case_batch.tres"
 	var needles := FsPathsScript.probe_reference_needles_for_path(probe)
 	assert_gte(needles.size(), 2, "expect at least logical path and basename")
 	assert_true(probe in needles, "full res path should be a needle")
 	assert_true(
-		"fs_paths_needle_case_baked_probes.tres" in needles,
+		"fs_paths_needle_case_batch.tres" in needles,
 		"basename should match tscn lines that only embed filename"
 	)
 	var fs_path := FsPathsScript.filesystem_path_for_dir_access(probe)
@@ -63,8 +63,8 @@ func test_read_file_as_string_project_godot():
 
 
 func test_scene_text_references_probe_path_full_res_path():
-	var probe := "res://audio_data/main_volumename_baked_probes.tres"
-	var content := 'path="res://audio_data/main_volumename_baked_probes.tres"'
+	var probe := "res://audio_data/main_volumename_batch.tres"
+	var content := 'path="res://audio_data/main_volumename_batch.tres"'
 	assert_true(
 		FsPathsScript.scene_text_references_probe_path(content, probe),
 		"should match full res:// path in tscn"
@@ -72,8 +72,8 @@ func test_scene_text_references_probe_path_full_res_path():
 
 
 func test_scene_text_references_probe_path_basename_only():
-	var probe := "res://audio_data/foo_bar_baked_probes.tres"
-	var content := 'ExtResource path="res://audio_data/foo_bar_baked_probes.tres"'
+	var probe := "res://audio_data/foo_bar_batch.tres"
+	var content := 'ExtResource path="res://audio_data/foo_bar_batch.tres"'
 	assert_true(
 		FsPathsScript.scene_text_references_probe_path(content, probe),
 		"basename needle should match when full path embedded"
@@ -81,8 +81,8 @@ func test_scene_text_references_probe_path_basename_only():
 
 
 func test_scene_text_references_probe_path_negative():
-	var probe := "res://audio_data/orphan_baked_probes.tres"
-	var content := "res://audio_data/only_other_scene_baked_probes.tres"
+	var probe := "res://audio_data/orphan_batch.tres"
+	var content := "res://audio_data/only_other_scene_batch.tres"
 	assert_false(
 		FsPathsScript.scene_text_references_probe_path(content, probe),
 		"different file basename should not match"

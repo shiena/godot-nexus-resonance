@@ -35,6 +35,8 @@ struct ResonanceServerConfig {
     float hybrid_reverb_transition_time = 1.0f;
     float hybrid_reverb_overlap_percent = 0.25f;
     int transmission_type = 1;
+    /// Default numTransmissionRays for new sources and player-config fallback (1–256).
+    int max_transmission_surfaces = resonance::kDefaultPlayerConfigTransmissionRays;
     int occlusion_type = 1;
     /// IPLSimulationSettings::maxNumOcclusionSamples (cap for volumetric occlusion)
     int max_occlusion_samples = resonance::kMaxOcclusionSamples;
@@ -70,6 +72,8 @@ struct ResonanceServerConfig {
     int scene_type = 0;
     /// Godot PhysicsRayQueryParameters3D collision_mask when scene_type==3; -1 = all layers.
     int physics_ray_collision_mask = -1;
+    /// IPLSimulationSettings::rayBatchSize when scene_type is Custom (Godot physics); clamped 1–256. Ignored for other scene types (native uses 1).
+    int physics_ray_batch_size = resonance::kDefaultPhysicsRayBatchSize;
     int opencl_device_type = 0; // 0=GPU, 1=CPU, 2=Any
     int opencl_device_index = 0;
 
@@ -95,9 +99,30 @@ struct ResonanceServerConfig {
     float perspective_correction_factor = 1.0f;
 
     // Throttling
+    /// Scene commit every Nth transform-only geometry notify and every Nth dynamic instanced-mesh transform notify (1 = every time).
     int geometry_update_throttle = 4;
+    /// Minimum seconds between applying queued dynamic instanced-mesh transforms + scene commit (0 = apply every worker tick that drains the queue). Trade-off: lower CPU vs. stale occlusion for moving objects.
+    float dynamic_scene_commit_min_interval = 0.0f;
     int simulation_tick_throttle = 1;
     float simulation_update_interval = 0.1f;
+    /// < 0: use [member simulation_update_interval] for reflection-heavy cadence. >= 0: seconds between iplSimulatorRunReflections scheduling.
+    float reflections_sim_update_interval = -1.0f;
+    /// < 0: use [member simulation_update_interval] for pathing-heavy cadence. >= 0: seconds between RunPathing scheduling.
+    float pathing_sim_update_interval = -1.0f;
+    /// 0 = disabled. >0: realtime reflection simulation inputs omit IPL_SIMULATIONFLAGS_REFLECTIONS when source is farther than this (meters) from listener.
+    float realtime_reflection_max_distance_m = 0.0f;
+    /// 0 = off. If last RunReflections exceeded this many microseconds, increase reflection cadence spacing (see reflections_adaptive_*).
+    int reflections_adaptive_budget_us = 0;
+    /// Seconds added to effective reflection interval per over-budget worker tick (capped by reflections_adaptive_max_extra_interval).
+    float reflections_adaptive_step_sec = 0.02f;
+    /// Upper bound for extra delay from adaptive scheduling (seconds).
+    float reflections_adaptive_max_extra_interval = 0.2f;
+    /// Per-second reduction of adaptive extra interval when under budget (or worker did not run reflections).
+    float reflections_adaptive_decay_per_sec = 0.05f;
+    /// 0 = off. If scene graph commit took at least this many microseconds, skip RunReflections this wake and force next tick to retry.
+    int reflections_defer_after_scene_commit_us = 0;
+    /// 0 = no cap. Convolution path: clamp applied IR size to this many samples (min with allocated effect IR).
+    int convolution_ir_max_samples = 0;
     /// 0 = run iplSimulatorRunDirect every worker wake (default). >0 = at most once per this many seconds on non-heavy ticks.
     float direct_sim_interval = 0.0f;
     /// When true, ResonanceRuntime flushes pending source updates once per frame; players enqueue instead of try_update_source.

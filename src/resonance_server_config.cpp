@@ -133,6 +133,7 @@ void ResonanceServerConfig::apply(const Dictionary& config,
     default_reflections_mode = config_int(config, "default_reflections_mode", default_reflections_mode);
     if (default_reflections_mode < 0)
         default_reflections_mode = 0;
+    // Legacy three-value enum used Realtime = 2; clamp 2+ to Realtime (1).
     if (default_reflections_mode > 1)
         default_reflections_mode = 1;
     hybrid_reverb_transition_time = config_float(config, "hybrid_reverb_transition_time", hybrid_reverb_transition_time);
@@ -147,6 +148,11 @@ void ResonanceServerConfig::apply(const Dictionary& config,
         transmission_type = 0;
     if (transmission_type > 1)
         transmission_type = 1;
+    max_transmission_surfaces = config_int(config, "max_transmission_surfaces", max_transmission_surfaces);
+    if (max_transmission_surfaces < 1)
+        max_transmission_surfaces = 1;
+    if (max_transmission_surfaces > resonance::kMaxTransmissionRays)
+        max_transmission_surfaces = resonance::kMaxTransmissionRays;
     occlusion_type = config_int(config, "occlusion_type", occlusion_type);
     if (occlusion_type < 0)
         occlusion_type = 0;
@@ -235,6 +241,8 @@ void ResonanceServerConfig::apply(const Dictionary& config,
     if (scene_type < 0 || scene_type > 3)
         scene_type = 0;
     physics_ray_collision_mask = config_int(config, "physics_ray_collision_mask", physics_ray_collision_mask);
+    physics_ray_batch_size = config_int(config, "physics_ray_batch_size", physics_ray_batch_size);
+    physics_ray_batch_size = resonance::clamp_physics_ray_batch_size(physics_ray_batch_size);
     opencl_device_type = config_int(config, "opencl_device_type", opencl_device_type);
     if (opencl_device_type < 0)
         opencl_device_type = 0;
@@ -270,8 +278,13 @@ void ResonanceServerConfig::apply(const Dictionary& config,
     geometry_update_throttle = config_int(config, "geometry_update_throttle", geometry_update_throttle);
     if (geometry_update_throttle < 1)
         geometry_update_throttle = 1;
-    if (geometry_update_throttle > 16)
-        geometry_update_throttle = 16;
+    if (geometry_update_throttle > 64)
+        geometry_update_throttle = 64;
+    dynamic_scene_commit_min_interval = config_float(config, "dynamic_scene_commit_min_interval", dynamic_scene_commit_min_interval);
+    if (dynamic_scene_commit_min_interval < 0.0f)
+        dynamic_scene_commit_min_interval = 0.0f;
+    if (dynamic_scene_commit_min_interval > 1.0f)
+        dynamic_scene_commit_min_interval = 1.0f;
     simulation_tick_throttle = config_int(config, "simulation_tick_throttle", simulation_tick_throttle);
     if (simulation_tick_throttle < 1)
         simulation_tick_throttle = 1;
@@ -282,6 +295,49 @@ void ResonanceServerConfig::apply(const Dictionary& config,
         simulation_update_interval = 0.0f;
     if (simulation_update_interval > 1.0f)
         simulation_update_interval = 1.0f;
+    reflections_sim_update_interval = config_float(config, "reflections_sim_update_interval", reflections_sim_update_interval);
+    if (reflections_sim_update_interval < -0.5f)
+        reflections_sim_update_interval = -1.0f;
+    if (reflections_sim_update_interval > 1.0f)
+        reflections_sim_update_interval = 1.0f;
+    pathing_sim_update_interval = config_float(config, "pathing_sim_update_interval", pathing_sim_update_interval);
+    if (pathing_sim_update_interval < -0.5f)
+        pathing_sim_update_interval = -1.0f;
+    if (pathing_sim_update_interval > 1.0f)
+        pathing_sim_update_interval = 1.0f;
+    realtime_reflection_max_distance_m = config_float(config, "realtime_reflection_max_distance_m", realtime_reflection_max_distance_m);
+    if (realtime_reflection_max_distance_m < 0.0f)
+        realtime_reflection_max_distance_m = 0.0f;
+    reflections_adaptive_budget_us = config_int(config, "reflections_adaptive_budget_us", reflections_adaptive_budget_us);
+    if (reflections_adaptive_budget_us < 0)
+        reflections_adaptive_budget_us = 0;
+    if (reflections_adaptive_budget_us > 2000000)
+        reflections_adaptive_budget_us = 2000000;
+    reflections_adaptive_step_sec = config_float(config, "reflections_adaptive_step_sec", reflections_adaptive_step_sec);
+    if (reflections_adaptive_step_sec < 0.0f)
+        reflections_adaptive_step_sec = 0.0f;
+    if (reflections_adaptive_step_sec > 1.0f)
+        reflections_adaptive_step_sec = 1.0f;
+    reflections_adaptive_max_extra_interval = config_float(config, "reflections_adaptive_max_extra_interval", reflections_adaptive_max_extra_interval);
+    if (reflections_adaptive_max_extra_interval < 0.0f)
+        reflections_adaptive_max_extra_interval = 0.0f;
+    if (reflections_adaptive_max_extra_interval > 1.0f)
+        reflections_adaptive_max_extra_interval = 1.0f;
+    reflections_adaptive_decay_per_sec = config_float(config, "reflections_adaptive_decay_per_sec", reflections_adaptive_decay_per_sec);
+    if (reflections_adaptive_decay_per_sec < 0.0f)
+        reflections_adaptive_decay_per_sec = 0.0f;
+    if (reflections_adaptive_decay_per_sec > 5.0f)
+        reflections_adaptive_decay_per_sec = 5.0f;
+    reflections_defer_after_scene_commit_us = config_int(config, "reflections_defer_after_scene_commit_us", reflections_defer_after_scene_commit_us);
+    if (reflections_defer_after_scene_commit_us < 0)
+        reflections_defer_after_scene_commit_us = 0;
+    if (reflections_defer_after_scene_commit_us > 5000000)
+        reflections_defer_after_scene_commit_us = 5000000;
+    convolution_ir_max_samples = config_int(config, "convolution_ir_max_samples", convolution_ir_max_samples);
+    if (convolution_ir_max_samples < 0)
+        convolution_ir_max_samples = 0;
+    if (convolution_ir_max_samples > 480000)
+        convolution_ir_max_samples = 480000;
     direct_sim_interval = config_float(config, "direct_sim_interval", direct_sim_interval);
     if (direct_sim_interval < 0.0f)
         direct_sim_interval = 0.0f;

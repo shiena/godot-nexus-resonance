@@ -2,6 +2,7 @@
 #define RESONANCE_PROCESSOR_AMBISONIC_H
 
 #include "resonance_constants.h"
+#include <cstddef>
 #include <phonon.h>
 #include <vector>
 
@@ -47,6 +48,8 @@ class ResonanceAmbisonicProcessor {
     void cleanup();
 
     // Process N-channel Ambisonic input (N=(order+1)^2) -> 2-channel output based on orientation
+    void process(const float* input_data, size_t sample_count, IPLAudioBuffer& out_buffer,
+                 const IPLCoordinateSpace3& listener_orient);
     void process(const std::vector<float>& input_data, IPLAudioBuffer& out_buffer,
                  const IPLCoordinateSpace3& listener_orient);
 };

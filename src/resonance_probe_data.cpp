@@ -1,7 +1,29 @@
 #include "resonance_probe_data.h"
+#include "resonance_constants.h"
+#include <godot_cpp/classes/project_settings.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
+
+namespace godot {
+
+String resonance_probe_data_save_extension_from_settings() {
+    ProjectSettings* ps = ProjectSettings::get_singleton();
+    if (!ps)
+        return String("tres");
+    const String key = String(resonance::kProjectSettingsResonancePrefix) + String(resonance::kProjectSettingsProbeDataFormat);
+    if (!ps->has_setting(key))
+        return String("tres");
+    const Variant vv = ps->get_setting(key);
+    if (vv.get_type() == Variant::NIL)
+        return String("tres");
+    if (vv.get_type() != Variant::INT && vv.get_type() != Variant::FLOAT)
+        return String("tres");
+    const int v = static_cast<int>(vv.operator int64_t());
+    return (v == 1) ? String("res") : String("tres");
+}
+
+} // namespace godot
 
 using namespace godot;
 

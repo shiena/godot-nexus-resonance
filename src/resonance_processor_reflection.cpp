@@ -3,7 +3,30 @@
 #include "resonance_log.h"
 #include "resonance_math.h"
 #include "resonance_utils.h"
+#include <algorithm>
+#include <cmath>
 #include <cstring>
+
+namespace {
+
+/// Downmix post-process: optional gain ramp (prev_gain >= 0) or constant gain, then sanitize in one pass where possible.
+void preprocess_reflection_mono(float prev_gain, float gain, int frame_size, float* mono) {
+    if (!mono || frame_size <= 0)
+        return;
+    if (prev_gain >= 0.0f) {
+        resonance::apply_volume_ramp_and_sanitize(prev_gain, gain, frame_size, mono);
+        return;
+    }
+    const bool scale = std::abs(gain - 1.0f) > 1e-5f;
+    for (int i = 0; i < frame_size; i++) {
+        float s = mono[i];
+        if (scale)
+            s *= gain;
+        mono[i] = resonance::sanitize_audio_float(s);
+    }
+}
+
+} // namespace
 
 namespace godot {
 
@@ -12,7 +35,7 @@ ResonanceReflectionProcessor::~ResonanceReflectionProcessor() {
 }
 
 void ResonanceReflectionProcessor::initialize(IPLContext p_context, int p_sample_rate, int p_frame_size, int p_ambisonic_order, int p_reflection_type,
-                                              float p_max_reverb_duration_sec) {
+                                              float p_max_reverb_duration_sec, int p_convolution_ir_max_samples) {
     if (init_flags != ReflectionInitFlags::NONE)
         return;
 
@@ -20,6 +43,8 @@ void ResonanceReflectionProcessor::initialize(IPLContext p_context, int p_sample
         ResonanceLog::error("ResonanceReflectionProcessor: Context is null.");
         return;
     }
+
+    convolution_ir_max_samples_ = std::max(0, p_convolution_ir_max_samples);
 
     float dur = resonance::sanitize_audio_float(p_max_reverb_duration_sec);
     if (dur < 0.1f)
@@ -62,6 +87,7 @@ void ResonanceReflectionProcessor::initialize(IPLContext p_context, int p_sample
         ResonanceLog::error("ResonanceReflectionProcessor: iplReflectionEffectCreate failed.");
         return;
     }
+    effect_max_ir_samples_ = static_cast<int>(reflSettings.irSize);
     init_flags = init_flags | ReflectionInitFlags::REFLECTIONEFFECT;
 
     if (iplAudioBufferAllocate(context, 1, frame_size, &sa_mono_buffer) != IPL_STATUS_SUCCESS ||
@@ -92,6 +118,8 @@ void ResonanceReflectionProcessor::cleanup() {
 
     context = nullptr;
     init_flags = ReflectionInitFlags::NONE;
+    convolution_ir_max_samples_ = 0;
+    effect_max_ir_samples_ = 0;
 }
 
 void ResonanceReflectionProcessor::process_mix(const IPLAudioBuffer& in_buffer,
@@ -106,24 +134,10 @@ void ResonanceReflectionProcessor::process_mix(const IPLAudioBuffer& in_buffer,
     // Downmix (IPL API has non-const param; input is read-only)
     iplAudioBufferDownmix(context, const_cast<IPLAudioBuffer*>(&in_buffer), &sa_mono_buffer);
 
-    // Apply gain: ramp from prev to current when prev >= 0 (avoids clicks on reflections_mix_level change)
     float safe_gain = resonance::sanitize_audio_float(reverb_gain);
     float safe_prev = resonance::sanitize_audio_float(prev_reverb_gain);
-    if (sa_mono_buffer.data && sa_mono_buffer.data[0]) {
-        if (safe_prev >= 0.0f) {
-            resonance::apply_volume_ramp(safe_prev, safe_gain, frame_size, sa_mono_buffer.data[0]);
-        } else if (safe_gain != 1.0f) {
-            for (int i = 0; i < frame_size; i++) {
-                sa_mono_buffer.data[0][i] *= safe_gain;
-            }
-        }
-    }
-    // Sanitize mono buffer before apply (input may contain NaN from upstream)
-    if (sa_mono_buffer.data && sa_mono_buffer.data[0]) {
-        for (int i = 0; i < frame_size; i++) {
-            sa_mono_buffer.data[0][i] = resonance::sanitize_audio_float(sa_mono_buffer.data[0][i]);
-        }
-    }
+    if (sa_mono_buffer.data && sa_mono_buffer.data[0])
+        preprocess_reflection_mono(safe_prev, safe_gain, frame_size, sa_mono_buffer.data[0]);
 
     IPLReflectionEffectParams params = reverb_params;
     sanitize_reflection_params(&params);
@@ -150,16 +164,11 @@ void ResonanceReflectionProcessor::process_mix_direct(const IPLAudioBuffer& in_b
     if (sa_mono_buffer.data && sa_mono_buffer.data[0]) {
         float p = resonance::sanitize_audio_float(prev_reflections_mix_level);
         float c = resonance::sanitize_audio_float(reflections_mix_level);
-        resonance::apply_volume_ramp(p, c, frame_size, sa_mono_buffer.data[0]);
+        resonance::apply_volume_ramp_and_sanitize(p, c, frame_size, sa_mono_buffer.data[0]);
     }
 
     IPLReflectionEffectParams params = reverb_params;
     sanitize_reflection_params(&params);
-    if (sa_mono_buffer.data && sa_mono_buffer.data[0]) {
-        for (int i = 0; i < frame_size; i++) {
-            sa_mono_buffer.data[0][i] = resonance::sanitize_audio_float(sa_mono_buffer.data[0][i]);
-        }
-    }
 
     // Steam Audio validation requires ir non-null for CONVOLUTION/HYBRID. Skip apply if invalid.
     if ((params.type == IPL_REFLECTIONEFFECTTYPE_CONVOLUTION || params.type == IPL_REFLECTIONEFFECTTYPE_HYBRID) && !params.ir)
@@ -177,6 +186,13 @@ void ResonanceReflectionProcessor::sanitize_reflection_params(IPLReflectionEffec
         params->irSize = static_cast<IPLint32>(resonance::reverb_ir_size_samples(sample_rate, effect_ir_duration_sec_));
     if (params->numChannels <= 0)
         params->numChannels = num_channels;
+    if (convolution_ir_max_samples_ > 0 && effect_max_ir_samples_ > 0 &&
+        (reflection_type == resonance::kReflectionConvolution || reflection_type == resonance::kReflectionHybrid ||
+         reflection_type == resonance::kReflectionTan)) {
+        const int cap = std::min(convolution_ir_max_samples_, effect_max_ir_samples_);
+        if (cap > 0 && params->irSize > cap)
+            params->irSize = static_cast<IPLint32>(cap);
+    }
     for (int i = 0; i < IPL_NUM_BANDS; i++) {
         params->reverbTimes[i] = resonance::clamp_reverb_time(params->reverbTimes[i]);
         params->eq[i] = resonance::sanitize_audio_float(params->eq[i]);

@@ -2,6 +2,7 @@
 #include "resonance_log.h"
 #include "resonance_server.h"
 #include <algorithm>
+#include <chrono>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
@@ -33,8 +34,12 @@ ResonanceAudioEffectInstance::~ResonanceAudioEffectInstance() {
 void ResonanceAudioEffectInstance::_process(const void* src_buffer, AudioFrame* dst_buffer, int32_t frame_count) {
     ResonanceServer* srv = ResonanceServer::get_singleton();
 
-    // Check shut down flag to avoid crashes on exit
-    if (!srv || !srv->is_initialized() || ResonanceServer::is_shutting_down()) {
+    // Bail during exit or Steam Audio reinit/teardown (TOCTOU guard below before process_mixer_return).
+    if (!srv || !srv->is_initialized() || ResonanceServer::ipl_audio_teardown_active()) {
+        for (int i = 0; i < frame_count; i++) {
+            dst_buffer[i].left = 0.0f;
+            dst_buffer[i].right = 0.0f;
+        }
         return;
     }
 
@@ -69,6 +74,13 @@ void ResonanceAudioEffectInstance::_process(const void* src_buffer, AudioFrame* 
     }
 
     IPLReflectionMixer mixer = srv->get_reflection_mixer_handle();
+    if (ResonanceServer::ipl_audio_teardown_active()) {
+        for (int i = 0; i < frame_count; i++) {
+            dst_buffer[i].left = 0.0f;
+            dst_buffer[i].right = 0.0f;
+        }
+        return;
+    }
     // No mixer for Parametric (1) or Hybrid (2) - per Steam Audio docs mixer cannot be used with those
     if (!mixer) {
         for (int i = 0; i < frame_count; i++) {
@@ -88,10 +100,21 @@ void ResonanceAudioEffectInstance::_process(const void* src_buffer, AudioFrame* 
     // --- LOCKING & PROCESSING (RAII: unlock on scope exit or exception) ---
     auto mixer_lock = srv->scoped_mixer_lock();
 
+    if (ResonanceServer::ipl_audio_teardown_active()) {
+        for (int i = 0; i < frame_count; i++) {
+            dst_buffer[i].left = 0.0f;
+            dst_buffer[i].right = 0.0f;
+        }
+        return;
+    }
+
     IPLCoordinateSpace3 listener_coords = srv->get_current_listener_coords();
 
-    // Process
+    const auto bus_t0 = std::chrono::steady_clock::now();
     bool success = processor.process_mixer_return(mixer, listener_coords, dst_buffer, frame_count);
+    const auto bus_t1 = std::chrono::steady_clock::now();
+    srv->record_convolution_reverb_bus_usec(static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::microseconds>(bus_t1 - bus_t0).count()));
 
     float peak = 0.0f;
     int32_t frames_written = 0;

@@ -144,7 +144,7 @@ func _prepare_probe_data_for_bake(vol: Node, probe_data: Resource, root: Node) -
 		node_key = "h_%s" % str(abs(hash(str(root.get_path_to(vol)) if vol.is_inside_tree() else vol.name)))
 	var audio_dir: String = ResonancePaths.get_audio_data_dir()
 	var fs_audio: String = ResonanceFsPaths.filesystem_path_for_dir_access(audio_dir)
-	var path: String = audio_dir + "%s_%s_baked_probes.tres" % [scene_name, node_key]
+	var path: String = ResonancePaths.probe_data_save_path(scene_name, node_key)
 	if not DirAccess.dir_exists_absolute(fs_audio):
 		var mkdir_err: int = DirAccess.make_dir_recursive_absolute(fs_audio)
 		if mkdir_err != OK or not DirAccess.dir_exists_absolute(fs_audio):

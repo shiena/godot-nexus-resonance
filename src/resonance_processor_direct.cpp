@@ -219,15 +219,14 @@ void ResonanceDirectProcessor::process(
         return;
     }
 
-    // Reset output
-    for (int i = 0; i < out_buffer.numChannels; i++) {
-        if (out_buffer.data[i])
-            memset(out_buffer.data[i], 0, frame_size * sizeof(float));
-    }
-
     // When effect disabled by caller, output silence (intentional)
-    if (!direct_effect || !apply_effect)
+    if (!direct_effect || !apply_effect) {
+        for (int i = 0; i < out_buffer.numChannels; i++) {
+            if (out_buffer.data[i])
+                memset(out_buffer.data[i], 0, frame_size * sizeof(float));
+        }
         return;
+    }
 
     // 2. Downmix Input to Mono (IPL API has non-const param; input is read-only)
     iplAudioBufferDownmix(context, const_cast<IPLAudioBuffer*>(&in_buffer), &internal_mono_buffer);
@@ -306,6 +305,15 @@ void ResonanceDirectProcessor::process(
                          hrtf_interpolation_bilinear, spatial_blend);
 }
 
+void ResonanceDirectProcessor::clear_surround_tail_after_direct_stereo_effect(IPLAudioBuffer& out, const IPLAudioBuffer* stereo_effect_destination) {
+    if (!stereo_effect_destination || stereo_effect_destination != &out || out.numChannels <= 2 || !out.data)
+        return;
+    for (int c = 2; c < out.numChannels; ++c) {
+        if (out.data[c])
+            memset(out.data[c], 0, frame_size * sizeof(float));
+    }
+}
+
 void ResonanceDirectProcessor::copy_binaural_stereo_to_output(IPLAudioBuffer& out) {
     const IPLAudioBuffer& st = internal_binaural_stereo_out;
     if (!st.data || !st.data[0] || !st.data[1] || !out.data)
@@ -344,6 +352,8 @@ void ResonanceDirectProcessor::apply_spatialization(const IPLVector3& dir, const
         iplAmbisonicsBinauralEffectApply(ambisonics_binaural_effect, &ambBinParams, &internal_ambi_buffer, binaural_out);
         if (binaural_out != &out)
             copy_binaural_stereo_to_output(out);
+        else
+            clear_surround_tail_after_direct_stereo_effect(out, binaural_out);
     } else if (use_binaural && binaural_effect && hrtf_handle) {
         IPLBinauralEffectParams binParams{};
         binParams.direction = dir;
@@ -354,6 +364,8 @@ void ResonanceDirectProcessor::apply_spatialization(const IPLVector3& dir, const
         iplBinauralEffectApply(binaural_effect, &binParams, const_cast<IPLAudioBuffer*>(&direct_out), binaural_out);
         if (binaural_out != &out)
             copy_binaural_stereo_to_output(out);
+        else
+            clear_surround_tail_after_direct_stereo_effect(out, binaural_out);
     } else if (use_ambi_path && ambisonics_encode_effect && ambisonics_panning_effect && internal_ambi_buffer.data) {
         IPLAmbisonicsEncodeEffectParams encParams{};
         encParams.direction = dir;

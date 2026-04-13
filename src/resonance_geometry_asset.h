@@ -30,6 +30,7 @@ class ResonanceGeometryAsset : public Resource {
     ~ResonanceGeometryAsset();
 
     void set_mesh_data(const PackedByteArray& p_data);
+    /// Copy of serialized mesh bytes (can be large). For Phonon load prefer get_data_ptr / get_size to avoid copying.
     PackedByteArray get_mesh_data() const;
 
     void set_triangle_count(int p_count);

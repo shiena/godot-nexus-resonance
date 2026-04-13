@@ -128,6 +128,33 @@ TEST_CASE("pathing: ramp down to zero last sample not at zero volume", "[volume_
     REQUIRE(mono[3] == Approx(0.25f));
 }
 
+TEST_CASE("apply_volume_ramp_and_sanitize matches ramp then sanitize for finite input", "[volume_ramp]") {
+    const int n = 8;
+    float a[8];
+    float b[8];
+    for (int i = 0; i < n; i++) {
+        a[i] = 2.0f + static_cast<float>(i) * 0.25f;
+        b[i] = a[i];
+    }
+    const float prev = 0.2f;
+    const float curr = 0.8f;
+    apply_volume_ramp(prev, curr, n, a);
+    for (int i = 0; i < n; i++)
+        a[i] = sanitize_audio_float(a[i]);
+    apply_volume_ramp_and_sanitize(prev, curr, n, b);
+    for (int i = 0; i < n; i++)
+        REQUIRE(b[i] == Approx(a[i]));
+}
+
+TEST_CASE("apply_volume_ramp_and_sanitize constant gain nan to zero", "[volume_ramp]") {
+    float nan_val = std::numeric_limits<float>::quiet_NaN();
+    float buf[3] = {1.0f, nan_val, 3.0f};
+    apply_volume_ramp_and_sanitize(0.5f, 0.5f, 3, buf);
+    REQUIRE(buf[0] == Approx(0.5f));
+    REQUIRE(buf[1] == 0.0f);
+    REQUIRE(buf[2] == Approx(1.5f));
+}
+
 TEST_CASE("pathing: wet add unity not times reverb_pathing_attenuation", "[pathing]") {
     // Regression: path stereo used to be scaled by reverb_pathing_attenuation * pathing_mix per sample.
     // Steam Audio Unity/FMOD spatialize mixes path effect output at unity (distance is in SH coeffs).

@@ -11,6 +11,10 @@ var undo_redo: EditorUndoRedoManager
 ## Optional fallback icon when custom icon file is missing. Set by plugin after instantiation.
 var fallback_icon: Texture2D = null
 var _icon_material_created: bool = false
+## Per-plugin-instance material names so re-adding the gizmo after disable/enable does not clash with editor caches.
+var _mat_main: String = ""
+var _mat_handles: String = ""
+var _mat_icon: String = ""
 
 
 func _get_valid_region_size(node: Node) -> Vector3:
@@ -30,9 +34,12 @@ func _has_gizmo(node: Node) -> bool:
 
 
 func _init():
-	# define materials
-	create_material("main", Color(0.1, 0.8, 1.0))
-	create_handle_material("handles")
+	var sid := str(get_instance_id())
+	_mat_main = "nexus_probe_vol_main_" + sid
+	_mat_handles = "nexus_probe_vol_handles_" + sid
+	_mat_icon = "nexus_probe_vol_icon_" + sid
+	create_material(_mat_main, Color(0.1, 0.8, 1.0))
+	create_handle_material(_mat_handles)
 
 	# Icon material is created lazily in _redraw to avoid EditorInterface in _init
 
@@ -50,7 +57,7 @@ func _ensure_icon_material(gizmo: EditorNode3DGizmo) -> void:
 		if gui:
 			icon_tex = gui.get_theme_icon("ReflectionProbe", "EditorIcons")
 	if icon_tex:
-		create_icon_material("probe_icon", icon_tex)
+		create_icon_material(_mat_icon, icon_tex)
 		_icon_material_created = true
 
 
@@ -60,7 +67,7 @@ func _redraw(gizmo: EditorNode3DGizmo):
 	_ensure_icon_material(gizmo)
 
 	# add icon
-	var icon_mat = get_material("probe_icon", gizmo)
+	var icon_mat = get_material(_mat_icon, gizmo)
 	if icon_mat:
 		gizmo.add_unscaled_billboard(icon_mat, 0.05)
 
@@ -83,7 +90,7 @@ func _redraw(gizmo: EditorNode3DGizmo):
 	lines.append_array([p[3], p[2], p[2], p[6], p[6], p[7], p[7], p[3]])
 	lines.append_array([p[0], p[3], p[1], p[2], p[5], p[6], p[4], p[7]])
 
-	gizmo.add_lines(lines, get_material("main", gizmo))
+	gizmo.add_lines(lines, get_material(_mat_main, gizmo))
 	gizmo.add_collision_segments(lines)
 
 	# Handles
@@ -95,7 +102,7 @@ func _redraw(gizmo: EditorNode3DGizmo):
 	handles.push_back(Vector3(0, -half.y, 0))
 	handles.push_back(Vector3(0, 0, -half.z))
 
-	gizmo.add_handles(handles, get_material("handles", gizmo), [])
+	gizmo.add_handles(handles, get_material(_mat_handles, gizmo), [])
 
 
 func _get_handle_name(gizmo: EditorNode3DGizmo, handle_id: int, secondary: bool) -> String:

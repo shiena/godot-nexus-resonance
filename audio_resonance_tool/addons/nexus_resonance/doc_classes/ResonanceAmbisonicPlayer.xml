@@ -4,7 +4,7 @@
 		Higher-order Ambisonics player with HRTF decode. Uses ResonanceAmbisonicInternalStream.
 	</brief_description>
 	<description>
-		ResonanceAmbisonicPlayer plays Ambisonic audio streams through Steam Audio's binaural decoder. Assign a [ResonanceAmbisonicInternalStream] to the [member stream] property. Supports first-order (4 channels), second-order (9 channels), and third-order (16 channels) Ambisonics.
+		ResonanceAmbisonicPlayer plays Ambisonic audio streams through Steam Audio's binaural decoder. Assign a [ResonanceAmbisonicInternalStream] to the [member stream] property (other stream types log a warning). Supports first-order (4 channels), second-order (9 channels), and third-order (16 channels) Ambisonics via the internal stream's [member ResonanceAmbisonicInternalStream.ambisonic_order] and [member ResonanceAmbisonicInternalStream.channel_streams].
 		When [member rotation_enabled] is true, the listener orientation is applied to decode (world-relative). Disable for fixed/world-space decode.
 	</description>
 	<tutorials>

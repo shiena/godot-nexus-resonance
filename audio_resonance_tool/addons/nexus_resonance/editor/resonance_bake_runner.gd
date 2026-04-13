@@ -57,21 +57,6 @@ func run_bake(volumes: Array[Node]) -> void:
 	_do_run_bake_with_backup(volumes, root, static_scene_node, static_asset)
 
 
-## Returns validation checklist for inspector display. Array of { "label": str, "ok": bool }.
-func get_validation_checklist_for_volume(vol: Node) -> Array:
-	var vols: Array[Node] = []
-	if vol:
-		vols.append(vol)
-	var root = _get_edited_scene_root(vols) if vol else null
-	var static_scene_node = (
-		_BakeDiscovery.find_resonance_static_scene_for_bake(vols, root) if vol else null
-	)
-	var static_asset = static_scene_node.get("static_scene_asset") if static_scene_node else null
-	return _BakeValidation.build_validation_checklist(
-		vols, root, static_scene_node, static_asset, ResonanceRuntimeScript
-	)
-
-
 func _do_run_bake_with_backup(
 	volumes: Array[Node], root: Node, static_scene_node: Node, static_asset
 ) -> void:

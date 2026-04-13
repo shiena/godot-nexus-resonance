@@ -5,29 +5,16 @@
 	</brief_description>
 	<description>
 		AudioStream resource that supplies multi-channel Ambisonics data. Supports first-order (4 channels), second-order (9 channels), and third-order (16 channels) Ambisonics.
-		Use [method set_channel_streams] to provide per-channel AudioStream sources. Channel order must follow ACN (Ambisonic Channel Numbering) with SN3D normalization. Index mapping: 0=W, 1=Y, 2=Z, 3=X, 4=V, 5=T, 6=R, 7=S, 8=U, 9=K, 10=L, 11=M, 12=N, 13=O, 14=P, 15=Q.
-		For first-order only, the legacy properties stream_w, stream_y, stream_z, stream_x can be used instead.
+		Set [member ambisonic_order] first; [member channel_streams] is resized to [code](order+1)²[/code] slots (4, 9, or 16) so the inspector matches the active order. Assign one [AudioStream] per Ambisonic channel in ACN order with SN3D normalization: 0=W, 1=Y, 2=Z, 3=X, 4=V, 5=T, 6=R, 7=S, 8=U, 9=K, 10=L, 11=M, 12=N, 13=O, 14=P, 15=Q.
 	</description>
 	<tutorials>
 	</tutorials>
 	<members>
-		<member name="channel_streams" type="Array" setter="set_channel_streams" getter="get_channel_streams">
-			Array of [AudioStream] resources, one per Ambisonic channel. Requires 4 (1st order), 9 (2nd order), or 16 (3rd order) elements. Order: ACN/SN3D (W,Y,Z,X,V,T,R,S,U,K,L,M,N,O,P,Q).
-		</member>
 		<member name="ambisonic_order" type="int" setter="set_ambisonic_order" getter="get_ambisonic_order" default="1">
-			Ambisonic order (1, 2, or 3). Ignored when channel_streams is set; order is derived from channel_streams.size().
+			Ambisonic order: 1st (4 channels), 2nd (9), or 3rd (16). Drives how many [member channel_streams] entries are used; lowering order truncates extra channels.
 		</member>
-		<member name="stream_w" type="AudioStream" setter="set_stream_w" getter="get_stream_w">
-			Legacy: W channel for first-order Ambisonics.
-		</member>
-		<member name="stream_y" type="AudioStream" setter="set_stream_y" getter="get_stream_y">
-			Legacy: Y channel for first-order Ambisonics.
-		</member>
-		<member name="stream_z" type="AudioStream" setter="set_stream_z" getter="get_stream_z">
-			Legacy: Z channel for first-order Ambisonics.
-		</member>
-		<member name="stream_x" type="AudioStream" setter="set_stream_x" getter="get_stream_x">
-			Legacy: X channel for first-order Ambisonics.
+		<member name="channel_streams" type="Array" setter="set_channel_streams" getter="get_channel_streams">
+			Array of [AudioStream] resources, one per Ambisonic channel. Length is kept equal to [code](ambisonic_order+1)²[/code] after load and when order changes. Order: ACN/SN3D (W,Y,Z,X,V,T,R,S,U,K,L,M,N,O,P,Q).
 		</member>
 	</members>
 </class>

@@ -76,6 +76,10 @@ void ResonanceServer::reset_reverb_bus_instrumentation() {
     instrumentation_fetch_lock_ok.store(0, std::memory_order_relaxed);
     instrumentation_fetch_cache_hit.store(0, std::memory_order_relaxed);
     instrumentation_fetch_cache_miss.store(0, std::memory_order_relaxed);
+    instrumentation_audio_conv_refl_apply_last_us_.store(0, std::memory_order_relaxed);
+    instrumentation_audio_conv_reverb_bus_last_us_.store(0, std::memory_order_relaxed);
+    instrumentation_audio_mixer_sanitize_ambi_last_us_.store(0, std::memory_order_relaxed);
+    instrumentation_audio_mixer_sanitize_stereo_last_us_.store(0, std::memory_order_relaxed);
     reset_pathing_instrumentation();
 }
 
@@ -100,6 +104,16 @@ void ResonanceServer::reset_pathing_instrumentation() {
     instrumentation_worker_us_run_reflections.store(0, std::memory_order_relaxed);
     instrumentation_worker_us_run_pathing.store(0, std::memory_order_relaxed);
     instrumentation_worker_us_sync_fetch.store(0, std::memory_order_relaxed);
+    instrumentation_worker_us_simulator_commit.store(0, std::memory_order_relaxed);
+    instrumentation_worker_us_scene_graph_commit.store(0, std::memory_order_relaxed);
+    instrumentation_worker_us_dynamic_instanced_apply.store(0, std::memory_order_relaxed);
+    instrumentation_worker_last_wake_was_heavy.store(false, std::memory_order_relaxed);
+    instrumentation_main_us_dynamic_transform_enqueue_.store(0, std::memory_order_relaxed);
+    instrumentation_main_us_last_dynamic_transform_enqueue_.store(0, std::memory_order_relaxed);
+    instrumentation_dynamic_transform_enqueue_events_.store(0, std::memory_order_relaxed);
+    instrumentation_worker_us_sync_fetch_occlusion.store(0, std::memory_order_relaxed);
+    instrumentation_worker_us_sync_fetch_reflections.store(0, std::memory_order_relaxed);
+    instrumentation_worker_us_sync_fetch_pathing.store(0, std::memory_order_relaxed);
 }
 
 Dictionary ResonanceServer::get_simulation_worker_timing() const {
@@ -108,6 +122,55 @@ Dictionary ResonanceServer::get_simulation_worker_timing() const {
     d["us_run_reflections"] = (int64_t)instrumentation_worker_us_run_reflections.load(std::memory_order_relaxed);
     d["us_run_pathing"] = (int64_t)instrumentation_worker_us_run_pathing.load(std::memory_order_relaxed);
     d["us_sync_fetch"] = (int64_t)instrumentation_worker_us_sync_fetch.load(std::memory_order_relaxed);
+    d["us_simulator_commit"] = (int64_t)instrumentation_worker_us_simulator_commit.load(std::memory_order_relaxed);
+    d["us_scene_graph_commit"] = (int64_t)instrumentation_worker_us_scene_graph_commit.load(std::memory_order_relaxed);
+    d["us_dynamic_instanced_apply"] = (int64_t)instrumentation_worker_us_dynamic_instanced_apply.load(std::memory_order_relaxed);
+    d["us_sync_fetch_occlusion"] = (int64_t)instrumentation_worker_us_sync_fetch_occlusion.load(std::memory_order_relaxed);
+    d["us_sync_fetch_reflections"] = (int64_t)instrumentation_worker_us_sync_fetch_reflections.load(std::memory_order_relaxed);
+    d["us_sync_fetch_pathing"] = (int64_t)instrumentation_worker_us_sync_fetch_pathing.load(std::memory_order_relaxed);
+    d["worker_last_wake_heavy"] = instrumentation_worker_last_wake_was_heavy.load(std::memory_order_relaxed);
+    d["reflections_adaptive_extra_interval"] = reflections_adaptive_extra_interval_;
+    d["main_us_dynamic_transform_enqueue"] = (int64_t)instrumentation_main_us_dynamic_transform_enqueue_.load(std::memory_order_relaxed);
+    d["main_last_dynamic_transform_enqueue_us"] = (int64_t)instrumentation_main_us_last_dynamic_transform_enqueue_.load(std::memory_order_relaxed);
+    d["dynamic_transform_enqueue_events"] = (int64_t)instrumentation_dynamic_transform_enqueue_events_.load(std::memory_order_relaxed);
+    return d;
+}
+
+Dictionary ResonanceServer::get_convolution_audio_timing() const {
+    Dictionary d;
+    d["us_reflection_apply_last"] = (int64_t)instrumentation_audio_conv_refl_apply_last_us_.load(std::memory_order_relaxed);
+    d["us_reverb_bus_last"] = (int64_t)instrumentation_audio_conv_reverb_bus_last_us_.load(std::memory_order_relaxed);
+    d["us_mixer_sanitize_ambi_last"] = (int64_t)instrumentation_audio_mixer_sanitize_ambi_last_us_.load(std::memory_order_relaxed);
+    d["us_mixer_sanitize_stereo_last"] = (int64_t)instrumentation_audio_mixer_sanitize_stereo_last_us_.load(std::memory_order_relaxed);
+    return d;
+}
+
+void ResonanceServer::record_convolution_reflection_apply_usec(uint64_t us) {
+    instrumentation_audio_conv_refl_apply_last_us_.store(us, std::memory_order_relaxed);
+}
+
+void ResonanceServer::record_convolution_reverb_bus_usec(uint64_t us) {
+    instrumentation_audio_conv_reverb_bus_last_us_.store(us, std::memory_order_relaxed);
+}
+
+void ResonanceServer::record_mixer_sanitize_ambi_usec(uint64_t us) {
+    instrumentation_audio_mixer_sanitize_ambi_last_us_.store(us, std::memory_order_relaxed);
+}
+
+void ResonanceServer::record_mixer_sanitize_stereo_usec(uint64_t us) {
+    instrumentation_audio_mixer_sanitize_stereo_last_us_.store(us, std::memory_order_relaxed);
+}
+
+Dictionary ResonanceServer::get_simulation_tracer_profile() const {
+    Dictionary d;
+    const IPLSceneType st = _scene_type();
+    d["scene_type"] = scene_type;
+    d["ipl_scene_type"] = static_cast<int>(st);
+    const int eff = (st == IPL_SCENETYPE_CUSTOM) ? resonance::clamp_physics_ray_batch_size(physics_ray_batch_size) : 1;
+    d["ray_batch_size_effective"] = eff;
+    const bool batched_custom = (st == IPL_SCENETYPE_CUSTOM && eff > 1);
+    d["custom_batched_callbacks_registered"] = batched_custom;
+    d["phonon_batched_reflection_sim_path"] = batched_custom;
     return d;
 }
 
@@ -229,6 +292,7 @@ void ResonanceServer::_bind_methods() {
     ADD_SIGNAL(MethodInfo("bake_progress", PropertyInfo(Variant::FLOAT, "progress")));
     ClassDB::bind_method(D_METHOD("init_audio_engine", "config"), &ResonanceServer::init_audio_engine);
     ClassDB::bind_method(D_METHOD("reinit_audio_engine", "config"), &ResonanceServer::reinit_audio_engine);
+    ClassDB::bind_method(D_METHOD("shutdown"), &ResonanceServer::shutdown);
 
     ClassDB::bind_method(D_METHOD("get_version"), &ResonanceServer::get_version);
     ClassDB::bind_method(D_METHOD("is_initialized"), &ResonanceServer::is_initialized);
@@ -321,11 +385,16 @@ void ResonanceServer::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_perspective_correction_factor"), &ResonanceServer::get_perspective_correction_factor);
     ClassDB::bind_method(D_METHOD("get_reflection_type"), &ResonanceServer::get_reflection_type);
     ClassDB::bind_method(D_METHOD("get_realtime_rays"), &ResonanceServer::get_realtime_rays);
+    ClassDB::bind_method(D_METHOD("get_ambisonic_order"), &ResonanceServer::get_ambisonic_order);
+    ClassDB::bind_method(D_METHOD("get_default_reflections_mode"), &ResonanceServer::get_default_reflections_mode);
     ClassDB::bind_method(D_METHOD("get_reverb_bus_instrumentation"), &ResonanceServer::get_reverb_bus_instrumentation);
     ClassDB::bind_method(D_METHOD("reset_reverb_bus_instrumentation"), &ResonanceServer::reset_reverb_bus_instrumentation);
     ClassDB::bind_method(D_METHOD("get_pathing_instrumentation"), &ResonanceServer::get_pathing_instrumentation);
     ClassDB::bind_method(D_METHOD("reset_pathing_instrumentation"), &ResonanceServer::reset_pathing_instrumentation);
     ClassDB::bind_method(D_METHOD("get_simulation_worker_timing"), &ResonanceServer::get_simulation_worker_timing);
+    ClassDB::bind_method(D_METHOD("peek_reverb_params_likely_available", "source_handle"), &ResonanceServer::peek_reverb_params_likely_available);
+    ClassDB::bind_method(D_METHOD("get_convolution_audio_timing"), &ResonanceServer::get_convolution_audio_timing);
+    ClassDB::bind_method(D_METHOD("get_simulation_tracer_profile"), &ResonanceServer::get_simulation_tracer_profile);
 
     // Properties
     ADD_PROPERTY(PropertyInfo(Variant::BOOL, "debug_occlusion"), "set_debug_occlusion", "is_debug_occlusion_enabled");

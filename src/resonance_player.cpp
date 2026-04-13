@@ -254,7 +254,8 @@ void ResonanceInternalPlayback::_lazy_init_steam_audio(int ignored_rate) {
     direct_processor.initialize(context, current_sample_rate, frame_size_, order, true, direct_out_channels_);
 
     // 2. Initialize Reflection (convolution or parametric)
-    reflection_processor.initialize(context, current_sample_rate, frame_size_, order, refl_type, srv->get_max_reverb_duration());
+    reflection_processor.initialize(context, current_sample_rate, frame_size_, order, refl_type, srv->get_max_reverb_duration(),
+                                    srv->get_convolution_ir_max_samples());
 
     // 3. Initialize Path Processor (for pathing simulation)
     path_processor.initialize(context, current_sample_rate, frame_size_, order);
@@ -485,7 +486,11 @@ void ResonanceInternalPlayback::_process_steam_audio_block() {
 #endif
                         srv->record_convolution_feed(reverb_params.ir != nullptr, conv_reverb_gain, input_rms);
                         auto lock = srv->scoped_mixer_lock();
+                        const auto conv_apply_t0 = std::chrono::steady_clock::now();
                         reflection_processor.process_mix(sa_in_buffer, reverb_params, mixer, conv_reverb_gain, prev_conv_reverb_gain);
+                        const auto conv_apply_t1 = std::chrono::steady_clock::now();
+                        srv->record_convolution_reflection_apply_usec(static_cast<uint64_t>(
+                            std::chrono::duration_cast<std::chrono::microseconds>(conv_apply_t1 - conv_apply_t0).count()));
                         prev_conv_reverb_gain = conv_reverb_gain;
                         srv->record_mixer_feed();
                     }
@@ -773,6 +778,13 @@ void ResonanceInternalPlayback::reset_instrumentation() {
 }
 
 int32_t ResonanceInternalPlayback::_mix(AudioFrame* buffer, double rate_scale, int32_t frames) {
+    if (ResonanceServer::ipl_audio_teardown_active()) {
+        for (int32_t i = 0; i < frames; i++) {
+            buffer[i].left = 0.0f;
+            buffer[i].right = 0.0f;
+        }
+        return frames;
+    }
     if (base_playback.is_null())
         return 0;
     auto now = std::chrono::steady_clock::now();
@@ -1166,7 +1178,26 @@ void ResonancePlayer::_refresh_config_cache() {
     config_cache_.transmission_high = _config_float("transmission_high", 1.0f);
     config_cache_.directivity_value = _config_float("directivity_value", 1.0f);
     config_cache_.occlusion_samples = _config_int("occlusion_samples", resonance::kDefaultOcclusionSamples);
-    config_cache_.max_transmission_surfaces = _config_int("max_transmission_surfaces", resonance::kDefaultPlayerConfigTransmissionRays);
+    {
+        ResonanceServer* srv = ResonanceServer::get_singleton();
+        int tx_surfaces_def = srv ? srv->get_max_transmission_surfaces() : resonance::kDefaultPlayerConfigTransmissionRays;
+        int mts_ov = _config_int("max_transmission_surfaces_override", 0);
+        if (mts_ov == -1)
+            mts_ov = 0; // legacy GDScript enum "Use Global:-1"
+        if (mts_ov != 0 && mts_ov != 1)
+            mts_ov = 0;
+        config_cache_.max_transmission_surfaces_override = mts_ov;
+        if (mts_ov == 0) {
+            config_cache_.max_transmission_surfaces = tx_surfaces_def;
+        } else {
+            int mts = _config_int("max_transmission_surfaces", tx_surfaces_def);
+            if (mts < 1)
+                mts = 1;
+            if (mts > resonance::kMaxTransmissionRays)
+                mts = resonance::kMaxTransmissionRays;
+            config_cache_.max_transmission_surfaces = mts;
+        }
+    }
     config_cache_.direct_mix_level = _config_float("direct_mix_level", 1.0f);
     config_cache_.reflections_mix_level = _config_float("reflections_mix_level", 1.0f);
     config_cache_.pathing_mix_level = _config_float("pathing_mix_level", 1.0f);
@@ -1181,9 +1212,16 @@ void ResonancePlayer::_refresh_config_cache() {
     config_cache_.playback_coeff_smoothing_time = _config_float("playback_coeff_smoothing_time", 0.0f);
     config_cache_.simulation_occlusion_enabled = _config_bool("simulation_occlusion_enabled", true);
     config_cache_.simulation_transmission_enabled = _config_bool("simulation_transmission_enabled", true);
-    config_cache_.occlusion_type_override = _config_int("occlusion_type_override", -1);
-    if (config_cache_.occlusion_type_override < -1 || config_cache_.occlusion_type_override > 1)
-        config_cache_.occlusion_type_override = -1;
+    {
+        int occ_ov = _config_int("occlusion_type_override", 2);
+        // 2 = Use Global (GDScript enum; avoids negative values in .tres). -1 = legacy Use Global.
+        if (occ_ov == 2 || occ_ov == -1)
+            config_cache_.occlusion_type_override = -1;
+        else if (occ_ov == 0 || occ_ov == 1)
+            config_cache_.occlusion_type_override = occ_ov;
+        else
+            config_cache_.occlusion_type_override = -1;
+    }
     config_cache_.transmission_type_override = _config_int("transmission_type_override", -1);
     if (config_cache_.transmission_type_override < -1 || config_cache_.transmission_type_override > 1)
         config_cache_.transmission_type_override = -1;
@@ -1329,7 +1367,7 @@ void ResonancePlayer::_apply_update_source(int32_t pathing_batch, bool defer_if_
 
     int baked_var = 0;
     if (c.reflections_type == -1) {
-        baked_var = (srv->get_default_reflections_mode() == resonance::kReflectionParametric) ? -1 : 0;
+        baked_var = (srv->get_default_reflections_mode() == resonance::kDefaultReflectionsRealtime) ? -1 : 0;
     } else if (c.reflections_type == resonance::kReflectionConvolution)
         baked_var = -1;
     else if (c.reflections_type == resonance::kReflectionParametric)
@@ -1679,7 +1717,9 @@ void ResonancePlayer::_apply_playback_params_from_simulation(ResonanceServer* sr
     }
 
     IPLReflectionEffectParams ignored_params{};
-    bool has_reverb = srv->fetch_reverb_params(source_handle, ignored_params);
+    bool has_reverb = srv->peek_reverb_params_likely_available(source_handle);
+    if (!has_reverb)
+        has_reverb = srv->fetch_reverb_params(source_handle, ignored_params);
 
     bool direct_enabled = (c.direct_mix_level > 0.0f) && (!srv || srv->is_output_direct_enabled());
     bool reverb_enabled = ((c.reflections_mix_level > 0.0f) || (c.pathing_mix_level > 0.0f)) && (!srv || srv->is_output_reverb_enabled());

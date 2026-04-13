@@ -5,6 +5,7 @@
 	</brief_description>
 	<description>
 		ResonanceGeometry exposes mesh triangles to Steam Audio for occlusion, transmission, and reverb. Normally must be a direct child of a MeshInstance3D. When [member geometry_override] is set, a MeshInstance3D parent is not required—a child of any Node3D suffices; override mesh vertices are in this node's local space (use this node's transform). Assign a ResonanceMaterial to control absorption, scattering, and transmission per surface. All ResonanceGeometry in the scene is used when baking probes.
+		Performance: for [member dynamic] objects on Embree/Default/Radeon, prefer a low-poly [member mesh_asset] from [method export_dynamic_mesh_to_asset] or [member geometry_override] over the full render mesh—each scene commit cost scales with total static scene size. When [member ResonanceRuntimeConfig.scene_type] is Custom (Godot Physics), [ResonanceGeometry] is not uploaded to Phonon; use colliders for dynamic occlusion instead. See [member ResonanceRuntimeConfig.dynamic_scene_commit_min_interval] and worker timing [method ResonanceServer.get_simulation_worker_timing] ([code]us_simulator_commit[/code], [code]main_us_dynamic_transform_enqueue[/code]).
 	</description>
 	<tutorials>
 	</tutorials>
@@ -44,6 +45,11 @@
 		<method name="sync_reflection_debug_viz">
 			<description>
 				Updates reflection debug overlay geometry only (CPU ray-hit visualization). Does not remove or recreate Steam Audio static or instanced meshes. Prefer this over [method refresh_geometry] when toggling debug flags so dynamic Embree geometry stays valid.
+			</description>
+		</method>
+		<method name="flush_dynamic_acoustic_transform">
+			<description>
+				For [member dynamic] geometry with an instanced mesh: applies the current transform on the simulation thread path immediately (under [code]simulation_mutex[/code]), clears any queued worker update for this mesh, and marks the scene for commit. Call when an animation or tween finishes (or after killing a tween) so dynamic occlusion and path validation match the final pose—required when using [member ResonanceRuntimeConfig.dynamic_scene_commit_min_interval] &gt; 0 or a high [member ResonanceRuntimeConfig.geometry_update_throttle].
 			</description>
 		</method>
 	</methods>

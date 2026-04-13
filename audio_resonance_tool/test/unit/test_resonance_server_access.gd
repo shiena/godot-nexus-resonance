@@ -41,3 +41,13 @@ func test_get_server_if_initialized_only_when_ready() -> void:
 		assert_eq(server_if_ready, s)
 	else:
 		assert_null(ResonanceServerAccess.get_server_if_initialized())
+
+
+func test_resonance_server_exposes_shutdown() -> void:
+	if not ClassDB.class_exists("ResonanceServer"):
+		pass_test("ResonanceServer not available (GDExtension not loaded)")
+		return
+	assert_true(
+		ClassDB.class_has_method("ResonanceServer", "shutdown"),
+		"ResonanceServer.shutdown should be callable from GDScript for ordered exit teardown"
+	)

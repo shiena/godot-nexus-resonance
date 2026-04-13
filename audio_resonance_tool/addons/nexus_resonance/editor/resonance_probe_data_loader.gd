@@ -2,7 +2,8 @@
 extends ResourceFormatLoader
 class_name ResonanceProbeDataLoader
 
-## Loads ResonanceProbeData from .tres (Godot resource text format, version-control friendly).
+## Loads ResonanceProbeData from custom text [.tres] (and [.bak] snapshots with the same header).
+## Binary [.res] probe files use the engine loader (not this class).
 ##
 ## Size limits (to avoid str_to_var memory/performance issues on huge payloads):
 ## - data field: 256 MiB (256 * 1024 * 1024 chars). Larger files are rejected.
@@ -19,13 +20,14 @@ func _read_tres_header(path: String) -> String:
 
 
 func _is_tres_resonance_probe_data(path: String) -> bool:
-	if path.get_extension().to_lower() != "tres":
+	var ext := path.get_extension().to_lower()
+	if ext != "tres" and ext != "bak":
 		return false
 	return "ResonanceProbeData" in _read_tres_header(path)
 
 
 func _get_recognized_extensions() -> PackedStringArray:
-	return PackedStringArray(["tres"])
+	return PackedStringArray(["tres", "bak"])
 
 
 func _handles_type(type: StringName) -> bool:

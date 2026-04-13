@@ -7,7 +7,8 @@ namespace godot {
 
 /// Dynamic geometry: excluded from static bake; mesh lives in a local sub-scene and is placed in the global IPLScene
 /// as an instanced mesh (same idea as Steam Audio Unity Dynamic Object — rigid subtree, root transform updated at runtime).
-/// Path validation / alternate paths need this transform plus iplSceneCommit before simulation (see ResonanceGeometry::_update_dynamic_transform).
+/// Path validation needs the acoustic pose committed (transforms queue to the simulation worker;
+/// call ResonanceGeometry::flush_dynamic_acoustic_transform when motion ends).
 /// Use for doors, moving platforms, and other animated objects. Holds mesh_asset; export via Tools menu.
 class ResonanceDynamicGeometry : public ResonanceGeometry {
     GDCLASS(ResonanceDynamicGeometry, ResonanceGeometry)

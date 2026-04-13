@@ -81,8 +81,9 @@ func test_parse_tres_data_invalid_data_type_fallback():
 
 func test_get_recognized_extensions():
 	var exts = _loader._get_recognized_extensions()
-	assert_eq(exts.size(), 1, "should have 1 extension")
+	assert_eq(exts.size(), 2, "should have tres + bak")
 	assert_has(exts, "tres", "should recognize tres")
+	assert_has(exts, "bak", "should recognize bak")
 
 func test_handles_type_resonance_probe_data():
 	assert_true(_loader._handles_type(&"ResonanceProbeData"), "should handle ResonanceProbeData")

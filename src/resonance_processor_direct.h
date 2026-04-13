@@ -102,6 +102,8 @@ class ResonanceDirectProcessor {
     void apply_spatialization(const IPLVector3& dir, const IPLAudioBuffer& direct_out, IPLAudioBuffer& out,
                               bool use_ambi_path, bool use_binaural, bool hrtf_bilinear, float spatial_blend);
     void copy_binaural_stereo_to_output(IPLAudioBuffer& out);
+    /// When stereo binaural effects write into a surround output buffer (no stereo scratch), clear channels 2+.
+    void clear_surround_tail_after_direct_stereo_effect(IPLAudioBuffer& out, const IPLAudioBuffer* stereo_effect_destination);
 };
 } // namespace godot
 

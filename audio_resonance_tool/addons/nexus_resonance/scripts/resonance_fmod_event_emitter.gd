@@ -16,11 +16,15 @@ class_name ResonanceFmodEventEmitter
 @export var event_path: String = "event:/"
 @export var auto_play: bool = true
 
+const _RESONANCE_SYNC_POS_EPS := 1e-4
+
 var _resonance_handle: int = -1
 var _fmod_handle: int = -1
 var _bridge: RefCounted = null
 var _fmod_emitter: Node = null
 var _event_instance: Object = null  # FMOD EventInstance when available
+## Skip [code]update_source[/code] when position unchanged (reduces [code]TIME_PROCESS[/code] with many emitters).
+var _last_resonance_sync_pos: Vector3 = Vector3(INF, INF, INF)
 
 
 func _ready() -> void:
@@ -48,8 +52,12 @@ func _process(_delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
 	if _resonance_handle >= 0 and _bridge and ResonanceServerAccess.has_server():
+		var pos := global_position
+		if (pos - _last_resonance_sync_pos).length_squared() < _RESONANCE_SYNC_POS_EPS * _RESONANCE_SYNC_POS_EPS:
+			return
+		_last_resonance_sync_pos = pos
 		var srv = ResonanceServerAccess.get_server()
-		srv.update_source(_resonance_handle, global_position, 1.0)
+		srv.update_source(_resonance_handle, pos, 1.0)
 
 
 func _is_fmod_emitter(node: Node) -> bool:
@@ -84,10 +92,12 @@ func _on_play() -> void:
 	_resonance_handle = srv.create_source_handle(global_position, 1.0)
 	if _resonance_handle < 0:
 		return
+	_last_resonance_sync_pos = global_position
 	_fmod_handle = _bridge.add_fmod_source(_resonance_handle)
 	if _fmod_handle < 0:
 		srv.destroy_source_handle(_resonance_handle)
 		_resonance_handle = -1
+		_last_resonance_sync_pos = Vector3(INF, INF, INF)
 		return
 	# Try to pass handle to FMOD event if API allows
 	_try_set_fmod_parameter(_fmod_handle)
@@ -107,3 +117,4 @@ func _release_handles() -> void:
 	if _resonance_handle >= 0 and ResonanceServerAccess.has_server():
 		ResonanceServerAccess.get_server().destroy_source_handle(_resonance_handle)
 		_resonance_handle = -1
+	_last_resonance_sync_pos = Vector3(INF, INF, INF)

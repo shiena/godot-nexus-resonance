@@ -53,6 +53,32 @@ inline void apply_volume_ramp(float start_vol, float end_vol, int num_samples, f
     }
 }
 
+/// Like apply_volume_ramp, then sanitize_audio_float per sample (single pass over the buffer).
+inline void apply_volume_ramp_and_sanitize(float start_vol, float end_vol, int num_samples, float* buffer) {
+    if (num_samples == 0 || !buffer)
+        return;
+
+    if (std::abs(start_vol - end_vol) < 1e-5f) {
+        if (std::abs(start_vol - 1.0f) > 1e-5f) {
+            for (int i = 0; i < num_samples; ++i) {
+                buffer[i] = sanitize_audio_float(buffer[i] * start_vol);
+            }
+        } else {
+            for (int i = 0; i < num_samples; ++i) {
+                buffer[i] = sanitize_audio_float(buffer[i]);
+            }
+        }
+        return;
+    }
+
+    float step = (end_vol - start_vol) / (float)num_samples;
+    float current = start_vol;
+    for (int i = 0; i < num_samples; ++i) {
+        buffer[i] = sanitize_audio_float(buffer[i] * current);
+        current += step;
+    }
+}
+
 } // namespace resonance
 
 #endif // RESONANCE_MATH_H

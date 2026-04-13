@@ -2,13 +2,29 @@
 #include "resonance_math.h"
 #include "resonance_server.h"
 #include "resonance_utils.h"
+#include <chrono>
 #include <cstring>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
 using namespace godot;
+
+namespace {
+
+void pathing_copy_sh_coeffs(std::vector<float>& dst, const float* src, int sh_count) {
+    if (sh_count <= 0 || !src) {
+        dst.clear();
+        return;
+    }
+    const size_t n = static_cast<size_t>(sh_count);
+    dst.resize(n);
+    std::memcpy(dst.data(), src, n * sizeof(float));
+}
+
+} // namespace
 
 OcclusionData ResonanceServer::get_source_occlusion_data(int32_t handle) {
     OcclusionData result;
@@ -66,6 +82,24 @@ OcclusionData ResonanceServer::get_source_occlusion_data(int32_t handle) {
     return result;
 }
 
+void ResonanceServer::_set_reverb_params_likely_available_hint(int32_t handle, bool likely) {
+    std::lock_guard<std::mutex> lock(reverb_params_likely_available_mutex_);
+    reverb_params_likely_available_[handle] = likely;
+}
+
+void ResonanceServer::_clear_reverb_params_likely_available_hints() {
+    std::lock_guard<std::mutex> lock(reverb_params_likely_available_mutex_);
+    reverb_params_likely_available_.clear();
+}
+
+bool ResonanceServer::peek_reverb_params_likely_available(int32_t handle) const {
+    if (handle < 0)
+        return false;
+    std::lock_guard<std::mutex> lock(reverb_params_likely_available_mutex_);
+    auto it = reverb_params_likely_available_.find(handle);
+    return it != reverb_params_likely_available_.end() && it->second;
+}
+
 bool ResonanceServer::fetch_reverb_params(int32_t handle, IPLReflectionEffectParams& out_params) {
     if (handle < 0 || !_ctx())
         return false;
@@ -98,8 +132,10 @@ bool ResonanceServer::fetch_reverb_params(int32_t handle, IPLReflectionEffectPar
     std::unique_lock<std::mutex> lock(simulation_mutex, std::defer_lock);
     if (lock.try_lock()) {
         IPLSource src = source_manager.get_source(handle);
-        if (!src)
+        if (!src) {
+            _set_reverb_params_likely_available_hint(handle, false);
             return false;
+        }
         bool result = false;
         instrumentation_fetch_lock_ok.fetch_add(1, std::memory_order_relaxed);
         IPLSimulationOutputs outputs{};
@@ -157,6 +193,7 @@ bool ResonanceServer::fetch_reverb_params(int32_t handle, IPLReflectionEffectPar
                 reflection_cache_dirty_.store(true);
             }
         }
+        _set_reverb_params_likely_available_hint(handle, result);
         iplSourceRelease(&src);
         return result;
     }
@@ -226,7 +263,7 @@ bool ResonanceServer::fetch_pathing_params(int32_t handle, IPLPathEffectParams& 
                 out_entry.eqCoeffs[0] = outputs.pathing.eqCoeffs[0];
                 out_entry.eqCoeffs[1] = outputs.pathing.eqCoeffs[1];
                 out_entry.eqCoeffs[2] = outputs.pathing.eqCoeffs[2];
-                out_entry.sh_coeffs.assign(outputs.pathing.shCoeffs, outputs.pathing.shCoeffs + sh_count);
+                pathing_copy_sh_coeffs(out_entry.sh_coeffs, outputs.pathing.shCoeffs, sh_count);
                 out_entry.order = order;
                 out_entry.valid = true;
                 out_params = outputs.pathing;
@@ -237,7 +274,7 @@ bool ResonanceServer::fetch_pathing_params(int32_t handle, IPLPathEffectParams& 
                 entry.eqCoeffs[0] = outputs.pathing.eqCoeffs[0];
                 entry.eqCoeffs[1] = outputs.pathing.eqCoeffs[1];
                 entry.eqCoeffs[2] = outputs.pathing.eqCoeffs[2];
-                entry.sh_coeffs = out_entry.sh_coeffs;
+                pathing_copy_sh_coeffs(entry.sh_coeffs, outputs.pathing.shCoeffs, sh_count);
                 entry.order = order;
                 entry.valid = true;
                 pathing_cache_dirty_.store(true);
@@ -296,22 +333,44 @@ bool ResonanceServer::fetch_pathing_params(int32_t handle, IPLPathEffectParams& 
     return result;
 }
 
-void ResonanceServer::_worker_sync_fetch_caches() {
+void ResonanceServer::_worker_sync_fetch_caches(bool refresh_direct_outputs, bool refresh_reflection_outputs) {
     if (!_ctx() || !simulator)
         return;
+
+    uint64_t us_occ = 0;
+    uint64_t us_refl = 0;
+    uint64_t us_path = 0;
 
     std::vector<int32_t> handles;
     source_manager.get_all_handles(handles);
 
     std::vector<std::pair<int32_t, CachedOcclusionData>> occ_batch;
     occ_batch.reserve(handles.size());
+    std::vector<std::pair<int32_t, CachedParametricReverb>> reverb_batch;
+    reverb_batch.reserve(handles.size());
+    std::vector<std::pair<int32_t, CachedReflectionParams>> refl_batch;
+    refl_batch.reserve(handles.size());
+    std::vector<std::pair<int32_t, CachedPathingParams>> path_batch;
+    path_batch.reserve(handles.size());
+    std::vector<std::pair<int32_t, bool>> reverb_hint_batch;
+    reverb_hint_batch.reserve(handles.size());
+
+    std::unordered_set<int32_t> reflections_pending_snapshot;
+    if (refresh_reflection_outputs && _uses_parametric_or_hybrid()) {
+        std::lock_guard<std::mutex> lock(reflections_pending_mutex_);
+        reflections_pending_snapshot = reflections_pending_handles_;
+    }
+
+    const bool pathing_refresh = pathing_enabled && pathing_ran_this_tick.load(std::memory_order_acquire);
+    const bool reflections_have_run = reflections_have_run_once_.load(std::memory_order_acquire);
 
     for (int32_t handle : handles) {
         IPLSource src = source_manager.get_source(handle);
         if (!src)
             continue;
 
-        {
+        if (refresh_direct_outputs) {
+            const auto t0 = std::chrono::steady_clock::now();
             IPLSimulationOutputs direct_out{};
             iplSourceGetOutputs(src, IPL_SIMULATIONFLAGS_DIRECT, &direct_out);
             CachedOcclusionData cd{};
@@ -326,6 +385,8 @@ void ResonanceServer::_worker_sync_fetch_caches() {
             cd.data.distance_attenuation = direct_out.direct.distanceAttenuation;
             cd.valid = true;
             occ_batch.emplace_back(handle, std::move(cd));
+            const auto t1 = std::chrono::steady_clock::now();
+            us_occ += static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count());
         }
 
         bool allow_reverb_fetch = true;
@@ -333,15 +394,20 @@ void ResonanceServer::_worker_sync_fetch_caches() {
             if (max_rays == 0 && !probe_batch_registry_.has_any_batches())
                 allow_reverb_fetch = false;
         }
-        if (allow_reverb_fetch && _uses_parametric_or_hybrid() && !reflections_have_run_once_.load(std::memory_order_acquire))
+        if (allow_reverb_fetch && _uses_parametric_or_hybrid() && !reflections_have_run)
             allow_reverb_fetch = false;
-        if (allow_reverb_fetch && _uses_parametric_or_hybrid()) {
-            std::lock_guard<std::mutex> lock(reflections_pending_mutex_);
-            if (reflections_pending_handles_.count(handle) != 0)
-                allow_reverb_fetch = false;
+        if (allow_reverb_fetch && _uses_parametric_or_hybrid() && reflections_pending_snapshot.count(handle) != 0)
+            allow_reverb_fetch = false;
+
+        bool source_refl_sim = true;
+        {
+            auto it = source_outputs_reflections_.find(handle);
+            if (it != source_outputs_reflections_.end())
+                source_refl_sim = it->second;
         }
 
-        if (allow_reverb_fetch) {
+        if (refresh_reflection_outputs && allow_reverb_fetch && source_refl_sim) {
+            const auto t0 = std::chrono::steady_clock::now();
             IPLSimulationOutputs outputs{};
             if (_uses_parametric_or_hybrid()) {
                 outputs.reflections.type = IPL_REFLECTIONEFFECTTYPE_PARAMETRIC;
@@ -351,6 +417,7 @@ void ResonanceServer::_worker_sync_fetch_caches() {
             bool has_parametric = (outputs.reflections.reverbTimes[0] > 0 || outputs.reflections.reverbTimes[1] > 0 || outputs.reflections.reverbTimes[2] > 0);
             bool has_hybrid = (reflection_type == resonance::kReflectionHybrid && (has_convolution || outputs.reflections.reverbTimes[0] > 0));
             bool has_tan = (reflection_type == resonance::kReflectionTan && outputs.reflections.tanSlot >= 0 && _tan());
+            bool refl_hint = false;
             if (has_convolution || (reflection_type == resonance::kReflectionParametric && has_parametric) || has_hybrid || has_tan) {
                 IPLReflectionEffectParams out_params = outputs.reflections;
                 for (int i = 0; i < resonance::kReverbBandCount; i++) {
@@ -376,53 +443,56 @@ void ResonanceServer::_worker_sync_fetch_caches() {
                 if (reflection_type == resonance::kReflectionTan)
                     out_params.tanDevice = _tan();
                 if (reflection_type == resonance::kReflectionParametric && has_parametric) {
-                    std::lock_guard<std::mutex> c_lock(reverb_cache_mutex_);
+                    CachedParametricReverb cr{};
                     for (int i = 0; i < resonance::kReverbBandCount; i++) {
-                        reverb_param_cache_write_[handle].reverbTimes[i] = resonance::clamp_reverb_time(outputs.reflections.reverbTimes[i]);
-                        reverb_param_cache_write_[handle].eq[i] = outputs.reflections.eq[i];
+                        cr.reverbTimes[i] = resonance::clamp_reverb_time(outputs.reflections.reverbTimes[i]);
+                        cr.eq[i] = outputs.reflections.eq[i];
                     }
-                    reverb_param_cache_write_[handle].valid = true;
-                    reverb_cache_dirty_.store(true);
+                    cr.valid = true;
+                    reverb_batch.emplace_back(handle, std::move(cr));
                 }
                 if (_uses_convolution_or_hybrid_or_tan() && (has_convolution || has_hybrid || has_tan)) {
-                    std::lock_guard<std::mutex> c_lock(reflection_cache_mutex_);
-                    reflection_param_cache_write_[handle].params = out_params;
-                    reflection_param_cache_write_[handle].valid = true;
-                    reflection_cache_dirty_.store(true);
+                    CachedReflectionParams rp{};
+                    rp.params = out_params;
+                    rp.valid = true;
+                    refl_batch.emplace_back(handle, std::move(rp));
                 }
+                refl_hint = true;
             }
+            reverb_hint_batch.emplace_back(handle, refl_hint);
+            const auto t1 = std::chrono::steady_clock::now();
+            us_refl += static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count());
         }
 
-        // Pathing SH only changes after iplSimulatorRunPathing; skip GetOutputs+memcpy when this tick did not run pathing
-        // (Unity-style: audio reads last simulation results until the next interval update).
-        if (pathing_enabled && pathing_ran_this_tick.load(std::memory_order_acquire)) {
+        if (pathing_refresh) {
+            const auto t0 = std::chrono::steady_clock::now();
             IPLSimulationOutputs pout{};
             iplSourceGetOutputs(src, IPL_SIMULATIONFLAGS_PATHING, &pout);
             if (pout.pathing.shCoeffs != nullptr) {
                 int order = pout.pathing.order;
                 int sh_count = (order >= 0) ? (order + 1) * (order + 1) : 0;
                 if (sh_count > 0) {
-                    std::lock_guard<std::mutex> c_lock(pathing_cache_mutex_);
-                    CachedPathingParams& out_entry = pathing_param_output_[handle];
-                    out_entry.eqCoeffs[0] = pout.pathing.eqCoeffs[0];
-                    out_entry.eqCoeffs[1] = pout.pathing.eqCoeffs[1];
-                    out_entry.eqCoeffs[2] = pout.pathing.eqCoeffs[2];
-                    out_entry.sh_coeffs.assign(pout.pathing.shCoeffs, pout.pathing.shCoeffs + sh_count);
-                    out_entry.order = order;
-                    out_entry.valid = true;
-                    CachedPathingParams& entry = pathing_param_cache_write_[handle];
-                    entry.eqCoeffs[0] = pout.pathing.eqCoeffs[0];
-                    entry.eqCoeffs[1] = pout.pathing.eqCoeffs[1];
-                    entry.eqCoeffs[2] = pout.pathing.eqCoeffs[2];
-                    entry.sh_coeffs = out_entry.sh_coeffs;
-                    entry.order = order;
-                    entry.valid = true;
-                    pathing_cache_dirty_.store(true);
+                    CachedPathingParams pm{};
+                    pm.eqCoeffs[0] = pout.pathing.eqCoeffs[0];
+                    pm.eqCoeffs[1] = pout.pathing.eqCoeffs[1];
+                    pm.eqCoeffs[2] = pout.pathing.eqCoeffs[2];
+                    pathing_copy_sh_coeffs(pm.sh_coeffs, pout.pathing.shCoeffs, sh_count);
+                    pm.order = order;
+                    pm.valid = true;
+                    path_batch.emplace_back(handle, std::move(pm));
                 }
             }
+            const auto t1 = std::chrono::steady_clock::now();
+            us_path += static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count());
         }
 
         iplSourceRelease(&src);
+    }
+
+    if (!reverb_hint_batch.empty()) {
+        std::lock_guard<std::mutex> h_lock(reverb_params_likely_available_mutex_);
+        for (const auto& kv : reverb_hint_batch)
+            reverb_params_likely_available_[kv.first] = kv.second;
     }
 
     if (!occ_batch.empty()) {
@@ -432,6 +502,35 @@ void ResonanceServer::_worker_sync_fetch_caches() {
         }
         occlusion_cache_dirty_.store(true);
     }
+
+    if (!reverb_batch.empty()) {
+        std::lock_guard<std::mutex> c_lock(reverb_cache_mutex_);
+        for (auto& kv : reverb_batch) {
+            reverb_param_cache_write_[kv.first] = std::move(kv.second);
+        }
+        reverb_cache_dirty_.store(true);
+    }
+
+    if (!refl_batch.empty()) {
+        std::lock_guard<std::mutex> c_lock(reflection_cache_mutex_);
+        for (auto& kv : refl_batch) {
+            reflection_param_cache_write_[kv.first] = std::move(kv.second);
+        }
+        reflection_cache_dirty_.store(true);
+    }
+
+    if (!path_batch.empty()) {
+        std::lock_guard<std::mutex> c_lock(pathing_cache_mutex_);
+        for (auto& kv : path_batch) {
+            pathing_param_output_[kv.first] = kv.second;
+            pathing_param_cache_write_[kv.first] = kv.second;
+        }
+        pathing_cache_dirty_.store(true);
+    }
+
+    instrumentation_worker_us_sync_fetch_occlusion.store(us_occ, std::memory_order_relaxed);
+    instrumentation_worker_us_sync_fetch_reflections.store(us_refl, std::memory_order_relaxed);
+    instrumentation_worker_us_sync_fetch_pathing.store(us_path, std::memory_order_relaxed);
 }
 
 void ResonanceServer::set_pathing_deviation_callback(IPLDeviationCallback callback, void* userData) {

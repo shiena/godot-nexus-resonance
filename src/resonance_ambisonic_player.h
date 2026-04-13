@@ -98,11 +98,7 @@ class ResonanceAmbisonicInternalStream : public AudioStream {
     Array channel_streams;
     int ambisonic_order = 1;
 
-    // Backward compatibility: 1st order can use these 4 streams
-    Ref<AudioStream> stream_w;
-    Ref<AudioStream> stream_y;
-    Ref<AudioStream> stream_z;
-    Ref<AudioStream> stream_x;
+    void sync_channel_streams_size_to_order();
 
   public:
     void set_channel_streams(const Array& p_streams);
@@ -111,23 +107,12 @@ class ResonanceAmbisonicInternalStream : public AudioStream {
     void set_ambisonic_order(int p_order);
     int get_ambisonic_order() const;
 
-    // Deprecated: use channel_streams for 1st order. Kept for backward compatibility.
-    void set_stream_w(const Ref<AudioStream>& p_stream);
-    Ref<AudioStream> get_stream_w() const;
-
-    void set_stream_y(const Ref<AudioStream>& p_stream);
-    Ref<AudioStream> get_stream_y() const;
-
-    void set_stream_z(const Ref<AudioStream>& p_stream);
-    Ref<AudioStream> get_stream_z() const;
-
-    void set_stream_x(const Ref<AudioStream>& p_stream);
-    Ref<AudioStream> get_stream_x() const;
-
     virtual Ref<AudioStreamPlayback> _instantiate_playback() const override;
     virtual String _get_stream_name() const override { return "ResonanceAmbisonicInternal"; }
     virtual double _get_length() const override;
     virtual bool _is_monophonic() const override { return false; }
+
+    void _notification(int p_what);
 
   protected:
     static void _bind_methods();

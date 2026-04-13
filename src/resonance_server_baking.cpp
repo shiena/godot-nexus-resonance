@@ -451,6 +451,7 @@ int32_t ResonanceServer::load_probe_batch(Ref<ResonanceProbeData> data) {
 }
 
 void ResonanceServer::_clear_all_param_caches() {
+    _clear_reverb_params_likely_available_hints();
     {
         std::lock_guard<std::mutex> c_lock(reverb_cache_mutex_);
         reverb_param_cache_write_.clear();

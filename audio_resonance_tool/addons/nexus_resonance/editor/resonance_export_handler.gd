@@ -202,7 +202,7 @@ func _get_scene_paths_from_build(filter_exportable_static: bool = true) -> Dicti
 	return {"paths": PackedStringArray(paths_dict.keys()), "skipped": 0}
 
 
-## Exports static geometry from scene paths to .tres assets. Returns {exported: int, skipped: int}.
+## Exports static geometry from scene paths to ResonanceGeometryAsset files (.tres or .res per Project Settings). Returns {exported: int, skipped: int}.
 func _export_static_scenes_batch(paths: PackedStringArray) -> Dictionary:
 	var srv: Variant = get_resonance_server_or_show_error("export_static_scene_to_asset")
 	if srv == null:
@@ -222,7 +222,7 @@ func _export_static_scenes_batch(paths: PackedStringArray) -> Dictionary:
 			skipped += 1
 			continue
 		var base_name: String = str(path).get_file().get_basename()
-		var save_path: String = ResonancePaths.get_audio_data_dir() + base_name + "_static.tres"
+		var save_path: String = ResonancePaths.static_scene_asset_save_path(base_name)
 		ResonanceSceneUtils.warn_static_scenes_without_asset_covering_geometry(inst)
 		var err: int = srv.export_static_scene_to_asset(inst, save_path)
 		inst.queue_free()
@@ -232,40 +232,6 @@ func _export_static_scenes_batch(paths: PackedStringArray) -> Dictionary:
 			skipped += 1
 	if exported > 0:
 		editor_interface.get_resource_filesystem().scan()
-	return {"exported": exported, "skipped": skipped}
-
-
-## Exports static geometry from scene paths to OBJ+MTL. Returns {exported: int, skipped: int}.
-func _export_static_scenes_obj_batch(paths: PackedStringArray) -> Dictionary:
-	var srv: Variant = get_resonance_server_or_show_error("export_static_scene_to_obj")
-	if srv == null:
-		return {"exported": 0, "skipped": paths.size()}
-	if not ensure_audio_data_dir():
-		return {"exported": 0, "skipped": paths.size()}
-	var exported: int = 0
-	var skipped: int = 0
-	var obj_paths: PackedStringArray = []
-	for path in paths:
-		var scene: PackedScene = load(path) as PackedScene
-		if not scene:
-			skipped += 1
-			continue
-		var inst: Node = scene.instantiate()
-		if not ResonanceSceneUtils.scene_has_exportable_resonance_content(inst, "static"):
-			inst.queue_free()
-			skipped += 1
-			continue
-		var base_name: String = str(path).get_file().get_basename()
-		var save_base: String = ResonancePaths.get_audio_data_dir() + base_name + "_scene"
-		var err: int = srv.export_static_scene_to_obj(inst, save_base)
-		inst.queue_free()
-		if err == OK:
-			exported += 1
-			obj_paths.append(save_base + ".obj")
-		else:
-			skipped += 1
-	if exported > 0:
-		_request_obj_reimport(obj_paths)
 	return {"exported": exported, "skipped": skipped}
 
 
@@ -335,7 +301,7 @@ func export_active_scene(_unused: Variant = null) -> void:
 	var scene_path: String = root.get_scene_file_path()
 	if not scene_path.is_empty():
 		scene_name = scene_path.get_file().get_basename()
-	var save_path: String = ResonancePaths.get_audio_data_dir() + scene_name + "_static.tres"
+	var save_path: String = ResonancePaths.static_scene_asset_save_path(scene_name)
 	var static_scene_node: Node = ResonanceSceneUtils.find_resonance_static_scene(root)
 	var current_hash: int = (
 		srv.get_static_scene_hash(root) if srv.has_method("get_static_scene_hash") else 0
@@ -376,7 +342,7 @@ func export_active_scene(_unused: Variant = null) -> void:
 	)
 
 
-## Export static geometry of all currently open editor scenes to .tres assets.
+## Export static geometry of all currently open editor scenes to ResonanceGeometryAsset files (.tres or .res per Project Settings).
 func export_all_open_scenes(_unused: Variant = null) -> void:
 	var open_scenes: PackedStringArray = editor_interface.get_open_scenes()
 	if open_scenes.is_empty():
@@ -393,28 +359,6 @@ func export_all_open_scenes(_unused: Variant = null) -> void:
 				tr(UIStrings.WARN_NO_SCENES_EXPORTED)
 				+ " "
 				+ (tr(UIStrings.INFO_SCENES_FILTERED) % result.skipped)
-			)
-		)
-	else:
-		_show_warning(tr(UIStrings.WARN_NO_SCENES_EXPORTED))
-
-
-## Export static geometry of all scenes in main scene tree to .tres assets.
-func export_all_scenes_in_build(_unused: Variant = null) -> void:
-	var build_data: Dictionary = _get_scene_paths_from_build()
-	var paths: PackedStringArray = build_data.paths
-	var skipped: int = build_data.skipped
-	var result: Dictionary = _export_static_scenes_batch(paths)
-	if result.exported > 0:
-		ResonanceEditorDialogs.show_success_toast(
-			editor_interface, tr(UIStrings.INFO_ALL_SCENES_IN_BUILD_EXPORTED) % result.exported
-		)
-	elif skipped > 0:
-		_show_warning(
-			(
-				tr(UIStrings.WARN_NO_SCENES_EXPORTED)
-				+ " "
-				+ (tr(UIStrings.INFO_SCENES_FILTERED) % skipped)
 			)
 		)
 	else:
@@ -452,28 +396,6 @@ func export_scene_obj(_unused: Variant = null) -> void:
 	ResonanceEditorDialogs.show_success_toast(
 		editor_interface, tr(UIStrings.INFO_SCENE_OBJ_EXPORTED) % (save_base + ".obj")
 	)
-
-
-## Export static geometry from all scenes in the main scene tree to OBJ+MTL.
-func export_all_scenes_obj(_unused: Variant = null) -> void:
-	var build_data: Dictionary = _get_scene_paths_from_build()
-	var paths: PackedStringArray = build_data.paths
-	var skipped: int = build_data.skipped
-	var result: Dictionary = _export_static_scenes_obj_batch(paths)
-	if result.exported > 0:
-		ResonanceEditorDialogs.show_success_toast(
-			editor_interface, tr(UIStrings.INFO_ALL_SCENES_OBJ_EXPORTED) % result.exported
-		)
-	elif skipped > 0:
-		_show_warning(
-			(
-				tr(UIStrings.WARN_NO_SCENES_EXPORTED)
-				+ " "
-				+ (tr(UIStrings.INFO_SCENES_FILTERED) % skipped)
-			)
-		)
-	else:
-		_show_warning(tr(UIStrings.WARN_NO_SCENES_EXPORTED))
 
 
 ## Export all ResonanceDynamicGeometry nodes in active scene to mesh assets.
@@ -595,7 +517,10 @@ func list_probe_data_files() -> PackedStringArray:
 	d.list_dir_begin()
 	var name_str: String = d.get_next()
 	while name_str != "":
-		if name_str.get_extension().to_lower() == "tres" and "_baked_probes" in name_str:
+		var ext_probe := name_str.get_extension().to_lower()
+		if (ext_probe == "tres" or ext_probe == "res") and (
+			"_batch" in name_str or "_baked_probes" in name_str
+		):
 			out.append(logical_dir + name_str)
 		name_str = d.get_next()
 	d.list_dir_end()

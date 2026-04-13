@@ -152,6 +152,41 @@ void IPLCALL ResonanceGodotPhysicsSceneBridge::any_hit_callback(const IPLRay* ra
     *occluded = self->trace_any(*ray, min_distance, max_distance) ? 1 : 0;
 }
 
+void IPLCALL ResonanceGodotPhysicsSceneBridge::batched_closest_hit_callback(IPLint32 num_rays, const IPLRay* rays,
+                                                                            const IPLfloat32* min_distances, const IPLfloat32* max_distances,
+                                                                            IPLHit* hits, void* user_data) {
+    auto* self = static_cast<ResonanceGodotPhysicsSceneBridge*>(user_data);
+    if (!hits || num_rays <= 0)
+        return;
+    if (!self || !rays || !min_distances || !max_distances) {
+        for (IPLint32 i = 0; i < num_rays; ++i)
+            fill_miss(&hits[i]);
+        return;
+    }
+    for (IPLint32 i = 0; i < num_rays; ++i)
+        self->trace_closest(rays[i], min_distances[i], max_distances[i], &hits[i]);
+}
+
+void IPLCALL ResonanceGodotPhysicsSceneBridge::batched_any_hit_callback(IPLint32 num_rays, const IPLRay* rays,
+                                                                        const IPLfloat32* min_distances, const IPLfloat32* max_distances,
+                                                                        IPLuint8* occluded, void* user_data) {
+    auto* self = static_cast<ResonanceGodotPhysicsSceneBridge*>(user_data);
+    if (!occluded || num_rays <= 0)
+        return;
+    if (!self || !rays || !min_distances || !max_distances) {
+        for (IPLint32 i = 0; i < num_rays; ++i)
+            occluded[i] = 1;
+        return;
+    }
+    for (IPLint32 i = 0; i < num_rays; ++i) {
+        if (max_distances[i] < min_distances[i]) {
+            occluded[i] = 1;
+            continue;
+        }
+        occluded[i] = self->trace_any(rays[i], min_distances[i], max_distances[i]) ? 1 : 0;
+    }
+}
+
 void ResonanceGodotPhysicsSceneBridge::trace_closest(const IPLRay& ray, float min_distance, float max_distance, IPLHit* out_hit) {
     fill_miss(out_hit);
     if (max_distance <= min_distance)

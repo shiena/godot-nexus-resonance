@@ -3,7 +3,7 @@ extends ResourceFormatSaver
 class_name ResonanceProbeDataSaver
 
 ## Custom ResourceFormatSaver for ResonanceProbeData (GDExtension class).
-## Always saves as .tres (text format) for version control / diffing.
+## Saves [.tres] and [.bak] paths as custom text (version-control friendly). [.res] uses the engine saver (Project Settings).
 ##
 ## Concurrency: Atomic save via tmp file + DirAccess.rename_absolute. Avoid simultaneous saves
 ## on the same .tres path (e.g. Bake pipeline + manual ResourceSaver.save) to prevent race conditions.
@@ -14,12 +14,14 @@ func _recognize(resource: Resource) -> bool:
 
 
 func _get_recognized_extensions(resource: Resource) -> PackedStringArray:
-	return PackedStringArray(["tres"])
+	return PackedStringArray(["tres", "bak"])
 
 
 func _save(resource: Resource, path: String, _flags: int) -> Error:
 	if resource.get_class() != "ResonanceProbeData":
 		return ERR_INVALID_PARAMETER
+	if path.get_extension().to_lower() == "res":
+		return ResourceSaver.save(resource, path, _flags)
 	var data: PackedByteArray = resource.get("data")
 	if data == null:
 		data = PackedByteArray()

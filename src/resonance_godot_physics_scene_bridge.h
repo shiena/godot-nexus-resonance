@@ -26,6 +26,10 @@ class ResonanceGodotPhysicsSceneBridge {
                                              void* user_data);
     static void IPLCALL any_hit_callback(const IPLRay* ray, IPLfloat32 min_distance, IPLfloat32 max_distance, IPLuint8* occluded,
                                          void* user_data);
+    static void IPLCALL batched_closest_hit_callback(IPLint32 num_rays, const IPLRay* rays, const IPLfloat32* min_distances,
+                                                     const IPLfloat32* max_distances, IPLHit* hits, void* user_data);
+    static void IPLCALL batched_any_hit_callback(IPLint32 num_rays, const IPLRay* rays, const IPLfloat32* min_distances,
+                                                 const IPLfloat32* max_distances, IPLuint8* occluded, void* user_data);
 
   private:
     void trace_closest(const IPLRay& ray, float min_distance, float max_distance, IPLHit* out_hit);

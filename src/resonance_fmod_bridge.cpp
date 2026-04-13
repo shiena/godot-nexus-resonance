@@ -144,6 +144,7 @@ bool ResonanceFMODBridge::init_bridge() {
     IPLContext ctx = server->get_context_handle();
     IPLHRTF hrtf = server->get_hrtf_handle();
     const IPLSimulationSettings* sim_settings = server->get_simulation_settings_for_fmod();
+    server->ensure_fmod_reverb_source();
     IPLSource reverb_src = nullptr;
     int32_t reverb_handle = server->get_fmod_reverb_source_handle();
     if (reverb_handle >= 0) {

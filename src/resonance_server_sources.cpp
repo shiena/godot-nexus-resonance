@@ -37,10 +37,16 @@ int32_t ResonanceServer::create_source_handle(Vector3 pos, float radius) {
         reflections_pending_handles_.insert(handle);
     }
     _update_source_internal(src, handle, pos, radius, Vector3(0, 0, -1), Vector3(0, 1, 0), 0.0f, 1.0f, true, false, 1.0f,
-                            false, false, resonance::kDefaultOcclusionSamples, resonance::kDefaultTransmissionRays, 0, Vector3(0, 0, 0), 0.0f,
+                            false, false, resonance::kDefaultOcclusionSamples, max_transmission_surfaces, 0, Vector3(0, 0, 0), 0.0f,
                             -1, -1, -1, -1, true, true);
     iplSourceRelease(&src);
     return handle;
+}
+
+void ResonanceServer::ensure_fmod_reverb_source() {
+    if (fmod_reverb_source_handle_ >= 0)
+        return;
+    fmod_reverb_source_handle_ = create_source_handle(Vector3(0, 0, 0), 1.0f);
 }
 
 void ResonanceServer::_destroy_source_handle_under_simulation_lock(int32_t handle) {
@@ -59,6 +65,7 @@ void ResonanceServer::_destroy_source_handle_under_simulation_lock(int32_t handl
     }
     _source_update_snapshot_.erase(handle);
     realtime_reflection_log_once_handles_.erase(handle);
+    source_outputs_reflections_.erase(handle);
     source_manager.remove_source(handle);
 }
 
@@ -78,6 +85,10 @@ void ResonanceServer::destroy_source_handle(int32_t handle) {
         std::lock_guard<std::mutex> c_lock(reflection_cache_mutex_);
         reflection_param_cache_write_.erase(handle);
         reflection_cache_dirty_.store(true);
+    }
+    {
+        std::lock_guard<std::mutex> h_lock(reverb_params_likely_available_mutex_);
+        reverb_params_likely_available_.erase(handle);
     }
     {
         std::lock_guard<std::mutex> c_lock(pathing_cache_mutex_);
@@ -365,6 +376,11 @@ void ResonanceServer::_update_source_internal(IPLSource src, int32_t handle, Vec
     snap.valid = true;
     IPLSimulationInputs inputs{};
     bool enable_reflections = (reflections_enabled_override == -1) ? true : (reflections_enabled_override != 0);
+    if (enable_reflections && baked_data_variation == -1 && realtime_reflection_max_distance_m > 0.0f) {
+        Vector3 lip = ResonanceUtils::to_godot_vector3(listener_coords_[0].origin);
+        if (pos.distance_to(lip) > static_cast<real_t>(realtime_reflection_max_distance_m))
+            enable_reflections = false;
+    }
     bool enable_pathing = (pathing_enabled_override == -1) ? pathing_enabled : (pathing_enabled_override != 0);
     IPLSimulationFlags sim_flags = static_cast<IPLSimulationFlags>(IPL_SIMULATIONFLAGS_DIRECT);
     if (enable_reflections)
@@ -480,6 +496,7 @@ void ResonanceServer::_update_source_internal(IPLSource src, int32_t handle, Vec
         if (path_batch) {
             sim_flags = static_cast<IPLSimulationFlags>(sim_flags | IPL_SIMULATIONFLAGS_PATHING);
             inputs.pathingProbes = path_batch;
+            // Pathing spatial order follows ambisonic_order (same as realtime reflection simulation maxOrder / shared order).
             inputs.pathingOrder = ambisonic_order;
             inputs.visRadius = pathing_vis_radius;
             inputs.visThreshold = pathing_vis_threshold;
@@ -498,6 +515,8 @@ void ResonanceServer::_update_source_internal(IPLSource src, int32_t handle, Vec
         }
     }
     inputs.flags = sim_flags;
+
+    source_outputs_reflections_[handle] = enable_reflections;
 
     iplSourceSetInputs(src, sim_flags, &inputs);
 

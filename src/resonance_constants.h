@@ -8,7 +8,7 @@ namespace resonance {
 
 /// Version string (centralized; override via NEXUS_RESONANCE_VERSION when building)
 #ifndef NEXUS_RESONANCE_VERSION
-#define NEXUS_RESONANCE_VERSION "0.9.11"
+#define NEXUS_RESONANCE_VERSION "0.9.12"
 #endif
 constexpr const char* kVersion = NEXUS_RESONANCE_VERSION;
 
@@ -39,6 +39,8 @@ constexpr const char* kProjectSettingsResonancePrefix = "nexus/resonance/";
 /// Default baked audio / probe data directory (Project Settings; legacy `bake/output_dir` still read as fallback).
 constexpr const char* kProjectSettingsBakeDefaultOutputDirectory = "bake/default_output_directory";
 constexpr const char* kProjectSettingsBakeOutputDirectoryLegacy = "bake/output_dir";
+/// Editor: probe batch file format (`0` = .tres, `1` = .res). See `resonance_probe_data_save_extension_from_settings()`.
+constexpr const char* kProjectSettingsProbeDataFormat = "export/probe_data_format";
 
 /// Baker default parameters (ProjectSettings: bake_num_* / pathing / reflection type; ambisonics order comes from ResonanceBakeConfig or set_bake_params only)
 constexpr int kBakeDefaultNumRays = 4096;
@@ -67,6 +69,19 @@ constexpr float kBakePathingDefaultThreshold = 0.1f;
 /// Default fraction of CPU cores for Steam Audio simulation threads (ResonanceRuntimeConfig.simulation_cpu_cores_percent).
 constexpr float kDefaultSimulationCpuCoresPercent = 0.15f;
 
+/// IPLSimulationSettings::rayBatchSize for IPL_SCENETYPE_CUSTOM (Godot physics). >1 registers batched trace callbacks.
+constexpr int kPhysicsRayBatchSizeMin = 1;
+constexpr int kPhysicsRayBatchSizeMax = 256;
+constexpr int kDefaultPhysicsRayBatchSize = 16;
+
+inline int clamp_physics_ray_batch_size(int v) {
+    if (v < kPhysicsRayBatchSizeMin)
+        return kPhysicsRayBatchSizeMin;
+    if (v > kPhysicsRayBatchSizeMax)
+        return kPhysicsRayBatchSizeMax;
+    return v;
+}
+
 /// Simulator shared inputs (duration and irradianceMinDistance)
 constexpr float kSimulatorSharedInputsDuration = 2.0f;
 constexpr float kSimulatorIrradianceMinDistance = 0.1f;
@@ -93,6 +108,15 @@ constexpr int kPlayerNoReverbWarnThreshold = 200;
 constexpr float kAmbisonicWChannelScale = 0.7071067811865475f;
 /// Valid Ambisonic channel counts: 4 (1st order), 9 (2nd), 16 (3rd)
 inline bool is_valid_ambisonic_channel_count(int n) { return n == 4 || n == 9 || n == 16; }
+/// Ambisonic channel count (order+1)^2 for order in 1..3 (Steam Audio HOA)
+inline int ambisonic_num_channels_for_order(int order) {
+    int o = order;
+    if (o < 1)
+        o = 1;
+    if (o > 3)
+        o = 3;
+    return (o + 1) * (o + 1);
+}
 /// Epsilon for degenerate vector check (avoid division by near-zero)
 constexpr float kDegenerateVectorEpsilon = 1e-8f;
 /// Squared epsilon for length_sq comparisons (kDegenerateVectorEpsilon^2)
@@ -165,6 +189,11 @@ constexpr int kReflectionConvolution = 0;
 constexpr int kReflectionParametric = 1;
 constexpr int kReflectionHybrid = 2;
 constexpr int kReflectionTan = 3;
+
+/// Default reflections mode for players with reflections_type Use Global (config default_reflections_mode).
+constexpr int kDefaultReflectionsBaked = 0;
+/// Ray-traced reflections for Use Global sources (baked_data_variation -1).
+constexpr int kDefaultReflectionsRealtime = 1;
 
 /// Baked reflection types (ResonanceProbeData baked_reflection_type)
 constexpr int kBakedReflectionConvolution = 0;

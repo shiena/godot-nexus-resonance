@@ -1,0 +1,112 @@
+{
+    "asset_4d86121f-ee90-4b55-b3df-6b5954278a0d": {
+        "relative_path": "props/assets/SM_Wall_Inner_05dm_01/SM_Wall_Inner_05dm_01.gltf",
+        "content_hash": "9929fc9892e88c156a12709dcb05a23adedf32be24dbc069a7fc5ce4ccc3ea19",
+        "source_blend_file": "Walls_Collection.blend"
+    },
+    "asset_29c2e481-ded5-4ac6-a07c-72382d3bef9d": {
+        "relative_path": "props/assets/SM_Wall_Inner_10dm_01/SM_Wall_Inner_10dm_01.gltf",
+        "content_hash": "b90c1401eb7e01dcb4c7ee24216f62b7571ae5d975844e93878fc6689c450595",
+        "source_blend_file": "Walls_Collection.blend"
+    },
+    "asset_67b911fb-56fe-42c8-83f1-d21bc361c772": {
+        "relative_path": "props/assets/SM_Wall_Inner_20dm_01/SM_Wall_Inner_20dm_01.gltf",
+        "content_hash": "67c19abdd7167e97e83e001ae05b00a427c209401f054c91bfeba1acc49d174b",
+        "source_blend_file": "Walls_Collection.blend"
+    },
+    "asset_586044cb-7685-47aa-a73f-c71d60dcba26": {
+        "relative_path": "props/assets/SM_Wall_Inner_20dm_Arch_01/SM_Wall_Inner_20dm_Arch_01.gltf",
+        "content_hash": "132c519c82dc55c1de2ba9a88b9dd15b3acc3214e38c4fc24720708231d19058",
+        "source_blend_file": "Walls_Collection.blend"
+    },
+    "asset_7542a4d8-e9a7-4821-8063-b670ece4bbb3": {
+        "relative_path": "props/assets/SM_Wall_Inner_20dm_Door_01/SM_Wall_Inner_20dm_Door_01.gltf",
+        "content_hash": "9a216b0e68aeb2f18699dda8b817ee7a8ee565cd1068f4bf0ce7306ac07e1764",
+        "source_blend_file": "Walls_Collection.blend"
+    },
+    "asset_360173ab-462f-4e59-a3b0-928f03d80b05": {
+        "relative_path": "props/assets/SM_Wall_Inner_40dm_01/SM_Wall_Inner_40dm_01.gltf",
+        "content_hash": "608f901615fd23078c06fb4012f3d0d97bc226cca2ae7876971405d5acbdf554",
+        "source_blend_file": "Walls_Collection.blend"
+    },
+    "asset_ec1c927c-998e-4da6-9b46-c9a32fddd2ed": {
+        "relative_path": "props/assets/SM_Wall_Inner_40dm_Door_01/SM_Wall_Inner_40dm_Door_01.gltf",
+        "content_hash": "495330109da6f5ec09214bb33b42692f036c53369e2e58e097b70d1827f8d371",
+        "source_blend_file": "Walls_Collection.blend"
+    },
+    "asset_24ab32f7-c065-4617-8839-9124e271a145": {
+        "relative_path": "props/assets/SM_Wall_Inner_80dm_01/SM_Wall_Inner_80dm_01.gltf",
+        "content_hash": "aaf285dcf6802195d2a85d5e4cd2be706a0902678e7bb88cc697859c8da1e8e9",
+        "source_blend_file": "Walls_Collection.blend"
+    },
+    "asset_9321e65d-425b-4711-8e7a-6d638ac7211b": {
+        "relative_path": "props/assets/SM_Wall_Inner_80dm_Arch_01/SM_Wall_Inner_80dm_Arch_01.gltf",
+        "content_hash": "f23ca57e776a930e1766f3b99a9ad769730be1d2602d54aa8fda84963ba9c373",
+        "source_blend_file": "Walls_Collection.blend"
+    },
+    "asset_5bed1f45-498e-4304-abdd-fa894013a68e": {
+        "relative_path": "props/assets/SM_Wall_Inner_80dm_Door_01/SM_Wall_Inner_80dm_Door_01.gltf",
+        "content_hash": "6d7471f4b06dc500b86bc7406119f083fc015e19e6013dee6ad19faeac878e1a",
+        "source_blend_file": "Walls_Collection.blend"
+    },
+    "asset_30ac08f4-1c0e-480d-a540-b83a02ac2adb": {
+        "relative_path": "props/assets/SM_Wall_Inner_End_01/SM_Wall_Inner_End_01.gltf",
+        "content_hash": "44b3c6179c78daa4254c6e20d09b16da715ae1c63547205ce4cbc31bb87c00dc",
+        "source_blend_file": "Walls_Collection.blend"
+    },
+    "asset_bc057b9a-96f6-4447-a09f-fb91598d3b43": {
+        "relative_path": "props/assets/SM_Wall_Inner_LCorner_01/SM_Wall_Inner_LCorner_01.gltf",
+        "content_hash": "f112d8d121619471c2e8cd01380dbb1f405e7378d5a316105e843151e975331a",
+        "source_blend_file": "Walls_Collection.blend"
+    },
+    "asset_19899808-b943-487a-a7c6-7e47972f0700": {
+        "relative_path": "props/assets/SM_Wall_Inner_TCorner_01/SM_Wall_Inner_TCorner_01.gltf",
+        "content_hash": "985455b804511f226ca3829757ef20fa098ef1cb66659d93203a24119f99cba8",
+        "source_blend_file": "Walls_Collection.blend"
+    },
+    "asset_06ea0b68-f491-4c09-b0c5-60bed1bbd77b": {
+        "relative_path": "props/assets/SM_Wall_Inner_XCorner_01/SM_Wall_Inner_XCorner_01.gltf",
+        "content_hash": "98db3a5a51dff90c0c2bb9e4bb47006311aa9631992b91018d841f1f2bd0d5b1",
+        "source_blend_file": "Walls_Collection.blend"
+    },
+    "asset_93f53a81-58ad-4bf6-9f22-fbf7f8d6fe3e": {
+        "relative_path": "props/assets/SM_Door/SM_Door.gltf",
+        "content_hash": "32289fa682ccff9de331cd3117b5267d0de6fa3255a1f221bca4ad8250643402",
+        "source_blend_file": "door.blend"
+    },
+    "asset_83418bbe-40bf-480c-8315-bdab1361f28b": {
+        "relative_path": "props/assets/SM_Radio/SM_Radio.gltf",
+        "content_hash": "9bb823526e1d7a45a122e4f6d69eccd338ca4f3d9354eff59dbd86db6b1cb00c",
+        "source_blend_file": "radio.blend"
+    },
+    "asset_5a7ea4d9-3dc3-4c7e-9c11-5277ae88fcb7": {
+        "relative_path": "props/assets/SM_kommode/SM_kommode.gltf",
+        "content_hash": "feeff46564ae134dc523c6ff87c07efb35a10ea11bbb4594b7a5a2e5d0c3be74",
+        "source_blend_file": "SM_kommode.blend"
+    },
+    "asset_a4e5ccb0-4461-4107-ab9d-3a8842a7b1c7": {
+        "relative_path": "props/assets/SM_Wall_Outer_20dm_01/SM_Wall_Outer_20dm_01.gltf",
+        "content_hash": "2e3047bb1dc592a265d5d316ee69dbfc00180dfbcb92ec6dda8b68aaac19edc6",
+        "source_blend_file": "Walls_Collection.blend"
+    },
+    "asset_063a0af3-c2b3-424f-a723-a52d35bafb2b": {
+        "relative_path": "props/assets/SM_Wall_Outer_20dm_Door_01/SM_Wall_Outer_20dm_Door_01.gltf",
+        "content_hash": "94d0bbe3ea9056ef9b762e630b515e2bc8c33a34768585a81cc5884b46f774ae",
+        "source_blend_file": "Walls_Collection.blend"
+    },
+    "asset_43ed1001-9b94-4ccd-8b08-7f5e0a4f3dd2": {
+        "relative_path": "props/assets/SM_Wall_Outer_20dm_Win_01/SM_Wall_Outer_20dm_Win_01.gltf",
+        "content_hash": "8020ebad6a6107a4465f2027e501e8257dc2da72d7985fe3de46edeae2241314",
+        "source_blend_file": "Walls_Collection.blend"
+    },
+    "asset_43e119f5-a1a0-446b-b816-117f51652ee8": {
+        "relative_path": "props/assets/SM_Wall_Outer_20dm_Win_02/SM_Wall_Outer_20dm_Win_02.gltf",
+        "content_hash": "9bd79cd01775993181bf840f55129702f02c850d4f5a18c77414f3dec4d4145b",
+        "source_blend_file": "Walls_Collection.blend"
+    },
+    "asset_dcd9eb12-fb8c-481c-92f3-d1d2237ae6a2": {
+        "relative_path": "props/skeletal_assets/CH_Clown/CH_Clown.gltf",
+        "content_hash": "99ce97c75e09b1bb069867c3aedd1537aa041e94966a9544233d6f026e258555",
+        "source_blend_file": "clown.blend"
+    }
+}

@@ -526,7 +526,8 @@ void ResonanceProbeVolume::_prepare_and_execute_bake(const PackedVector3Array* p
                 base_dir += "/";
             }
         }
-        String path = base_dir + scene_name + "_" + node_name + "_baked_probes.tres";
+        const String ext = resonance_probe_data_save_extension_from_settings();
+        String path = base_dir + scene_name + "_" + node_name + "_batch." + ext;
         String dir = path.get_base_dir();
         if (!dir.is_empty() && ps) {
             String abs_dir = ps->globalize_path(dir);

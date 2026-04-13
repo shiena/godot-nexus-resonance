@@ -33,8 +33,9 @@ func test_recognize_rejects_null():
 func test_get_recognized_extensions():
 	var saver = load("res://addons/nexus_resonance/editor/resonance_probe_data_saver.gd").new()
 	var exts = saver._get_recognized_extensions(null)
-	assert_eq(exts.size(), 1, "should have 1 extension")
+	assert_eq(exts.size(), 2, "should have tres + bak")
 	assert_true(exts.has("tres"), "should recognize tres")
+	assert_true(exts.has("bak"), "should recognize bak")
 
 func test_save_writes_valid_tres():
 	if not ClassDB.class_exists("ResonanceProbeData"):

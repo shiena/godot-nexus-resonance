@@ -65,6 +65,9 @@ class ResonanceProbeData : public Resource {
     Dictionary get_bake_layer_info() const;
 };
 
+/// Returns [code]res[/code] or [code]tres[/code] from ProjectSettings [code]nexus/resonance/export/probe_data_format[/code].
+String resonance_probe_data_save_extension_from_settings();
+
 } // namespace godot
 
 #endif

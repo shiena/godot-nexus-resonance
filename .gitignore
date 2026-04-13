@@ -27,3 +27,6 @@ src/gen/
 
 # GDExtension binaries (built by CI, distributed via GitHub Releases)
 audio_resonance_tool/addons/nexus_resonance/bin/
+
+# GUT sidecar mesh test output (ResourceSaver)
+audio_resonance_tool/test/unit/_gut_reso_sidecar/

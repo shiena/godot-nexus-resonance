@@ -50,7 +50,54 @@ var _runtime: ResonanceRuntimeConfig
 @export var performance_overlay_toggle_key: Key = KEY_F2
 ## Key to toggle player/source ray visualization (occlusion + reflection rays in engine). Requires ResonanceServer debug support.
 @export var player_overlay_toggle_key: Key = KEY_F3
+## Debugger [Performance] custom monitors from Nexus (main/worker/audio µs). [b]Off[/b] removes all; [b]Standard[/b] is default (~12 graphs). [b]Full[/b] matches pre-0.9.5 verbosity and enables per-phase main/physics timing in [method _process].
+@export_enum(
+	"Off:0",
+	"Core:1",
+	"Standard:2",
+	"Full:3",
+)
+var performance_custom_monitors: int = 2:
+	get:
+		return _performance_custom_monitors
+	set(v):
+		var nv := clampi(v, ResonanceRuntimePerfMonitors.PERF_MONITORS_OFF, ResonanceRuntimePerfMonitors.PERF_MONITORS_FULL)
+		if _performance_custom_monitors == nv:
+			return
+		_performance_custom_monitors = nv
+		_refresh_performance_custom_monitors_if_ready()
 
+## Caps the Steam Audio IPL context SIMD level (older CPUs / crash debugging). **Default** lets Phonon pick the highest usable set. Lower sets trade some speed for broader CPU support.
+@export_enum(
+	"Default:-1",
+	"AVX-512:0",
+	"AVX2:1",
+	"AVX:2",
+	"SSE4:3",
+	"SSE2:4"
+)
+var context_simd_level: int = -1:
+	get:
+		return _context_simd_level
+	set(v):
+		if _context_simd_level == v:
+			return
+		_context_simd_level = v
+		_warn_restart_if_needed()
+
+## Enables Steam Audio [code]IPL_CONTEXTFLAGS_VALIDATION[/code]: extra API checks and more console warnings. For diagnosing integration issues only; hurts performance.
+@export var context_validation: bool = false:
+	get:
+		return _context_validation
+	set(v):
+		if _context_validation == v:
+			return
+		_context_validation = v
+		_warn_restart_if_needed()
+
+var _performance_custom_monitors: int = 2
+var _context_simd_level: int = -1
+var _context_validation: bool = false
 var _enable_debug: bool = false
 var _debug_overlay_visible: bool = false
 var _performance_overlay_visible: bool = false
@@ -67,10 +114,60 @@ var activator_instrumentation: Dictionary:
 	get:
 		return _reverb_activator.instrumentation if _reverb_activator else {}
 
-## Duration of the last [method _process] work in microseconds (activator, reinit, and when not Custom: viewport sync + [method ResonanceServer.tick]). Custom scene type runs [method ResonanceServer.tick] in [method _physics_process]; see [member runtime_physics_tick_usec].
+## Duration of the last [method _process] work in microseconds (sum of sub-phases below, including any overhead between them). See [code]docs/NEXUS_PERFORMANCE_TUNING.md[/code] for comparison with worker totals.
 var main_thread_last_tick_usec: int = 0
-## When [method ResonanceServer.uses_custom_ray_tracer] is true: microseconds for the last [method _physics_process] block (viewport sync, tick, flush). Otherwise 0.
+## Last [method _process]: [method _fill_activator_buffer] only.
+var main_thread_activator_usec: int = 0
+## Last [method _process]: audio engine reinit when the reverb bus reports a new frame size ([code]consume_pending_reinit_frame_size[/code]). Usually 0.
+var main_thread_reinit_usec: int = 0
+## Last [method _process]: [method _apply_resonance_viewport_to_server] (Embree/Default path only; 0 when Custom tracer — work moves to [method _physics_process]).
+var main_thread_viewport_usec: int = 0
+## Last [method _process]: [method ResonanceServer.tick] (0 when Custom tracer).
+var main_thread_tick_usec: int = 0
+## Last [method _process]: [method ResonanceServer.flush_pending_source_updates] if present (0 when Custom tracer).
+var main_thread_flush_usec: int = 0
+## When [method ResonanceServer.uses_custom_ray_tracer] is true: microseconds for the last [method _physics_process] block (viewport + tick + flush). See also split fields below. Otherwise 0.
 var runtime_physics_tick_usec: int = 0
+## Last [method _physics_process] (Custom tracer): viewport sync only.
+var runtime_physics_viewport_usec: int = 0
+## Last [method _physics_process] (Custom tracer): [method ResonanceServer.tick].
+var runtime_physics_server_tick_usec: int = 0
+## Last [method _physics_process] (Custom tracer): [method ResonanceServer.flush_pending_source_updates] if present.
+var runtime_physics_flush_usec: int = 0
+
+## Cached viewport sync: skip redundant [code]set_physics_world[/code] / exclude RIDs / camera [code]update_listener[/code] when unchanged.
+var _vp_sync_cache_valid: bool = false
+var _vp_sync_last_world_rid: RID = RID()
+var _vp_sync_last_exclude_ids: PackedInt64Array = PackedInt64Array()
+var _vp_sync_last_cam_xform: Transform3D = Transform3D.IDENTITY
+## True after a frame had nodes in [code]resonance_listener[/code]; cleared when using camera fallback so removal triggers a sync.
+var _vp_sync_last_had_listener_nodes: bool = false
+
+
+func _reset_viewport_sync_cache() -> void:
+	_vp_sync_cache_valid = false
+	_vp_sync_last_world_rid = RID()
+	_vp_sync_last_exclude_ids = PackedInt64Array()
+	_vp_sync_last_cam_xform = Transform3D.IDENTITY
+	_vp_sync_last_had_listener_nodes = false
+
+
+func _sorted_rid_int_ids(rids: Array) -> PackedInt64Array:
+	var ids: Array = []
+	for r in rids:
+		if r is RID and r.is_valid():
+			ids.append(r.get_id())
+	ids.sort()
+	var out := PackedInt64Array()
+	out.resize(ids.size())
+	for i in ids.size():
+		out[i] = ids[i]
+	return out
+
+
+func _camera_listener_xform_changed(cam: Camera3D) -> bool:
+	var xf := cam.global_transform
+	return not xf.origin.is_equal_approx(_vp_sync_last_cam_xform.origin) or not xf.basis.is_equal_approx(_vp_sync_last_cam_xform.basis)
 
 
 ## Returns bake params from first Probe Volume with bake_config, or default. Used before init so pathing visibility params are set.
@@ -93,15 +190,25 @@ func get_bus_effective() -> StringName:
 	return _get_bus_effective()
 
 
+## Re-applies [ResonanceRuntimeBus] routing ([code]set_bus[/code] / [code]set_reverb_split_output[/code]) to every
+## node in group [code]resonance_player[/code]. [ResonanceRuntime] runs this once at startup; spawned
+## [ResonancePlayer] nodes must call this (or you call it once after spawning) so config mix levels and
+## buses match editor-placed sources instead of falling back to plain [AudioStreamPlayer3D] behavior.
+func refresh_player_bus_routing() -> void:
+	_apply_bus_to_players()
+
+
 ## Returns the FMOD bridge when fmod_bridge_enabled. Used by ResonanceFmodEventEmitter.
 func get_fmod_bridge() -> RefCounted:
 	return _fmod_bridge
 
 
-## Returns config dict for init_audio_engine. Merges runtime config with debug_occlusion (player ray overlay on/off).
+## Returns config dict for init_audio_engine. Merges runtime resource with [member debug_occlusion] and Steam Audio context debug fields from this node.
 func get_config_dict() -> Dictionary:
 	var cfg: Dictionary = _runtime.get_config() if _runtime else {}
 	cfg["debug_occlusion"] = _player_overlay_visible
+	cfg["context_simd_level"] = context_simd_level
+	cfg["context_validation"] = context_validation
 	return cfg
 
 
@@ -123,17 +230,38 @@ func _ready() -> void:
 	if not Engine.is_editor_hint():
 		_setup_activator()
 		call_deferred("_apply_bus_to_players")
+		# Node.tree_exiting (not SceneTree): fires before this node leaves the tree (quit or scene change).
+		if not tree_exiting.is_connected(_on_scene_tree_exiting):
+			tree_exiting.connect(_on_scene_tree_exiting)
 	_update_debug_overlay_visibility()
 	if not Engine.is_editor_hint():
-		_register_nexus_performance_monitors()
+		_refresh_performance_custom_monitors_if_ready()
+
+
+func _on_scene_tree_exiting() -> void:
+	_cleanup_reverb_activator()
+
+
+func _cleanup_reverb_activator() -> void:
+	if _reverb_activator:
+		_reverb_activator.cleanup()
+		_reverb_activator = null
 
 
 func _exit_tree() -> void:
+	_reset_viewport_sync_cache()
+	if tree_exiting.is_connected(_on_scene_tree_exiting):
+		tree_exiting.disconnect(_on_scene_tree_exiting)
 	_unregister_nexus_performance_monitors()
+	_cleanup_reverb_activator()
 	var perf_overlay = get_node_or_null("PerformanceOverlay")
 	if perf_overlay:
 		perf_overlay.visible = false
 		perf_overlay.process_mode = Node.PROCESS_MODE_DISABLED
+	# Always call native shutdown when the singleton exists; C++ tears down only if a context is live.
+	var srv_shutdown: Variant = ResonanceServerAccess.get_server()
+	if srv_shutdown != null and srv_shutdown.has_method("shutdown"):
+		srv_shutdown.shutdown()
 	if _fmod_bridge:
 		_fmod_bridge.shutdown_bridge()
 		_fmod_bridge = null
@@ -254,23 +382,42 @@ func _apply_resonance_viewport_to_server(vp: Viewport) -> void:
 		return
 	if srv.has_method("set_physics_world"):
 		var w3 = vp.get_world_3d()
-		if w3:
+		var wrid: RID = w3.get_rid() if w3 else RID()
+		if not _vp_sync_cache_valid or wrid != _vp_sync_last_world_rid:
 			srv.set_physics_world(w3)
+			_vp_sync_last_world_rid = wrid
 	if srv.uses_custom_ray_tracer() and srv.has_method("set_listener_physics_ray_exclude_rids"):
-		srv.set_listener_physics_ray_exclude_rids(_collect_listener_physics_exclude_rids(vp))
+		var collected: Array = _collect_listener_physics_exclude_rids(vp)
+		var ex_ids := _sorted_rid_int_ids(collected)
+		if not _vp_sync_cache_valid or ex_ids != _vp_sync_last_exclude_ids:
+			srv.set_listener_physics_ray_exclude_rids(collected)
+			_vp_sync_last_exclude_ids = ex_ids
 	var cam = vp.get_camera_3d()
 	if cam and is_inside_tree():
 		var listeners = get_tree().get_nodes_in_group("resonance_listener")
 		if listeners.is_empty():
-			srv.update_listener(
-				cam.global_position,
-				-cam.global_transform.basis.z,
-				cam.global_transform.basis.y
-			)
+			if (
+				not _vp_sync_cache_valid
+				or _vp_sync_last_had_listener_nodes
+				or _camera_listener_xform_changed(cam)
+			):
+				srv.update_listener(
+					cam.global_position,
+					-cam.global_transform.basis.z,
+					cam.global_transform.basis.y
+				)
+				_vp_sync_last_cam_xform = cam.global_transform
+			_vp_sync_last_had_listener_nodes = false
+		else:
+			_vp_sync_last_had_listener_nodes = true
+	_vp_sync_cache_valid = true
 
 
-## Custom (Godot Physics) scene type must run [method ResonanceServer.tick] during the physics frame so
-## [code]PhysicsDirectSpaceState3D[/code] queries are valid when 3D physics uses a dedicated thread.
+## Custom (Godot Physics) scene type runs [method ResonanceServer.tick] in [method _physics_process] so simulation
+## stays aligned with the physics step and the active [code]World3D[/code]. Godot still serves
+## [code]PhysicsDirectSpaceState3D[/code] only on the main thread when 3D physics uses
+## [code]physics/3d/run_on_separate_thread[/code]; in that mode [method _physics_process] runs on the physics
+## thread, so ray queries fail — turn off separate-thread 3D physics for Custom or use a non-Custom scene type.
 func _sync_physics_process_for_custom_tracer() -> void:
 	if Engine.is_editor_hint():
 		set_physics_process(false)
@@ -285,25 +432,61 @@ func _sync_physics_process_for_custom_tracer() -> void:
 func _process(delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
+	main_thread_activator_usec = 0
+	main_thread_reinit_usec = 0
+	main_thread_viewport_usec = 0
+	main_thread_tick_usec = 0
+	main_thread_flush_usec = 0
 	var t0_usec := Time.get_ticks_usec()
+	var t_a0 := Time.get_ticks_usec()
 	_fill_activator_buffer()
+	var da := Time.get_ticks_usec() - t_a0
+	main_thread_activator_usec = da if da > 0 else 0
 	var srv: Variant = ResonanceServerAccess.get_server()
-	if srv != null and srv.is_initialized():
+	var srv_ready: bool = srv != null and srv.is_initialized()
+	var custom_tracer: bool = srv_ready and srv.uses_custom_ray_tracer()
+	if not srv_ready or not custom_tracer:
+		runtime_physics_tick_usec = 0
+		runtime_physics_viewport_usec = 0
+		runtime_physics_server_tick_usec = 0
+		runtime_physics_flush_usec = 0
+	if srv_ready:
 		# Runtime frame_size detection: reverb bus may have requested reinit with actual Godot frame_count
 		var pending: int = srv.consume_pending_reinit_frame_size()
 		if pending > 0:
+			var t_r0 := Time.get_ticks_usec()
 			var cfg := get_config_dict()
 			cfg["audio_frame_size"] = pending
 			_prepare_geometry_before_reinit()
 			srv.reinit_audio_engine(cfg)
+			_reset_viewport_sync_cache()
 			call_deferred("_reload_after_reinit")
-		var custom_tracer: bool = srv.uses_custom_ray_tracer()
+			var dr := Time.get_ticks_usec() - t_r0
+			main_thread_reinit_usec = dr if dr > 0 else 0
 		var vp = get_viewport()
 		if vp and not custom_tracer:
-			_apply_resonance_viewport_to_server(vp)
-			srv.tick(delta)
+			if _nexus_perf_uses_full_frame_timing():
+				var t_v0 := Time.get_ticks_usec()
+				_apply_resonance_viewport_to_server(vp)
+				var dv := Time.get_ticks_usec() - t_v0
+				main_thread_viewport_usec = dv if dv > 0 else 0
+			else:
+				_apply_resonance_viewport_to_server(vp)
+			if _nexus_perf_uses_full_frame_timing():
+				var t_t0 := Time.get_ticks_usec()
+				srv.tick(delta)
+				var dt := Time.get_ticks_usec() - t_t0
+				main_thread_tick_usec = dt if dt > 0 else 0
+			else:
+				srv.tick(delta)
 			if srv.has_method("flush_pending_source_updates"):
-				srv.flush_pending_source_updates()
+				if _nexus_perf_uses_full_frame_timing():
+					var t_f0 := Time.get_ticks_usec()
+					srv.flush_pending_source_updates()
+					var df := Time.get_ticks_usec() - t_f0
+					main_thread_flush_usec = df if df > 0 else 0
+				else:
+					srv.flush_pending_source_updates()
 	var dt_usec := Time.get_ticks_usec() - t0_usec
 	main_thread_last_tick_usec = dt_usec if dt_usec > 0 else 0
 
@@ -314,13 +497,34 @@ func _physics_process(delta: float) -> void:
 	var srv: Variant = ResonanceServerAccess.get_server()
 	if srv == null or not srv.is_initialized() or not srv.uses_custom_ray_tracer():
 		return
+	runtime_physics_viewport_usec = 0
+	runtime_physics_server_tick_usec = 0
+	runtime_physics_flush_usec = 0
 	var t0_usec := Time.get_ticks_usec()
 	var vp = get_viewport()
 	if vp:
-		_apply_resonance_viewport_to_server(vp)
-	srv.tick(delta)
+		if _nexus_perf_uses_full_frame_timing():
+			var t_v0 := Time.get_ticks_usec()
+			_apply_resonance_viewport_to_server(vp)
+			var dv := Time.get_ticks_usec() - t_v0
+			runtime_physics_viewport_usec = dv if dv > 0 else 0
+		else:
+			_apply_resonance_viewport_to_server(vp)
+	if _nexus_perf_uses_full_frame_timing():
+		var t_t0 := Time.get_ticks_usec()
+		srv.tick(delta)
+		var dt := Time.get_ticks_usec() - t_t0
+		runtime_physics_server_tick_usec = dt if dt > 0 else 0
+	else:
+		srv.tick(delta)
 	if srv.has_method("flush_pending_source_updates"):
-		srv.flush_pending_source_updates()
+		if _nexus_perf_uses_full_frame_timing():
+			var t_f0 := Time.get_ticks_usec()
+			srv.flush_pending_source_updates()
+			var df := Time.get_ticks_usec() - t_f0
+			runtime_physics_flush_usec = df if df > 0 else 0
+		else:
+			srv.flush_pending_source_updates()
 	var dt_usec := Time.get_ticks_usec() - t0_usec
 	runtime_physics_tick_usec = dt_usec if dt_usec > 0 else 0
 
@@ -341,6 +545,7 @@ func _initialize_server() -> void:
 	if srv.is_initialized() and srv.has_method("reinit_audio_engine"):
 		_prepare_geometry_before_reinit()
 		srv.reinit_audio_engine(cfg)
+		_reset_viewport_sync_cache()
 		call_deferred("_reload_after_reinit")
 		_sync_physics_process_for_custom_tracer()
 		return
@@ -351,6 +556,7 @@ func _initialize_server() -> void:
 	var bake_params = _get_bake_params_for_runtime()
 	srv.set_bake_params(bake_params)
 	srv.init_audio_engine(cfg)
+	_reset_viewport_sync_cache()
 	# FMOD Bridge: Connect Steam Audio to FMOD when enabled
 	if fmod_bridge_enabled:
 		_init_fmod_bridge()
@@ -582,8 +788,20 @@ func _warn_restart_if_needed() -> void:
 		)
 
 
-func _register_nexus_performance_monitors() -> void:
-	ResonanceRuntimePerfMonitors.register(self)
+func _nexus_perf_uses_full_frame_timing() -> bool:
+	return (
+		_performance_custom_monitors == ResonanceRuntimePerfMonitors.PERF_MONITORS_FULL
+	)
+
+
+func _refresh_performance_custom_monitors_if_ready() -> void:
+	if Engine.is_editor_hint():
+		return
+	if not is_inside_tree():
+		return
+	_unregister_nexus_performance_monitors()
+	if _performance_custom_monitors != ResonanceRuntimePerfMonitors.PERF_MONITORS_OFF:
+		ResonanceRuntimePerfMonitors.register(self, _performance_custom_monitors)
 
 
 func _unregister_nexus_performance_monitors() -> void:
@@ -598,11 +816,28 @@ func _nexus_perf_read_physics_tick_usec() -> int:
 	return runtime_physics_tick_usec
 
 
-func _nexus_perf_worker_field(field: String) -> int:
-	var srv: Variant = ResonanceServerAccess.get_server_if_initialized()
-	if srv == null or not srv.has_method("get_simulation_worker_timing"):
-		return 0
-	return int(srv.get_simulation_worker_timing().get(field, 0))
+func _nexus_perf_read_main_viewport_usec() -> int:
+	return main_thread_viewport_usec
+
+
+func _nexus_perf_read_main_tick_usec() -> int:
+	return main_thread_tick_usec
+
+
+func _nexus_perf_read_main_flush_usec() -> int:
+	return main_thread_flush_usec
+
+
+func _nexus_perf_read_physics_viewport_usec() -> int:
+	return runtime_physics_viewport_usec
+
+
+func _nexus_perf_read_physics_server_tick_usec() -> int:
+	return runtime_physics_server_tick_usec
+
+
+func _nexus_perf_read_physics_flush_usec() -> int:
+	return runtime_physics_flush_usec
 
 
 func _nexus_perf_read_worker_sum() -> int:
@@ -611,6 +846,57 @@ func _nexus_perf_read_worker_sum() -> int:
 		return 0
 	var w: Dictionary = srv.get_simulation_worker_timing()
 	return ResonanceRuntimePerfMonitors.simulation_worker_timing_sum(w)
+
+
+func _nexus_perf_read_worker_timing_field(field: String) -> int:
+	var srv: Variant = ResonanceServerAccess.get_server_if_initialized()
+	if srv == null or not srv.has_method("get_simulation_worker_timing"):
+		return 0
+	var w: Dictionary = srv.get_simulation_worker_timing()
+	var v: Variant = w.get(field, 0)
+	if v is bool:
+		return 1 if v else 0
+	return int(v)
+
+
+func _nexus_perf_read_pathing_ran_tick() -> int:
+	var srv: Variant = ResonanceServerAccess.get_server_if_initialized()
+	if srv == null or not srv.has_method("get_pathing_instrumentation"):
+		return 0
+	var p: Dictionary = srv.get_pathing_instrumentation()
+	return 1 if p.get("pathing_ran_this_tick", false) else 0
+
+
+func _nexus_perf_read_convolution_apply_last_us() -> int:
+	var srv: Variant = ResonanceServerAccess.get_server_if_initialized()
+	if srv == null or not srv.has_method("get_convolution_audio_timing"):
+		return 0
+	var t: Dictionary = srv.get_convolution_audio_timing()
+	return int(t.get("us_reflection_apply_last", 0))
+
+
+func _nexus_perf_read_convolution_reverb_bus_last_us() -> int:
+	var srv: Variant = ResonanceServerAccess.get_server_if_initialized()
+	if srv == null or not srv.has_method("get_convolution_audio_timing"):
+		return 0
+	var t: Dictionary = srv.get_convolution_audio_timing()
+	return int(t.get("us_reverb_bus_last", 0))
+
+
+func _nexus_perf_read_mixer_sanitize_ambi_last_us() -> int:
+	var srv: Variant = ResonanceServerAccess.get_server_if_initialized()
+	if srv == null or not srv.has_method("get_convolution_audio_timing"):
+		return 0
+	var t: Dictionary = srv.get_convolution_audio_timing()
+	return int(t.get("us_mixer_sanitize_ambi_last", 0))
+
+
+func _nexus_perf_read_mixer_sanitize_stereo_last_us() -> int:
+	var srv: Variant = ResonanceServerAccess.get_server_if_initialized()
+	if srv == null or not srv.has_method("get_convolution_audio_timing"):
+		return 0
+	var t: Dictionary = srv.get_convolution_audio_timing()
+	return int(t.get("us_mixer_sanitize_stereo_last", 0))
 
 
 func _update_debug_overlay_visibility() -> void:

@@ -24,7 +24,7 @@ signal audio_frame_size_changed(new_size: int)
 	"192000 Hz:192000"
 )
 var sample_rate_override: int = 0
-## Steam Audio processing block size. Auto = derive from Project Settings (audio/driver/output_latency). Manual = override for performance tuning.
+## Steam Audio processing block size in samples per channel per [code]iplAudioEffectApply[/code] call. Must match Godot’s mix buffer size for stable routing (reverb bus frame count). [b]Auto[/b] picks the closest of 256 / 512 / 1024 / 2048 from [code]ProjectSettings[/code] [code]audio/driver/output_latency[/code] and the current mix rate. [b]Manual[/b] overrides when you tune latency vs CPU; wrong values can cause dropouts or desync with the mix thread.
 var _audio_frame_size: int = 0
 @export_enum("Auto:0", "256:256", "512:512", "1024:1024", "2048:2048")
 var audio_frame_size: int:
@@ -65,7 +65,8 @@ var audio_frame_size: int:
 
 # --- Reflections ---
 @export_group("Reflections")
-## When sources use "Use Global" reflections_type: Baked = probe interpolation; Realtime = raytracing (requires realtime_rays > 0).
+## [b]Only[/b] affects [b]ResonancePlayer[/b] sources whose reflections type is [b]Use Global[/b]. Other players can override per source (Baked Reverb / Static / Listener or Realtime), so one scene can still mix probe-based and ray-traced [i]different[/i] sources.
+## [b]Baked[/b] = probe / baked reverb path for those Use Global sources. [b]Realtime[/b] = ray-traced reflections ([member realtime_rays] should be &gt; 0 for useful simulation). Each source uses one path per update, not both at once.
 @export_enum("Baked:0", "Realtime:1") var default_reflections_mode: int = 0
 var _reflection_type: int = Constants.REFLECTION_TYPE_CONVOLUTION
 ## Reverb algorithm. Parametric (fastest). Convolution uses ReflectionMixer (bundled convolutions).
@@ -83,10 +84,12 @@ var reflection_type: int:
 ## Upper bound for simulator / ReflectionMixer IR allocation (s): caps [code]simulation_settings.maxDuration[/code] and bundled convolution IR size. Not the per-run simulation length (see [member realtime_simulation_duration]). Longer values need more memory and CPU.
 @export_range(0.1, 10.0, 0.1) var max_reverb_duration: float = 2.0
 var _realtime_rays: int = 0
-## Realtime raytracing rays. 0 = baked-only reflections/reverb (fastest for parametric/conv from probes). 64–8192 = realtime simulation (uses [member scene_type]; on platforms without Embree/OpenCL the native layer falls back to Default tracer).
-## High ray counts dominate CPU; match Unity „Real Time Rays“ — lower or 0 when using baked parametric + pathing.
+## Ray count for realtime reflection simulation ([code]IPLSimulationSharedInputs.numRays[/code]). [b]Off[/b] = no realtime rays (cheapest). Higher counts improve quality and cost more CPU; depends on [member scene_type]. Sources on the realtime reflections path need rays &gt; 0; [member default_reflections_mode] [b]Baked[/b] avoids realtime reflection sim for Use Global sources.
 @export_enum(
-	"Baked Only:0",
+	"Off:0",
+	"8 Rays:8",
+	"16 Rays:16",
+	"32 Rays:32",
 	"64 Rays:64",
 	"128 Rays:128",
 	"256 Rays:256",
@@ -143,6 +146,8 @@ var _pathing_enabled: bool = false
 @export_group("Occlusion & Physics")
 ## Collision mask for Godot [code]PhysicsRayQueryParameters3D[/code] when [member scene_type] is Custom (Godot Physics). [code]-1[/code] = all physics layers.
 @export_flags_3d_physics var physics_ray_collision_mask: int = -1
+## Rays per Phonon job when [member scene_type] is Custom. [code]IPLSimulationSettings.rayBatchSize[/code]; values [code]> 1[/code] register batched Godot [code]intersect_ray[/code] callbacks (BatchedReflectionSimulator). Ignored for Default/Embree/Radeon (native tracer uses batch size 1 from Nexus). Clamped to 1–256.
+@export_range(1, 256, 1) var physics_ray_batch_size: int = 16
 ## Occlusion model: Raycast (binary hit) or Volumetric (fractional occlusion from samples; Steam Audio [code]numOcclusionSamples[/code]). Volumetric only affects how occlusion is computed, not how transmission coefficients are banded. Pair with [member ResonancePlayerConfig.occlusion_samples] and [member ResonancePlayerConfig.source_radius] on each source.
 @export_enum("Raycast:0", "Volumetric:1") var occlusion_type: int = 1
 ## Simulator cap for volumetric occlusion samples (Steam Audio [code]maxNumOcclusionSamples[/code]). Per-source [member ResonancePlayerConfig.occlusion_samples] are clamped to this.
@@ -151,8 +156,12 @@ var _pathing_enabled: bool = false
 @export_range(8, 128, 1) var max_simulation_sources: int = 32
 ## Direct-effect frequency mode for transmission (Steam Audio [code]IPLTransmissionType[/code] on the direct processor): FreqIndependent (one blended coefficient) or FreqDependent (low/mid/high). This does not add “softer” material boundaries or a volumetric transmission path; Steam Audio [code]IPLSimulationInputs[/code] exposes [code]numTransmissionRays[/code] for path depth only, not an occlusion-style Raycast/Volumetric switch for transmission.
 @export_enum("FreqIndependent:0", "FreqDependent:1") var transmission_type: int = 1
-## Throttle dynamic geometry transform updates: apply scene commit every Nth update only (1=every frame, 4=every 4th). Reduces CPU and audio stutter with animated objects.
-@export_range(1, 16, 1) var geometry_update_throttle: int = 4
+## Default max surfaces along the transmission path ([code]numTransmissionRays[/code]) when a [ResonancePlayerConfig] omits [member ResonancePlayerConfig.max_transmission_surfaces] or for initial simulator source state. Same range as per-source (1–256). Matches [member ResonancePlayerConfig.max_transmission_surfaces] default.
+@export_range(1, 256, 1) var max_transmission_surfaces: int = 16
+## Throttle scene commits from moving acoustic geometry: (1) transform-only [code]notify_geometry_changed[/code] (no triangle delta), and (2) dynamic [code]ResonanceGeometry[/code] / [code]ResonanceDynamicGeometry[/code] [code]NOTIFICATION_TRANSFORM_CHANGED[/code] ([code]iplInstancedMeshUpdateTransform[/code]). [code]1[/code] = every notify; higher values reduce CPU during tweens. Call [method ResonanceGeometry.flush_dynamic_acoustic_transform] at motion end for an exact final pose; use [code]1[/code] if [member path_validation_enabled] needs maximum temporal accuracy on fast movers.
+@export_range(1, 64, 1) var geometry_update_throttle: int = 4
+## Minimum seconds between worker applications of queued [code]ResonanceDynamicGeometry[/code] transforms to Steam Audio ([code]iplInstancedMeshUpdateTransform[/code] + scene commit). [code]0[/code] = apply every simulation tick that has queued updates (after [member geometry_update_throttle] on the geometry node). [code]&gt; 0[/code] trades occlusion/path accuracy during motion for less [code]iplSceneCommit[/code] cost. Always call [method ResonanceGeometry.flush_dynamic_acoustic_transform] at motion end.
+@export_range(0.0, 1.0, 0.005) var dynamic_scene_commit_min_interval: float = 0.0
 ## Throttle simulation worker wake: every Nth frame tick from ResonanceRuntime (1 = every frame).
 ## Higher values reduce CPU from [code]iplSimulatorRunDirect[/code] and cache sync; occlusion/listener react slower.
 ## Unity analogue: fewer simulation thread wakeups when combined with a reasonable [member simulation_update_interval].
@@ -186,17 +195,62 @@ var _scene_type: int = 0
 @export_range(0.05, 10.0, 0.01) var realtime_irradiance_min_distance: float = 0.1
 ## Diffuse samples per reflection point. Higher = smoother reverb, more CPU.
 @export_range(8, 64, 1) var realtime_num_diffuse_samples: int = 32
-## Ambisonic order for reverb encoding. Higher = more spatial detail, more CPU.
+@export_subgroup("Reverb Ambisonics")
+## Ambisonic order for reverb playback (convolution effect channels, mixer/decode, pathing pathingOrder) and for realtime reflection simulation ([code]IPLSimulationSettings.maxOrder[/code] / shared [code]order[/code]). Should be at least the highest baked IR order you use, or high-frequency content from probes is unused.
 @export_enum("1st Order:1", "2nd Order:2", "3rd Order:3") var ambisonic_order: int = 1
+@export_subgroup("")
 ## Fraction of CPU cores for Steam Audio simulation threads (0–1). 0.15 ≈ 15% of logical cores; raise for heavier realtime reflections/pathing (Unity: CPU %).
 @export_range(0.0, 1.0, 0.01) var simulation_cpu_cores_percent: float = 0.15
-## SIMD level cap: -1=default (AVX512), 0=AVX512, 1=AVX2, 2=AVX, 3=SSE4, 4=SSE2. Lower = more CPU compatible.
-@export_range(-1, 4, 1) var context_simd_level: int = -1
-## Enable Steam Audio context validation ([code]IPL_CONTEXTFLAGS_VALIDATION[/code]). Extra API checks; may log warnings during simulation (debugging only).
-@export var context_validation: bool = false
-## Minimum seconds between [code]RunReflections[/code] and [code]RunPathing[/code] on the simulation worker (Steam Audio „Simulation Update Interval“ in Unity).
+## Minimum seconds between [code]RunReflections[/code] and [code]RunPathing[/code] on the simulation worker when the split intervals below are unset (Steam Audio „Simulation Update Interval“ in Unity).
 ## Direct simulation still runs each worker wake. 0 = run heavy sim every worker tick (highest CPU). 0.1 = 100 ms default; 0.15–0.25 = cheaper pathing/reflection follow. Increase when using path validation + alternate paths with Embree to cap pathing frequency.
 @export_range(0.0, 1.0, 0.01) var simulation_update_interval: float = 0.1
+## &lt; 0: use [member simulation_update_interval] for [code]iplSimulatorRunReflections[/code] cadence. &gt;= 0: minimum seconds between reflection-heavy ticks (pathing can differ).
+@export_range(-1.0, 1.0, 0.01) var reflections_sim_update_interval: float = -1.0
+## &lt; 0: use [member simulation_update_interval] for [code]RunPathing[/code] cadence. &gt;= 0: minimum seconds between pathing-heavy ticks.
+@export_range(-1.0, 1.0, 0.01) var pathing_sim_update_interval: float = -1.0
+## 0 = disabled. Realtime reflection sources farther than this from the listener omit [code]IPL_SIMULATIONFLAGS_REFLECTIONS[/code] in simulation inputs (less reflection-sim work per [code]RunReflections[/code]).
+@export_range(0.0, 10000.0, 1.0) var realtime_reflection_max_distance_m: float = 0.0
+## 0 = off. When the last [code]RunReflections[/code] exceeded this many microseconds, Nexus increases the effective reflection-heavy interval (see [member reflections_adaptive_step_sec] / [member reflections_adaptive_max_extra_interval]).
+@export_range(0, 2000000, 1000) var reflections_adaptive_budget_us: int = 0
+## Seconds added to the effective reflection interval each time the worker exceeds [member reflections_adaptive_budget_us] (capped by [member reflections_adaptive_max_extra_interval]).
+@export_range(0.0, 1.0, 0.005) var reflections_adaptive_step_sec: float = 0.02
+## Upper bound (seconds) for extra delay from adaptive reflection scheduling.
+@export_range(0.0, 1.0, 0.01) var reflections_adaptive_max_extra_interval: float = 0.2
+## Per-second reduction of adaptive extra delay when under budget (or worker did not run reflections).
+@export_range(0.0, 5.0, 0.01) var reflections_adaptive_decay_per_sec: float = 0.05
+## 0 = off. When [code]iplSceneCommit[/code] in the worker took at least this many microseconds, skip [code]RunReflections[/code] this wake and retry on the next frame (spreads cost).
+@export_range(0, 5000000, 1000) var reflections_defer_after_scene_commit_us: int = 0
+## 0 = no cap. Convolution / hybrid / TAN apply path: clamp Steam Audio IR length to this many samples (min with allocated effect IR).
+@export_range(0, 480000, 256) var convolution_ir_max_samples: int = 0
+
+var _performance_schedule_selector: int = 0
+
+## One-shot preset: choose **Quality**, **Balanced**, or **Performance** to set [member simulation_update_interval], [member simulation_tick_throttle], [member direct_sim_interval], and [member geometry_update_throttle]. The dropdown snaps back to **Custom** so you can apply again after tweaking other settings.
+@export_enum("Custom:0", "Quality:1", "Balanced:2", "Performance:3") var apply_performance_schedule_preset: int = 0:
+	get:
+		return _performance_schedule_selector
+	set(v):
+		if v == 0:
+			_performance_schedule_selector = 0
+			return
+		match v:
+			1:
+				simulation_update_interval = 0.1
+				simulation_tick_throttle = 1
+				direct_sim_interval = 0.0
+				geometry_update_throttle = 4
+			2:
+				simulation_update_interval = 0.15
+				simulation_tick_throttle = 1
+				direct_sim_interval = 0.02
+				geometry_update_throttle = 6
+			3:
+				simulation_update_interval = 0.2
+				simulation_tick_throttle = 2
+				direct_sim_interval = 0.03
+				geometry_update_throttle = 8
+		_performance_schedule_selector = 0
+		notify_property_list_changed()
 
 
 func _validate_property(property: Dictionary) -> void:
@@ -205,6 +259,9 @@ func _validate_property(property: Dictionary) -> void:
 			property["usage"] = property["usage"] | PROPERTY_USAGE_READ_ONLY
 	elif property.name in ["opencl_device_type", "opencl_device_index"]:
 		if scene_type != 2 and reflection_type != Constants.REFLECTION_TYPE_TAN:
+			property["usage"] = property["usage"] | PROPERTY_USAGE_READ_ONLY
+	elif property.name == "physics_ray_batch_size":
+		if scene_type != 3:
 			property["usage"] = property["usage"] | PROPERTY_USAGE_READ_ONLY
 	elif (
 		property.name
@@ -224,12 +281,12 @@ func _validate_property(property: Dictionary) -> void:
 
 ## Returns effective bus for Direct + Pathing. Empty config = Master.
 func get_bus_effective() -> StringName:
-	return bus if not str(bus).is_empty() else &"Master"
+	return bus if not bus.is_empty() else &"Master"
 
 
 ## Returns effective reverb bus name. Empty config = ResonanceReverb.
 func get_reverb_bus_name_effective() -> StringName:
-	return reverb_bus_name if not str(reverb_bus_name).is_empty() else &"ResonanceReverb"
+	return reverb_bus_name if not reverb_bus_name.is_empty() else &"ResonanceReverb"
 
 
 func _sofa_asset_data_nonempty(asset: ResonanceSOFAAsset) -> bool:
@@ -279,7 +336,7 @@ static func _get_audio_frame_size_from_project() -> int:
 	return best
 
 
-## Returns config dictionary for [method ResonanceServer.init_audio_engine]. Includes sample_rate from AudioServer or sample_rate_override. Does not include [member bus] / [member reverb_bus_name]; Godot bus routing is applied in [ResonanceRuntime] only.
+## Returns config dictionary for [method ResonanceServer.init_audio_engine] when merged by [method ResonanceRuntime.get_config_dict]. Does not include [member bus] / [member reverb_bus_name]; the runtime node adds [code]context_simd_level[/code] / [code]context_validation[/code] there.
 func get_config() -> Dictionary:
 	var rays := get_effective_realtime_rays(realtime_rays, OS.get_name())
 	var mix_rate := int(AudioServer.get_mix_rate())
@@ -305,6 +362,7 @@ func get_config() -> Dictionary:
 		"realtime_bounces": realtime_bounces,
 		"scene_type": scene_type,
 		"physics_ray_collision_mask": physics_ray_collision_mask,
+		"physics_ray_batch_size": physics_ray_batch_size,
 		"opencl_device_type": opencl_device_type,
 		"opencl_device_index": opencl_device_index,
 		"realtime_irradiance_min_distance": realtime_irradiance_min_distance,
@@ -329,18 +387,27 @@ func get_config() -> Dictionary:
 		"path_validation_enabled": path_validation_enabled,
 		"find_alternate_paths": find_alternate_paths,
 		"transmission_type": transmission_type,
+		"max_transmission_surfaces": max_transmission_surfaces,
 		"occlusion_type": occlusion_type,
 		"max_occlusion_samples": max_occlusion_samples,
 		"max_simulation_sources": max_simulation_sources,
 		"geometry_update_throttle": geometry_update_throttle,
+		"dynamic_scene_commit_min_interval": dynamic_scene_commit_min_interval,
 		"simulation_tick_throttle": simulation_tick_throttle,
 		"simulation_update_interval": simulation_update_interval,
+		"reflections_sim_update_interval": reflections_sim_update_interval,
+		"pathing_sim_update_interval": pathing_sim_update_interval,
+		"realtime_reflection_max_distance_m": realtime_reflection_max_distance_m,
+		"reflections_adaptive_budget_us": reflections_adaptive_budget_us,
+		"reflections_adaptive_step_sec": reflections_adaptive_step_sec,
+		"reflections_adaptive_max_extra_interval": reflections_adaptive_max_extra_interval,
+		"reflections_adaptive_decay_per_sec": reflections_adaptive_decay_per_sec,
+		"reflections_defer_after_scene_commit_us": reflections_defer_after_scene_commit_us,
+		"convolution_ir_max_samples": convolution_ir_max_samples,
 		"direct_sim_interval": direct_sim_interval,
 		"batch_source_updates": batch_source_updates,
 		"perspective_correction_enabled": perspective_correction_enabled,
 		"perspective_correction_factor": perspective_correction_factor,
-		"context_simd_level": context_simd_level,
-		"context_validation": context_validation,
 		"default_reflections_mode": default_reflections_mode,
 		"output_direct": true,
 		"output_reverb": true

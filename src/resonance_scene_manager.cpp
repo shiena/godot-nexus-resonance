@@ -642,15 +642,15 @@ Error ResonanceSceneManager::export_static_scene_to_asset(Node* scene_root, cons
     asset->set_triangle_count((int)ipl_triangles.size());
     PackedVector3Array dbg_verts;
     dbg_verts.resize((int)ipl_vertices.size());
-    for (size_t i = 0; i < ipl_vertices.size(); i++) {
-        dbg_verts.set((int)i, Vector3(ipl_vertices[i].x, ipl_vertices[i].y, ipl_vertices[i].z));
+    if (!ipl_vertices.empty()) {
+        static_assert(sizeof(IPLVector3) == sizeof(Vector3), "IPLVector3 must match Godot Vector3 layout for bulk copy");
+        std::memcpy(reinterpret_cast<Vector3*>(dbg_verts.ptrw()), ipl_vertices.data(), ipl_vertices.size() * sizeof(IPLVector3));
     }
     PackedInt32Array dbg_tris;
     dbg_tris.resize((int)(ipl_triangles.size() * 3));
-    for (size_t i = 0; i < ipl_triangles.size(); i++) {
-        dbg_tris.set((int)(i * 3 + 0), ipl_triangles[i].indices[0]);
-        dbg_tris.set((int)(i * 3 + 1), ipl_triangles[i].indices[1]);
-        dbg_tris.set((int)(i * 3 + 2), ipl_triangles[i].indices[2]);
+    if (!ipl_triangles.empty()) {
+        static_assert(sizeof(IPLTriangle) == 3 * sizeof(int32_t), "IPLTriangle must be three int32 indices for bulk copy");
+        std::memcpy(dbg_tris.ptrw(), ipl_triangles.data(), ipl_triangles.size() * sizeof(IPLTriangle));
     }
     asset->set_debug_vertices(dbg_verts);
     asset->set_debug_triangles(dbg_tris);
@@ -668,9 +668,10 @@ Error ResonanceSceneManager::export_static_scene_to_asset(Node* scene_root, cons
     if (ps && (path.begins_with("res://") || path.begins_with("user://"))) {
         path = ps->globalize_path(path);
     }
-    // Use .tres temp file so ResourceSaver recognizes the format (ERR_FILE_UNRECOGNIZED with .tmp)
+    // Temp extension must match final (.tres vs .res) so ResourceSaver writes the correct format before rename.
+    const String tmp_ext = path.ends_with(".res") ? String(".res") : String(".tres");
     int64_t ext_pos = path.rfind(".");
-    String tmp_path = (ext_pos >= 0) ? (path.substr(0, ext_pos) + "_tmp.tres") : (path + "_tmp.tres");
+    String tmp_path = (ext_pos >= 0) ? (path.substr(0, ext_pos) + "_tmp" + tmp_ext) : (path + "_tmp" + tmp_ext);
     ResourceSaver* saver = ResourceSaver::get_singleton();
     if (!saver) {
         ResonanceLog::error("ResonanceSceneManager: ResourceSaver singleton is null (export_static_scene_to_asset).");

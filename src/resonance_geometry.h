@@ -7,6 +7,8 @@
 #include <godot_cpp/classes/mesh.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
 #include <godot_cpp/classes/node3d.hpp>
+#include <godot_cpp/core/object.hpp>
+#include <godot_cpp/core/object_id.hpp>
 #include <phonon.h>
 #include <vector>
 
@@ -40,6 +42,9 @@ class ResonanceGeometry : public Node3D {
     bool server_init_retry_pending_ = false;
     int server_init_retry_count_ = 0;
 
+    /// Counts transform notifications for [ResonanceServer::get_geometry_update_throttle]; reset by flush.
+    uint32_t dynamic_transform_notify_count_ = 0;
+
     void _create_meshes();
     void _schedule_retry_create_meshes_when_server_ready();
     void _deferred_retry_create_meshes();
@@ -48,6 +53,20 @@ class ResonanceGeometry : public Node3D {
     /// Internal: cleanup without locking. Caller must hold simulation lock when touching scene.
     void _clear_meshes_impl();
     void _update_dynamic_transform();
+    /// Invalidate caches. When include_static_scene_query is false, preserve root static-scene lookup (still valid after IPL teardown only).
+    void _invalidate_topology_caches(bool include_static_scene_query = true);
+
+    /// geometry_override path: MeshInstance3D that owns the same mesh (avoids repeated subtree search).
+    mutable ObjectID bake_override_mesh_instance_id_;
+    mutable bool bake_transform_override_cache_valid_ = false;
+    mutable bool static_scene_asset_query_valid_ = false;
+    mutable ObjectID cached_scene_tree_root_id_;
+    mutable bool cached_root_has_static_scene_asset_ = false;
+    /// Reflection debug: reuse parsed IPL buffers when source Mesh ref unchanged.
+    Ref<Mesh> reflection_debug_parsed_mesh_;
+    std::vector<IPLVector3> reflection_debug_parsed_vertices_;
+    std::vector<IPLTriangle> reflection_debug_parsed_triangles_;
+    std::vector<IPLint32> reflection_debug_parsed_mat_indices_;
 
   protected:
     static void _bind_methods();
@@ -69,6 +88,10 @@ class ResonanceGeometry : public Node3D {
 
     /// Call to re-register geometry with the server (e.g. after server init in editor baking)
     void refresh_geometry();
+
+    /// Forces one [code]iplInstancedMeshUpdateTransform[/code] + scene commit for this dynamic mesh (current transform).
+    /// Call when a tween or animation ends so occlusion/path validation is not left stale if updates were throttled.
+    void flush_dynamic_acoustic_transform();
 
     /// Register/unregister ray-reflection debug triangles only (RayTraceDebugContext). Does not rebuild
     /// IPL static/instanced meshes — avoids Embree losing dynamic occlusion when toggling F3 overlay.

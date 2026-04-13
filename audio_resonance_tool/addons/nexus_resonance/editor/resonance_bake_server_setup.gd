@@ -32,7 +32,8 @@ func log_and_show_error(
 		data["step"] = step
 	if Engine.has_singleton("ResonanceLogger"):
 		Engine.get_singleton("ResonanceLogger").log(&"bake", "Bake error: " + message, data)
-	var ei: EditorInterface = _runner.editor_interface if _runner else null
+	# Untyped local avoids Godot 4.x OPCODE_ASSIGN_TYPED_NATIVE assert with EditorInterface + ternary + null.
+	var ei = _runner.editor_interface if _runner else null
 	ResonanceEditorDialogs.show_error_dialog(
 		ei, tr(UIStrings.DIALOG_BAKE_FAILED_TITLE), message, cause, solution
 	)

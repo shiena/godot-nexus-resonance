@@ -1,5 +1,6 @@
 #include "resonance_processor_ambisonic.h"
 #include "resonance_log.h"
+#include <cstddef>
 #include <cstring>
 #include <vector>
 
@@ -93,14 +94,19 @@ void ResonanceAmbisonicProcessor::cleanup() {
 
 void ResonanceAmbisonicProcessor::process(const std::vector<float>& input_data, IPLAudioBuffer& out_buffer,
                                           const IPLCoordinateSpace3& listener_orient) {
+    process(input_data.data(), input_data.size(), out_buffer, listener_orient);
+}
+
+void ResonanceAmbisonicProcessor::process(const float* input_data, size_t sample_count, IPLAudioBuffer& out_buffer,
+                                          const IPLCoordinateSpace3& listener_orient) {
 
     // InitFlags guard: only process when fully initialized
     // Passthrough fallback: when init failed, pass W (omnidirectional) to stereo instead of silence
     bool init_ok = (init_flags & AmbisonicInitFlags::DECODE) && (init_flags & AmbisonicInitFlags::BUFFERS) && ambisonics_dec_effect && out_buffer.data;
     if (!init_ok) {
         int num_channels = (ambisonic_order + 1) * (ambisonic_order + 1);
-        size_t required = (size_t)frame_size * num_channels;
-        if (input_data.size() >= required && out_buffer.data && out_buffer.numChannels >= 2 &&
+        size_t required = (size_t)frame_size * (size_t)num_channels;
+        if (input_data && sample_count >= required && out_buffer.data && out_buffer.numChannels >= 2 &&
             out_buffer.data[0] && out_buffer.data[1]) {
             // Passthrough: decode W channel (index 0) to stereo (1/sqrt(2) for power preservation)
             for (int i = 0; i < frame_size; i++) {
@@ -118,17 +124,17 @@ void ResonanceAmbisonicProcessor::process(const std::vector<float>& input_data, 
 
     int num_channels_full = (ambisonic_order + 1) * (ambisonic_order + 1);
     size_t required_samples = (size_t)frame_size * (size_t)num_channels_full;
-    if (input_data.size() < required_samples) {
+    if (!input_data || sample_count < required_samples) {
         for (int i = 0; i < out_buffer.numChannels && out_buffer.data && out_buffer.data[i]; i++) {
             memset(out_buffer.data[i], 0, frame_size * sizeof(float));
         }
         return;
     }
 
-    // 1. Deinterleave Input (std::vector flat -> IPLAudioBuffer)
+    // 1. Deinterleave Input (interleaved -> IPLAudioBuffer)
     // Input data: N channels interleaved (N = (order+1)^2), B-Format [W, Y, Z, X, ...]
     // IPL API has non-const param; input is read-only
-    iplAudioBufferDeinterleave(context, const_cast<float*>(input_data.data()), &sa_in_buffer);
+    iplAudioBufferDeinterleave(context, const_cast<float*>(input_data), &sa_in_buffer);
 
     // 2. Rotation: world-space Ambisonics -> listener-space (optional; when disabled, pass through)
     IPLAudioBuffer* decode_input = &sa_in_buffer;

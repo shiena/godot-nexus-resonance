@@ -2,11 +2,19 @@ extends CanvasLayer
 
 ## Runtime debug HUD: server state, audio source summary, reverb bus (compact + expert fold).
 ## Keyboard-only controls when open (no buttons/checkboxes).
-## Shortcuts (Alt): 1–3 toggle section folds, R reset meters, A audio per-source details, E reverb expert counters.
+## Shortcuts (Alt): 1-3 toggle section folds, R reset meters, A audio per-source details.
 ## NOTE: Reflection ray viz requires Realtime Rays > 0, enable_debug, and player overlay toggled on.
 ## This overlay does not run in the editor.
 
 const Constants = preload("resonance_config_constants.gd")
+
+## Matches [member ResonanceRuntimeConfig.scene_type] export_enum order.
+const _SCENE_TYPE_LABELS: Array[String] = [
+	"Default",
+	"Embree",
+	"Radeon Rays",
+	"Custom (Godot Physics)",
+]
 
 const UPDATE_INTERVAL: float = 0.2
 const AUDIO_PROBLEM_DETAIL_CAP: int = 5
@@ -21,7 +29,7 @@ const AUDIO_INST_LATE_RATE_ISSUE_PCT := 12.0
 const AUDIO_INST_MIN_MIX_CALLS_FOR_RATE := 200
 const AUDIO_INST_LATE_RATE_WARN_PCT := 2.5
 const AUDIO_INST_MAX_BLOCK_US_WARN := 15000
-## Scroll area height: viewport minus panel offset (y≈10), bottom gap, and panel content margins — not a fixed fraction of the window.
+## Scroll area height: viewport minus panel offset (y≈10), bottom gap, and panel content margins - not a fixed fraction of the window.
 const OVERLAY_SCROLL_HEIGHT_MIN_PX := 200.0
 const OVERLAY_SCROLL_HEIGHT_VIEWPORT_SUBTRACT_PX := 36.0
 
@@ -32,12 +40,10 @@ var _outer_scroll: ScrollContainer
 var _vbox: VBoxContainer
 var _hint_label: RichTextLabel
 var _folds: Array[FoldableContainer] = []
+var _fold_server: FoldableContainer
 var _status_label: RichTextLabel
 var _audio_instrumentation_label: RichTextLabel
 var _reverb_compact_label: RichTextLabel
-var _fold_reverb_expert: FoldableContainer
-var _reverb_expert_label: RichTextLabel
-
 var _update_timer: float = 0.0
 var _audio_show_details: bool = false
 
@@ -69,10 +75,10 @@ func _build_ui() -> void:
 	layer = 100
 	_panel = PanelContainer.new()
 	var style = StyleBoxFlat.new()
-	style.bg_color = Color(0, 0, 0, 0.75)
+	style.bg_color = Color(0, 0, 0, 0.2)
 	style.border_color = Color(0.4, 0.6, 0.9)
-	style.set_border_width_all(2)
-	style.set_corner_radius_all(4)
+	style.set_border_width_all(0)
+	style.set_corner_radius_all(2)
 	style.set_content_margin_all(8)
 	_panel.add_theme_stylebox_override("panel", style)
 
@@ -103,14 +109,12 @@ func _build_ui() -> void:
 	var ch := COLOR_HINT
 	_hint_label.text = (
 		"[color=" + ch + "]Alt+1-3[/color] sections  [color=" + ch + "]Alt+R[/color] reset  "
-		+ "[color=" + ch + "]Alt+A[/color] audio details  [color=" + ch + "]Alt+E[/color] reverb expert\n"
-		+ "[color="
-		+ ch
-		+ "]Editor:[/color] Debugger → Profiler → [i]Scripts[/i]: [i]ResonanceRuntime[/i], this overlay, [i]ResonancePlayer[/i]; Monitors: [i]Nexus Resonance/…[/i]"
+		+ "[color=" + ch + "]Alt+A[/color] audio details\n"
 	)
 	_vbox.add_child(_hint_label)
 
 	var fold_server := FoldableContainer.new()
+	_fold_server = fold_server
 	fold_server.title = "Server Status"
 	fold_server.folded = false
 	_folds.append(fold_server)
@@ -146,16 +150,6 @@ func _build_ui() -> void:
 	_reverb_compact_label.add_theme_font_size_override("normal_font_size", 11)
 	_reverb_compact_label.text = "(No data)"
 	reverb_vbox.add_child(_reverb_compact_label)
-	_fold_reverb_expert = FoldableContainer.new()
-	_fold_reverb_expert.title = "Raw counters (expert)"
-	_fold_reverb_expert.folded = true
-	_reverb_expert_label = RichTextLabel.new()
-	_reverb_expert_label.bbcode_enabled = true
-	_reverb_expert_label.fit_content = true
-	_reverb_expert_label.add_theme_font_size_override("normal_font_size", 10)
-	_reverb_expert_label.text = ""
-	_fold_reverb_expert.add_child(_reverb_expert_label)
-	reverb_vbox.add_child(_fold_reverb_expert)
 	fold_reverb.add_child(reverb_vbox)
 	_vbox.add_child(fold_reverb)
 
@@ -190,9 +184,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		KEY_A:
 			_audio_show_details = not _audio_show_details
 			_update_timer = UPDATE_INTERVAL
-		KEY_E:
-			if _fold_reverb_expert:
-				_fold_reverb_expert.folded = not _fold_reverb_expert.folded
 		_:
 			handled = false
 
@@ -234,87 +225,126 @@ func _process(delta: float) -> void:
 
 
 func _refresh_status() -> void:
+	if not _fold_server:
+		return
 	if not ResonanceServerAccess.has_server():
 		_status_label.text = "[color=%s]ResonanceServer not loaded[/color]" % COLOR_ERROR
+		_fold_server.title = "Server Status - not loaded"
+		_fold_server.add_theme_color_override("title_font_color", Color.from_string(COLOR_ERROR, Color.RED))
 		return
 
 	var srv = ResonanceServerAccess.get_server()
-	var parts: PackedStringArray = []
+	var init_ok: bool = srv.is_initialized()
+	var sim_ok: bool = (srv.is_simulating() if init_ok else false)
+	# FoldableContainer.title has no BBCode; color the whole title via theme.
+	if not init_ok:
+		_fold_server.title = "Server Status - not initialized"
+		_fold_server.add_theme_color_override("title_font_color", Color.from_string(COLOR_WARNING, Color.ORANGE))
+	elif not sim_ok:
+		_fold_server.title = "Server Status - waiting for geometry"
+		_fold_server.add_theme_color_override("title_font_color", Color.from_string(COLOR_WARNING, Color.ORANGE))
+	else:
+		_fold_server.title = "Server Status - initialized"
+		_fold_server.add_theme_color_override("title_font_color", Color.from_string(COLOR_OK, Color.LIME_GREEN))
 
-	var out_direct = srv.is_output_direct_enabled()
-	var out_reverb = srv.is_output_reverb_enabled()
+	var parts: PackedStringArray = []
+	var path_on: bool = srv.is_pathing_enabled() if srv.has_method("is_pathing_enabled") else false
 	parts.append(
 		(
-			"[color=%s]Output Direct: %s | Reverb: %s[/color]"
-			% [COLOR_NEUTRAL, _str_bool(out_direct), _str_bool(out_reverb)]
+			"[color=%s]Output:[/color] Direct - %s | Reverb - %s | Pathing - %s"
+			% [COLOR_NEUTRAL, _str_bool(srv.is_output_direct_enabled()), _str_bool(srv.is_output_reverb_enabled()), _str_bool(path_on)]
 		)
 	)
 
-	var refl_type = srv.get_reflection_type() if srv.has_method("get_reflection_type") else 0
-	var names = Constants.REFLECTION_DISPLAY_NAMES
-	var refl_name = names[refl_type] if refl_type >= 0 and refl_type < names.size() else "?"
-	parts.append("[color=%s]Reflection Type: %s[/color]" % [COLOR_NEUTRAL, refl_name])
+	var ao: int = 1
+	if srv.has_method("get_ambisonic_order"):
+		ao = int(srv.get_ambisonic_order())
+	parts.append("[color=%s]Ambisonic Order:[/color] %s" % [COLOR_NEUTRAL, _ambisonic_order_label(ao)])
 
-	if srv.has_method("get_realtime_rays"):
-		var rays = srv.get_realtime_rays()
-		parts.append(
-			(
-				"[color=%s]Realtime Rays: %s[/color]"
-				% [COLOR_NEUTRAL, rays if rays > 0 else "Baked Only (0)"]
-			)
-		)
+	var scene_idx: int = 0
+	if srv.has_method("get_simulation_tracer_profile"):
+		var prof: Dictionary = srv.get_simulation_tracer_profile()
+		scene_idx = int(prof.get("scene_type", 0))
+	var scene_lbl: String = (
+		_SCENE_TYPE_LABELS[scene_idx]
+		if scene_idx >= 0 and scene_idx < _SCENE_TYPE_LABELS.size()
+		else "?"
+	)
+	parts.append("[color=%s]Scene Type:[/color] %s" % [COLOR_NEUTRAL, scene_lbl])
+
+	var refl_type: int = srv.get_reflection_type() if srv.has_method("get_reflection_type") else 0
+	var names = Constants.REFLECTION_DISPLAY_NAMES
+	var refl_name: String = names[refl_type] if refl_type >= 0 and refl_type < names.size() else "?"
+	parts.append("[color=%s]Reflection Type:[/color] %s" % [COLOR_NEUTRAL, refl_name])
+
+	var drm: int = 0
+	if srv.has_method("get_default_reflections_mode"):
+		drm = int(srv.get_default_reflections_mode())
+	var rays: int = int(srv.get_realtime_rays()) if srv.has_method("get_realtime_rays") else 0
+	var mode_base: String = "Baked" if drm == 0 else "Realtime"
+	var refl_mode_line: String
+	if rays > 0:
+		refl_mode_line = "%s | %d realtime rays" % [mode_base, rays]
+	else:
+		refl_mode_line = "%s | realtime rays off" % mode_base
+	parts.append("[color=%s]Reflection Mode:[/color] %s" % [COLOR_NEUTRAL, refl_mode_line])
+
 	if refl_type == 1 or refl_type == 2:
 		parts.append(
 			"[color=%s]Parametric/Hybrid: reverb in player output[/color]" % COLOR_WARNING
 		)
-
-	var init_ok: bool = srv.is_initialized()
-	var sim_ok: bool = (srv.is_simulating() if init_ok else false)
-	var server_line_col := COLOR_ERROR
-	if init_ok:
-		server_line_col = COLOR_OK if sim_ok else COLOR_WARNING
-	var server_txt := "not initialized"
-	if init_ok:
-		server_txt = "initialized" if sim_ok else "initialized — [color=%s]waiting for geometry[/color]" % COLOR_WARNING
-	parts.append("[color=%s]Server: %s[/color]" % [server_line_col, server_txt])
 
 	var tree := get_tree()
 	var rt: Node = tree.get_first_node_in_group("resonance_runtime") if tree else null
 	var mtu := 0
 	var ptu := 0
 	if rt:
-		var v: Variant = rt.get("main_thread_last_tick_usec")
-		mtu = int(v) if v != null else 0
-		var pv: Variant = rt.get("runtime_physics_tick_usec")
-		ptu = int(pv) if pv != null else 0
-	parts.append(
-		(
-			"[color=%s]Main thread:[/color] [i]ResonanceRuntime._process[/i] last [color=%s]%d µs[/color]"
-			% [COLOR_NEUTRAL, COLOR_NEUTRAL, mtu]
-		)
-	)
-	if ptu > 0:
-		parts.append(
-			(
-				"[color=%s]Physics tick (Custom scene):[/color] [i]_physics_process[/i] [color=%s]%d µs[/color]"
-				% [COLOR_NEUTRAL, COLOR_NEUTRAL, ptu]
-			)
-		)
+		var _mt: Variant = rt.get("main_thread_last_tick_usec")
+		mtu = int(_mt) if _mt != null else 0
+		var _pt: Variant = rt.get("runtime_physics_tick_usec")
+		ptu = int(_pt) if _pt != null else 0
+	var w_sum := 0
+	var w_heavy_tag := ""
 	if init_ok and srv.has_method("get_simulation_worker_timing"):
 		var wtim: Dictionary = srv.get_simulation_worker_timing()
-		var w_d := int(wtim.get("us_run_direct", 0))
-		var w_r := int(wtim.get("us_run_reflections", 0))
-		var w_p := int(wtim.get("us_run_pathing", 0))
-		var w_s := int(wtim.get("us_sync_fetch", 0))
-		var w_sum := w_d + w_r + w_p + w_s
+		w_sum = ResonanceRuntimePerfMonitors.simulation_worker_timing_sum(wtim)
+		var wh: Variant = wtim.get("worker_last_wake_heavy", false)
+		var w_heavy: bool = wh if wh is bool else bool(wh)
+		w_heavy_tag = "H" if w_heavy else "L"
+	if init_ok:
 		parts.append(
 			(
-				"[color=%s]Worker (last tick, µs):[/color] direct=%d refl=%d path=%d sync=%d [color=%s](Σ %d)[/color]"
-				% [COLOR_NEUTRAL, w_d, w_r, w_p, w_s, COLOR_HINT, w_sum]
+				"[color=%s]Performance:[/color] [color=%s]%d µs[/color] | worker Σ [color=%s]%d µs[/color] [color=%s](%s)[/color]"
+				% [COLOR_NEUTRAL, COLOR_NEUTRAL, mtu, COLOR_NEUTRAL, w_sum, COLOR_HINT, w_heavy_tag]
 			)
+		)
+	else:
+		parts.append(
+			(
+				"[color=%s]Performance:[/color] [color=%s]%d µs[/color] | worker [color=%s]-[/color]"
+				% [COLOR_NEUTRAL, COLOR_NEUTRAL, mtu, COLOR_HINT]
+			)
+		)
+	if ptu > 0:
+		parts.append(
+			"[color=%s]Custom scene[/color] [i]_physics_process[/i] [color=%s]%d µs[/color]"
+			% [COLOR_NEUTRAL, COLOR_NEUTRAL, ptu]
 		)
 
 	_status_label.text = "\n".join(parts)
+
+
+func _ambisonic_order_label(order: int) -> String:
+	var o := clampi(order, 1, 3)
+	match o:
+		1:
+			return "1st Order"
+		2:
+			return "2nd Order"
+		3:
+			return "3rd Order"
+		_:
+			return "%d (order)" % order
 
 
 func _audio_inst_col_buf(n: int) -> String:
@@ -544,7 +574,7 @@ func _refresh_audio_instrumentation() -> void:
 	if _audio_show_details:
 		if not problem_details.is_empty():
 			parts.append(
-				"[color=%s]— issues / no data (max %d) —[/color]" % [COLOR_HINT, AUDIO_PROBLEM_DETAIL_CAP]
+				"[color=%s]- issues / no data (max %d) -[/color]" % [COLOR_HINT, AUDIO_PROBLEM_DETAIL_CAP]
 			)
 			var n := mini(AUDIO_PROBLEM_DETAIL_CAP, problem_details.size())
 			for j in range(n):
@@ -553,7 +583,7 @@ func _refresh_audio_instrumentation() -> void:
 					parts.append(line)
 		if not watch_details.is_empty():
 			parts.append(
-				"[color=%s]— watch: elevated late-mix rate (usually benign) —[/color]" % COLOR_HINT
+				"[color=%s]- watch: elevated late-mix rate (usually benign) -[/color]" % COLOR_HINT
 			)
 			var nw := mini(AUDIO_PROBLEM_DETAIL_CAP, watch_details.size())
 			for j in range(nw):
@@ -569,12 +599,11 @@ func _refresh_audio_instrumentation() -> void:
 
 
 func _refresh_reverb_bus() -> void:
-	if not _reverb_compact_label or not _reverb_expert_label:
+	if not _reverb_compact_label:
 		return
 	var srv: Variant = ResonanceServerAccess.get_server()
 	if not srv or not srv.has_method("get_reverb_bus_instrumentation"):
 		_reverb_compact_label.text = "[color=%s]ResonanceServer not available[/color]" % COLOR_ERROR
-		_reverb_expert_label.text = ""
 		return
 
 	var ri: Dictionary = srv.get_reverb_bus_instrumentation()
@@ -585,7 +614,7 @@ func _refresh_reverb_bus() -> void:
 	var eff_proc: int = ri.get("effect_process_calls", 0)
 	var eff_ok: int = ri.get("effect_success", 0)
 	var eff_null: int = ri.get("effect_mixer_null", 0)
-	# Convolution/TAN use ReflectionMixer on the bus. Parametric/Hybrid have no mixer — wet signal is mixed inside ResonancePlayer.
+	# Convolution/TAN use ReflectionMixer on the bus. Parametric/Hybrid have no mixer - wet signal is mixed inside ResonancePlayer.
 	var parametric_or_hybrid := refl_type == 1 or refl_type == 2
 	var eff_col := COLOR_OK if eff_ok > 0 and eff_null == 0 else COLOR_WARNING
 	if parametric_or_hybrid and eff_null > 0 and eff_ok == 0:
@@ -621,7 +650,7 @@ func _refresh_reverb_bus() -> void:
 	if parametric_or_hybrid:
 		compact.append(
 			(
-				"[color=%s]Bus effect:[/color] silent by design — use [color=%s]ResonancePlayer[/color] RMS / signal levels for wet audio."
+				"[color=%s]Bus effect:[/color] silent by design - use [color=%s]ResonancePlayer[/color] RMS / signal levels for wet audio."
 				% [COLOR_HINT, COLOR_NEUTRAL]
 			)
 		)
@@ -686,97 +715,6 @@ func _refresh_reverb_bus() -> void:
 			)
 
 	_reverb_compact_label.text = "\n".join(compact)
-
-	var expert: PackedStringArray = []
-	var names = Constants.REFLECTION_DISPLAY_NAMES
-	var refl_name = names[refl_type] if refl_type >= 0 and refl_type < names.size() else "?"
-	expert.append("reflection_type=%d (%s)" % [refl_type, refl_name])
-	if refl_type == 0:
-		expert.append(
-			"convolution valid_fetches=%d feed_ir_null=%d"
-			% [ri.get("convolution_valid_fetches", 0), ri.get("convolution_feed_ir_null", 0)]
-		)
-		expert.append(
-			"gain_min=%.6f gain_max=%.6f input_rms_max=%.6f"
-			% [
-				ri.get("convolution_gain_min", 1.0),
-				ri.get("convolution_gain_max", 0.0),
-				ri.get("convolution_input_rms_max", 0.0),
-			]
-		)
-	expert.append(
-		"effect_process=%d mixer_null=%d success=%d frames_written=%d"
-		% [
-			eff_proc,
-			eff_null,
-			eff_ok,
-			ri.get("effect_frames_written", 0),
-		]
-	)
-	expert.append(
-		"fetch lock_ok=%d hit=%d miss=%d" % [fetch_lock, fetch_hit, fetch_miss]
-	)
-	if srv.has_method("get_pathing_instrumentation"):
-		var pi2: Dictionary = srv.get_pathing_instrumentation()
-		expert.append(
-			(
-				"pathing fetch: early=%d lock_ok=%d src_null=%d sh_ok=%d sh_null=%d bad_order=%d cache_hit=%d cache_miss=%d"
-				% [
-					int(pi2.get("fetch_early_exit", 0)),
-					int(pi2.get("fetch_lock_ok", 0)),
-					int(pi2.get("fetch_src_null", 0)),
-					int(pi2.get("fetch_sh_ok", 0)),
-					int(pi2.get("fetch_sh_null", 0)),
-					int(pi2.get("fetch_sh_bad_order", 0)),
-					int(pi2.get("fetch_cache_hit", 0)),
-					int(pi2.get("fetch_cache_miss", 0)),
-				]
-			)
-		)
-		expert.append(
-			(
-				"pathing sim: attempt=%d ran=%d seh_fail=%d skip_listener=%d skip_cooldown=%d | listener_valid=%s cooldown=%d ran_this_tick=%s"
-				% [
-					int(pi2.get("sim_attempt", 0)),
-					int(pi2.get("sim_ran", 0)),
-					int(pi2.get("sim_seh_fail", 0)),
-					int(pi2.get("sim_skip_listener", 0)),
-					int(pi2.get("sim_skip_cooldown", 0)),
-					pi2.get("pending_listener_valid", true),
-					int(pi2.get("pathing_crash_cooldown", 0)),
-					pi2.get("pathing_ran_this_tick", false),
-				]
-			)
-		)
-	if srv.has_method("get_simulation_worker_timing"):
-		var wtim: Dictionary = srv.get_simulation_worker_timing()
-		expert.append(
-			(
-				"worker last tick us: direct=%d refl=%d path=%d sync_fetch=%d"
-				% [
-					int(wtim.get("us_run_direct", 0)),
-					int(wtim.get("us_run_reflections", 0)),
-					int(wtim.get("us_run_pathing", 0)),
-					int(wtim.get("us_sync_fetch", 0)),
-				]
-			)
-		)
-	if not runtimes.is_empty():
-		var rt2: Node = runtimes[0]
-		var ai2 = rt2.get("activator_instrumentation")
-		if ai2 != null and not ai2.is_empty() and ai2.get("active", false):
-			expert.append(
-				(
-					"activator calls=%d bus_idx=%d muted=%s send=%s"
-					% [
-						ai2.get("fill_calls", 0),
-						ai2.get("bus_index", -1),
-						ai2.get("bus_muted", true),
-						ai2.get("bus_send", ""),
-					]
-				)
-			)
-	_reverb_expert_label.text = "\n".join(expert)
 
 
 func _str_bool(b: bool) -> String:

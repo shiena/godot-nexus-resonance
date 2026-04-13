@@ -48,7 +48,7 @@ Or use the helper script (set `$env:GODOT_PATH` if godot is not in PATH):
 | `test/unit/test_resonance_bake_runner.gd` | ResonanceBakeRunner / ResonanceBakeEstimates (probe count, bake time estimates) |
 | `test/unit/test_resonance_bake_discovery.gd` | ResonanceBakeDiscovery (find_resonance_runtime, resolve_bake_node_for_volume) |
 | `test/unit/test_resonance_bake_hashes.gd` | ResonanceBakeHashes (hash_dict, pathing hash, position/radius hash) |
-| `test/unit/test_resonance_paths.gd` | ResonancePaths.get_audio_data_dir |
+| `test/unit/test_resonance_paths.gd` | ResonancePaths (audio_data_dir, static scene + probe batch path / extension) |
 | `test/unit/test_resonance_fs_paths.gd` | ResonanceFsPaths (globalize, open/read/exists, probe needles, scene text match) |
 | `test/unit/test_resonance_fs_paths_fixtures.gd` | Disk fixtures under `test/fixtures/` + probe reference detection |
 | `test/unit/test_resonance_export_handler.gd` | ResonanceExportHandler.collect_scene_paths_for_obj, server null guard |

@@ -4,7 +4,7 @@
 		Resource storing baked probe data for reverb and pathing.
 	</brief_description>
 	<description>
-		ResonanceProbeData holds the baked probe batch from Steam Audio. Assigned to [ResonanceProbeVolume]'s [member probe_data] property. Created automatically when baking probes; save the scene after baking to persist.
+		ResonanceProbeData holds the baked probe batch from Steam Audio. Assigned to [ResonanceProbeVolume]'s [member probe_data] property. Created automatically when baking probes; save the scene after baking to persist. Default external path pattern is [code]&lt;scene&gt;_&lt;node_path&gt;_batch.tres[/code] or [code].res[/code] (Project Settings → Nexus → Resonance → Export → Probe data format).
 		Contains reflection data (Convolution/Parametric/Hybrid), optional pathing data, and optional static source/listener data. The baked reflection type must match [url=#ResonanceRuntimeConfig]ResonanceRuntimeConfig[/url] [member ResonanceRuntimeConfig.reflection_type] at runtime.
 	</description>
 	<tutorials>

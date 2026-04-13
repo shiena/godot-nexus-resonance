@@ -17,6 +17,7 @@
 #include <godot_cpp/variant/utility_functions.hpp>
 #include <limits>
 #include <unordered_set>
+#include <vector>
 
 using namespace godot;
 
@@ -72,6 +73,13 @@ ResonanceServer::~ResonanceServer() {
 
 ResonanceServer* ResonanceServer::get_singleton() { return g_resonance_server_singleton; }
 
+bool ResonanceServer::ipl_audio_teardown_active() {
+    if (is_shutting_down_flag.load(std::memory_order_acquire))
+        return true;
+    ResonanceServer* s = get_singleton();
+    return s && s->ipl_teardown_active_.load(std::memory_order_acquire);
+}
+
 void ResonanceServer::register_ipl_context_client(void* key, IplContextClientCleanup cleanup) {
     if (!key || !cleanup)
         return;
@@ -93,20 +101,24 @@ void ResonanceServer::unregister_ipl_context_client(void* key) {
     v.erase(std::remove_if(v.begin(), v.end(), [key](const IplContextClient& e) { return e.key == key; }), v.end());
 }
 
-void ResonanceServer::_drain_ipl_context_clients_before_context_destroy() {
+void ResonanceServer::_drain_ipl_context_clients_assume_audio_locked() {
     std::vector<IplContextClient> clients_copy;
     {
         std::lock_guard<std::mutex> lock(ipl_context_clients_mutex_);
         clients_copy = std::move(ipl_context_clients_);
         ipl_context_clients_.clear();
     }
-    AudioServer* audio = AudioServer::get_singleton();
-    if (audio)
-        audio->lock();
     for (const IplContextClient& c : clients_copy) {
         if (c.cleanup && c.key)
             c.cleanup(c.key);
     }
+}
+
+void ResonanceServer::_drain_ipl_context_clients_before_context_destroy() {
+    AudioServer* audio = AudioServer::get_singleton();
+    if (audio)
+        audio->lock();
+    _drain_ipl_context_clients_assume_audio_locked();
     if (audio)
         audio->unlock();
 }
@@ -142,6 +154,7 @@ void ResonanceServer::_apply_config(Dictionary config) {
     hybrid_reverb_transition_time = config_.hybrid_reverb_transition_time;
     hybrid_reverb_overlap_percent = config_.hybrid_reverb_overlap_percent;
     transmission_type = config_.transmission_type;
+    max_transmission_surfaces = config_.max_transmission_surfaces;
     occlusion_type = config_.occlusion_type;
     max_occlusion_samples = config_.max_occlusion_samples;
     max_simulation_sources = config_.max_simulation_sources;
@@ -161,6 +174,7 @@ void ResonanceServer::_apply_config(Dictionary config) {
     path_validation_enabled = config_.path_validation_enabled;
     find_alternate_paths = config_.find_alternate_paths;
     scene_type = config_.scene_type;
+    physics_ray_batch_size = config_.physics_ray_batch_size;
     {
         int pm = config_.physics_ray_collision_mask;
         uint32_t um = (pm < 0) ? 0xFFFFFFFFu : static_cast<uint32_t>(pm);
@@ -181,15 +195,29 @@ void ResonanceServer::_apply_config(Dictionary config) {
     perspective_correction_enabled.store(config_.perspective_correction_enabled, std::memory_order_relaxed);
     perspective_correction_factor.store(config_.perspective_correction_factor, std::memory_order_relaxed);
     geometry_update_throttle = config_.geometry_update_throttle;
+    dynamic_scene_commit_min_interval_ = config_.dynamic_scene_commit_min_interval;
     simulation_tick_throttle = config_.simulation_tick_throttle;
     simulation_update_interval = config_.simulation_update_interval;
+    reflections_sim_update_interval = config_.reflections_sim_update_interval;
+    pathing_sim_update_interval = config_.pathing_sim_update_interval;
+    realtime_reflection_max_distance_m = config_.realtime_reflection_max_distance_m;
+    reflections_adaptive_budget_us_ = static_cast<uint32_t>(config_.reflections_adaptive_budget_us);
+    reflections_adaptive_step_sec_ = config_.reflections_adaptive_step_sec;
+    reflections_adaptive_max_extra_interval_ = config_.reflections_adaptive_max_extra_interval;
+    reflections_adaptive_decay_per_sec_ = config_.reflections_adaptive_decay_per_sec;
+    reflections_defer_after_scene_commit_us_ = static_cast<uint32_t>(config_.reflections_defer_after_scene_commit_us);
+    convolution_ir_max_samples_ = config_.convolution_ir_max_samples;
+    reflections_adaptive_extra_interval_ = 0.0f;
     direct_sim_interval = config_.direct_sim_interval;
     batch_source_updates = config_.batch_source_updates;
     tick_throttle_counter.store(0, std::memory_order_relaxed);
     simulation_update_time_elapsed = 0.0f;
+    reflections_interval_elapsed = 0.0f;
+    pathing_interval_elapsed = 0.0f;
     direct_sim_time_elapsed = (direct_sim_interval > 0.0f) ? direct_sim_interval : 0.0f;
     worker_run_direct_next.store(true, std::memory_order_relaxed);
-    reflections_pathing_requested.store(false, std::memory_order_relaxed);
+    reflection_sim_heavy_requested.store(false, std::memory_order_relaxed);
+    pathing_sim_heavy_requested.store(false, std::memory_order_relaxed);
     {
         std::lock_guard<std::mutex> b(source_update_batch_mutex_);
         source_update_batch_.clear();
@@ -232,11 +260,24 @@ void ResonanceServer::_init_internal() {
     instrumentation_fetch_cache_miss.store(0, std::memory_order_relaxed);
     reset_pathing_instrumentation();
 
+    // shutdown()/reinit leave is_shutting_down_flag true and ipl_teardown_active_ true until a new context
+    // exists; clear before rebuilding so the 2nd/3rd editor play session does not run init with stale teardown.
+    is_shutting_down_flag.store(false, std::memory_order_release);
+    ipl_teardown_active_.store(false, std::memory_order_release);
+
     _init_context_and_devices();
-    if (!steam_audio_context_)
+    if (!steam_audio_context_) {
+        ipl_teardown_active_.store(false, std::memory_order_release);
+        // shutdown()/~ResonanceServer set is_shutting_down_flag; clear so a later play session in the same
+        // process (editor re-run or scene restart) is not stuck "shutting down" with a fresh init.
+        is_shutting_down_flag.store(false, std::memory_order_release);
         return;
-    if (!_init_scene_and_simulator())
+    }
+    if (!_init_scene_and_simulator()) {
+        ipl_teardown_active_.store(false, std::memory_order_release);
+        is_shutting_down_flag.store(false, std::memory_order_release);
         return;
+    }
     if (!_uses_main_thread_phonon_simulation())
         _start_worker_thread();
 
@@ -244,9 +285,12 @@ void ResonanceServer::_init_internal() {
     const char* refl_names[] = {"Convolution", "Parametric", "Hybrid", "TrueAudio Next"};
     int refl_idx = (reflection_type >= resonance::kReflectionConvolution && reflection_type <= resonance::kReflectionTan) ? reflection_type : resonance::kReflectionConvolution;
     String rays_str = (max_rays == 0) ? "Rays: Baked Only (0)" : "Rays (Realtime): " + String::num_int64(max_rays);
-    String engine_msg = "Engine Started (Steam Audio " + version_str + "). Rate: " + String::num_int64(current_sample_rate) +
-                        " | Ambient Order: " + ambient_order_ordinal(ambisonic_order) + " | Reflection: " + refl_names[refl_idx] + " | " + rays_str;
+    String order_msg = " | Ambisonics: " + ambient_order_ordinal(ambisonic_order);
+    String engine_msg = "Engine Started (Steam Audio " + version_str + "). Rate: " + String::num_int64(current_sample_rate) + order_msg +
+                        " | Reflection: " + refl_names[refl_idx] + " | " + rays_str;
     UtilityFunctions::print_rich("[color=cyan]Nexus Resonance:[/color] " + engine_msg);
+    ipl_teardown_active_.store(false, std::memory_order_release);
+    is_shutting_down_flag.store(false, std::memory_order_release);
 }
 
 void ResonanceServer::_init_context_and_devices() {
@@ -291,8 +335,14 @@ bool ResonanceServer::_init_scene_and_simulator() {
     if (_scene_type() == IPL_SCENETYPE_CUSTOM) {
         sceneSettings.closestHitCallback = &ResonanceGodotPhysicsSceneBridge::closest_hit_callback;
         sceneSettings.anyHitCallback = &ResonanceGodotPhysicsSceneBridge::any_hit_callback;
-        sceneSettings.batchedClosestHitCallback = nullptr;
-        sceneSettings.batchedAnyHitCallback = nullptr;
+        const int batch = resonance::clamp_physics_ray_batch_size(physics_ray_batch_size);
+        if (batch > 1) {
+            sceneSettings.batchedClosestHitCallback = &ResonanceGodotPhysicsSceneBridge::batched_closest_hit_callback;
+            sceneSettings.batchedAnyHitCallback = &ResonanceGodotPhysicsSceneBridge::batched_any_hit_callback;
+        } else {
+            sceneSettings.batchedClosestHitCallback = nullptr;
+            sceneSettings.batchedAnyHitCallback = nullptr;
+        }
         sceneSettings.userData = godot_physics_bridge_.user_data();
     }
     if (iplSceneCreate(_ctx(), &sceneSettings, &scene) != IPL_STATUS_SUCCESS) {
@@ -316,7 +366,9 @@ bool ResonanceServer::_init_scene_and_simulator() {
     simulation_settings.openCLDevice = _opencl();
     simulation_settings.tanDevice = _tan();
     simulation_settings.maxNumOcclusionSamples = max_occlusion_samples;
-    simulation_settings.maxNumRays = _uses_convolution_or_hybrid_or_tan() ? (max_rays > 0 ? max_rays : 1) : max_rays;
+    // Same as Parametric: baked-only uses maxNumRays=0. Phonon's ReflectionSimulator supports 0 (no realtime ray work).
+    // Previously Nexus forced at least 1 ray for Convolution/Hybrid/TAN when realtime_rays==0, which inflated RunReflections cost unnecessarily.
+    simulation_settings.maxNumRays = max_rays;
     simulation_settings.numDiffuseSamples = realtime_num_diffuse_samples;
     simulation_settings.maxDuration = max_reverb_duration;
     simulation_settings.samplingRate = current_sample_rate;
@@ -326,7 +378,10 @@ bool ResonanceServer::_init_scene_and_simulator() {
     simulation_settings.maxNumSources = max_simulation_sources;
     // numVisSamples: probe visibility sampling for pathing (Steam Audio simulation doc). Runtime uses pathing_num_vis_samples; bake uses kBakePathingDefaultNumSamples.
     simulation_settings.numVisSamples = pathing_enabled ? pathing_num_vis_samples : 1;
-    simulation_settings.rayBatchSize = 1;
+    {
+        const int batch = (_scene_type() == IPL_SCENETYPE_CUSTOM) ? resonance::clamp_physics_ray_batch_size(physics_ray_batch_size) : 1;
+        simulation_settings.rayBatchSize = batch;
+    }
 
     if (iplSimulatorCreate(_ctx(), &simulation_settings, &simulator) != IPL_STATUS_SUCCESS) {
         ResonanceLog::error("ResonanceServer: iplSimulatorCreate failed.");
@@ -335,8 +390,7 @@ bool ResonanceServer::_init_scene_and_simulator() {
         return false;
     }
 
-    // FMOD Bridge: Create reverb source at listener position for iplFMODSetReverbSource.
-    fmod_reverb_source_handle_ = create_source_handle(Vector3(0, 0, 0), 1.0f);
+    // FMOD reverb source: created lazily in ensure_fmod_reverb_source() when the FMOD bridge inits (Godot-only games avoid an extra source + per-listener mutex work).
 
     if (reflection_type == resonance::kReflectionConvolution || reflection_type == resonance::kReflectionTan) {
         IPLReflectionEffectSettings rs{};
@@ -363,6 +417,26 @@ bool ResonanceServer::_init_scene_and_simulator() {
     iplSimulatorSetScene(simulator, scene);
     iplSimulatorCommit(simulator);
 
+    {
+        const int batch = (_scene_type() == IPL_SCENETYPE_CUSTOM) ? resonance::clamp_physics_ray_batch_size(physics_ray_batch_size) : 1;
+        const bool batched_path = (_scene_type() == IPL_SCENETYPE_CUSTOM && batch > 1);
+        const char* st_label = "DEFAULT";
+        if (_scene_type() == IPL_SCENETYPE_EMBREE)
+            st_label = "EMBREE";
+        else if (_scene_type() == IPL_SCENETYPE_RADEONRAYS)
+            st_label = "RADEONRAYS";
+        else if (_scene_type() == IPL_SCENETYPE_CUSTOM)
+            st_label = "CUSTOM";
+        if (batched_path)
+            ResonanceLog::info(String("Nexus Resonance: simulator ") + st_label + ", rayBatchSize=" + String::num(batch) +
+                               " (Godot physics batched trace callbacks; Phonon BatchedReflectionSimulator path).");
+        else if (_scene_type() == IPL_SCENETYPE_CUSTOM)
+            ResonanceLog::info(String("Nexus Resonance: simulator ") + st_label + ", rayBatchSize=1 (single-ray callbacks per job).");
+        else
+            ResonanceLog::info(String("Nexus Resonance: simulator ") + st_label +
+                               ", rayBatchSize=1 (Custom-only batching; Default/Embree use native tracer job layout).");
+    }
+
     update_listener(Vector3(0, 0, 0), Vector3(0, 0, -1), Vector3(0, 1, 0));
     return true;
 }
@@ -375,11 +449,67 @@ void ResonanceServer::_start_worker_thread() {
 // --- RUNTIME LOOP ---
 
 void ResonanceServer::tick(float delta) {
-    // Accumulate time; Reflections+Pathing only when interval elapsed (reduces CPU)
-    simulation_update_time_elapsed += delta;
-    if (simulation_update_time_elapsed >= simulation_update_interval) {
-        simulation_update_time_elapsed = 0.0f;
-        reflections_pathing_requested.store(true, std::memory_order_release);
+    if (reflection_force_heavy_next_tick_.exchange(false, std::memory_order_acq_rel)) {
+        const bool need_rfl = (max_rays > 0) || probe_batch_registry_.has_any_batches();
+        if (need_rfl)
+            reflection_sim_heavy_requested.store(true, std::memory_order_release);
+    }
+
+    // Heavy cadence: default uses one timer (simulation_update_interval) for both reflections and pathing.
+    // When reflections_sim_update_interval or pathing_sim_update_interval is >= 0, that axis uses its own seconds value; < 0 falls back to simulation_update_interval.
+    const bool need_refl_heavy = (max_rays > 0) || probe_batch_registry_.has_any_batches();
+    const bool split_heavy = (reflections_sim_update_interval >= 0.0f) || (pathing_sim_update_interval >= 0.0f);
+    const bool adaptive_refl = (reflections_adaptive_budget_us_ > 0);
+    if (!split_heavy && !adaptive_refl) {
+        simulation_update_time_elapsed += delta;
+        if (simulation_update_time_elapsed >= simulation_update_interval) {
+            simulation_update_time_elapsed = 0.0f;
+            if (need_refl_heavy)
+                reflection_sim_heavy_requested.store(true, std::memory_order_release);
+            if (pathing_enabled)
+                pathing_sim_heavy_requested.store(true, std::memory_order_release);
+        }
+    } else if (!split_heavy && adaptive_refl) {
+        simulation_update_time_elapsed += delta;
+        reflections_interval_elapsed += delta;
+        const float eff_r = simulation_update_interval + reflections_adaptive_extra_interval_;
+        if (simulation_update_time_elapsed >= simulation_update_interval) {
+            simulation_update_time_elapsed = 0.0f;
+            if (pathing_enabled)
+                pathing_sim_heavy_requested.store(true, std::memory_order_release);
+        }
+        if (need_refl_heavy && (eff_r <= 0.0f || reflections_interval_elapsed >= eff_r)) {
+            reflections_interval_elapsed = 0.0f;
+            reflection_sim_heavy_requested.store(true, std::memory_order_release);
+        }
+    } else {
+        const float rdt = (reflections_sim_update_interval < 0.0f) ? simulation_update_interval : reflections_sim_update_interval;
+        const float pdt = (pathing_sim_update_interval < 0.0f) ? simulation_update_interval : pathing_sim_update_interval;
+        const float eff_r = rdt + (adaptive_refl ? reflections_adaptive_extra_interval_ : 0.0f);
+        reflections_interval_elapsed += delta;
+        pathing_interval_elapsed += delta;
+        if (need_refl_heavy && (eff_r <= 0.0f || reflections_interval_elapsed >= eff_r)) {
+            reflections_interval_elapsed = 0.0f;
+            reflection_sim_heavy_requested.store(true, std::memory_order_release);
+        }
+        if (pathing_enabled && (pdt <= 0.0f || pathing_interval_elapsed >= pdt)) {
+            pathing_interval_elapsed = 0.0f;
+            pathing_sim_heavy_requested.store(true, std::memory_order_release);
+        }
+    }
+
+    if (reflections_adaptive_budget_us_ > 0) {
+        const uint64_t last = instrumentation_worker_us_run_reflections.load(std::memory_order_relaxed);
+        const uint64_t budget = static_cast<uint64_t>(reflections_adaptive_budget_us_);
+        if (last > budget) {
+            reflections_adaptive_extra_interval_ = std::min(
+                reflections_adaptive_extra_interval_ + reflections_adaptive_step_sec_,
+                reflections_adaptive_max_extra_interval_);
+        } else {
+            reflections_adaptive_extra_interval_ = std::max(
+                0.0f,
+                reflections_adaptive_extra_interval_ - reflections_adaptive_decay_per_sec_ * delta);
+        }
     }
 
     direct_sim_time_elapsed += delta;
@@ -387,7 +517,8 @@ void ResonanceServer::tick(float delta) {
     if (!_should_run_throttled(tick_throttle_counter, simulation_tick_throttle))
         return;
 
-    const bool heavy_pending = reflections_pathing_requested.load(std::memory_order_acquire);
+    const bool heavy_pending = reflection_sim_heavy_requested.load(std::memory_order_acquire) ||
+                               pathing_sim_heavy_requested.load(std::memory_order_acquire);
     bool run_direct_this_wake = true;
     if (direct_sim_interval > 0.0f) {
         if (heavy_pending) {
@@ -401,10 +532,11 @@ void ResonanceServer::tick(float delta) {
 
     if (_uses_main_thread_phonon_simulation()) {
         IPLCoordinateSpace3 listener_cs = _snapshot_listener_for_simulation();
-        const bool run_heavy = reflections_pathing_requested.exchange(false, std::memory_order_acq_rel);
+        const bool run_refl = reflection_sim_heavy_requested.exchange(false, std::memory_order_acq_rel);
+        const bool run_path = pathing_sim_heavy_requested.exchange(false, std::memory_order_acq_rel);
         {
             std::lock_guard<std::mutex> sim_lock(simulation_mutex);
-            _run_phonon_simulation_locked(listener_cs, run_direct_this_wake, run_heavy);
+            _run_phonon_simulation_locked(listener_cs, run_direct_this_wake, run_refl, run_path);
         }
         return;
     }
@@ -435,17 +567,40 @@ void ResonanceServer::_worker_thread_func() {
 
             std::lock_guard<std::mutex> sim_lock(simulation_mutex);
             const bool run_direct = worker_run_direct_next.load(std::memory_order_acquire);
-            const bool run_heavy = reflections_pathing_requested.exchange(false, std::memory_order_acq_rel);
-            _run_phonon_simulation_locked(current_listener, run_direct, run_heavy);
+            const bool run_refl = reflection_sim_heavy_requested.exchange(false, std::memory_order_acq_rel);
+            const bool run_path = pathing_sim_heavy_requested.exchange(false, std::memory_order_acq_rel);
+            _run_phonon_simulation_locked(current_listener, run_direct, run_refl, run_path);
         }
     }
 }
 
-void ResonanceServer::_run_phonon_simulation_locked(const IPLCoordinateSpace3& current_listener, bool run_direct, bool run_heavy) {
+// Steam Audio contract (this function):
+// - iplSimulatorSetSharedInputs + Commit run every call; per-source iplSourceSetInputs (elsewhere) may omit IPL_SIMULATIONFLAGS_REFLECTIONS
+//   for sources that should not participate in realtime reflection work (still receive direct/pathing flags as configured).
+// - iplSimulatorRunReflections is required to refresh realtime / probe-driven reflection outputs; omitting it for several ticks
+//   lets cached reflection/reverb data age. RunPathing is independent; pathing outputs refresh only when RunPathing runs.
+void ResonanceServer::_run_phonon_simulation_locked(const IPLCoordinateSpace3& current_listener, bool run_direct, bool run_reflection_sim,
+                                                    bool run_pathing_sim) {
+    uint64_t us_dyn_apply = 0;
+    {
+        const auto td0 = std::chrono::steady_clock::now();
+        _apply_queued_dynamic_instanced_mesh_transforms_assume_locked();
+        const auto td1 = std::chrono::steady_clock::now();
+        us_dyn_apply = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(td1 - td0).count());
+    }
+    instrumentation_worker_us_dynamic_instanced_apply.store(us_dyn_apply, std::memory_order_relaxed);
+
     // Skip reflections simulation when no data source: saves CPU, avoids Steam Audio fallback.
-    bool run_reflections = (max_rays > 0);
-    if (!run_reflections) {
-        run_reflections = probe_batch_registry_.has_any_batches();
+    bool reflection_capable = (max_rays > 0);
+    if (!reflection_capable) {
+        reflection_capable = probe_batch_registry_.has_any_batches();
+    }
+    bool shared_reflections = false;
+    if (reflection_capable) {
+        if (probe_batch_registry_.has_any_batches())
+            shared_reflections = true;
+        else
+            shared_reflections = _any_source_needs_reflection_sim_assume_locked();
     }
 
     IPLSimulationSharedInputs inputs{};
@@ -457,19 +612,38 @@ void ResonanceServer::_run_phonon_simulation_locked(const IPLCoordinateSpace3& c
     inputs.irradianceMinDistance = realtime_irradiance_min_distance;
     inputs.pathingVisCallback = (pathing_enabled && debug_pathing.load(std::memory_order_acquire)) ? _pathing_vis_callback : nullptr;
     inputs.pathingUserData = (pathing_enabled && debug_pathing.load(std::memory_order_acquire)) ? static_cast<void*>(this) : nullptr;
-    IPLSimulationFlags sim_flags = static_cast<IPLSimulationFlags>(IPL_SIMULATIONFLAGS_DIRECT | (run_reflections ? IPL_SIMULATIONFLAGS_REFLECTIONS : 0));
+    IPLSimulationFlags sim_flags = static_cast<IPLSimulationFlags>(IPL_SIMULATIONFLAGS_DIRECT | (shared_reflections ? IPL_SIMULATIONFLAGS_REFLECTIONS : 0));
     if (pathing_enabled)
         sim_flags = static_cast<IPLSimulationFlags>(sim_flags | IPL_SIMULATIONFLAGS_PATHING);
     iplSimulatorSetSharedInputs(simulator, sim_flags, &inputs);
 
-    if (scene_dirty) {
+    // Steam Audio: iplSimulatorCommit is required after SetSharedInputs (and after SetScene) for changes to take effect.
+    // Scene graph commit (when dirty) is timed separately as us_scene_graph_commit; post-SetSharedInputs commit is us_simulator_commit.
+    uint64_t us_scene_graph = 0;
+    uint64_t us_commit = 0;
+    if (scene_dirty.load(std::memory_order_acquire)) {
+        const auto ts0 = std::chrono::steady_clock::now();
         iplSceneCommit(scene);
         iplSimulatorSetScene(simulator, scene);
-        iplSimulatorCommit(simulator);
-        scene_dirty = false;
+        scene_dirty.store(false, std::memory_order_release);
+        const auto ts1 = std::chrono::steady_clock::now();
+        us_scene_graph = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(ts1 - ts0).count());
     }
+    {
+        const auto tc0 = std::chrono::steady_clock::now();
+        iplSimulatorCommit(simulator);
+        const auto tc1 = std::chrono::steady_clock::now();
+        us_commit += static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(tc1 - tc0).count());
+    }
+    instrumentation_worker_us_scene_graph_commit.store(us_scene_graph, std::memory_order_relaxed);
+    instrumentation_worker_us_simulator_commit.store(us_commit, std::memory_order_relaxed);
 
-    iplSimulatorCommit(simulator);
+    bool execute_run_reflections = run_reflection_sim && shared_reflections;
+    if (execute_run_reflections && reflections_defer_after_scene_commit_us_ > 0 &&
+        us_scene_graph >= static_cast<uint64_t>(reflections_defer_after_scene_commit_us_)) {
+        execute_run_reflections = false;
+        reflection_force_heavy_next_tick_.store(true, std::memory_order_release);
+    }
 
     uint64_t us_direct = 0, us_refl = 0, us_path = 0, us_sync = 0;
     if (run_direct) {
@@ -482,13 +656,16 @@ void ResonanceServer::_run_phonon_simulation_locked(const IPLCoordinateSpace3& c
     instrumentation_worker_us_run_direct.store(us_direct, std::memory_order_relaxed);
 
     pathing_ran_this_tick.store(false);
-    if (run_heavy) {
-        if (run_reflections) {
+    const bool any_heavy = run_reflection_sim || run_pathing_sim;
+    bool ran_reflections_this_pass = false;
+    if (any_heavy) {
+        if (execute_run_reflections) {
             const auto t0 = std::chrono::steady_clock::now();
             iplSimulatorRunReflections(simulator);
             const auto t1 = std::chrono::steady_clock::now();
             us_refl = (uint64_t)std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
             reflections_have_run_once_.store(true);
+            ran_reflections_this_pass = true;
             {
                 std::lock_guard<std::mutex> lock(reflections_pending_mutex_);
                 reflections_pending_handles_.clear();
@@ -497,7 +674,7 @@ void ResonanceServer::_run_phonon_simulation_locked(const IPLCoordinateSpace3& c
         int cooldown = pathing_crash_cooldown.load();
         if (cooldown > 0)
             pathing_crash_cooldown.store(cooldown - 1);
-        if (pathing_enabled && pending_listener_valid.load(std::memory_order_acquire) &&
+        if (run_pathing_sim && pathing_enabled && pending_listener_valid.load(std::memory_order_acquire) &&
             pathing_crash_cooldown.load(std::memory_order_acquire) <= 0) {
             if (debug_pathing.load(std::memory_order_acquire)) {
                 std::lock_guard<std::mutex> pv_lock(pathing_vis_mutex);
@@ -527,7 +704,7 @@ void ResonanceServer::_run_phonon_simulation_locked(const IPLCoordinateSpace3& c
             instrumentation_pathing_sim_ran.fetch_add(1, std::memory_order_relaxed);
             _drain_pathing_probe_batch_releases();
 #endif
-        } else if (run_heavy && pathing_enabled) {
+        } else if (run_pathing_sim && pathing_enabled) {
             if (!pending_listener_valid.load(std::memory_order_acquire)) {
                 instrumentation_pathing_sim_skip_listener.fetch_add(1, std::memory_order_relaxed);
             } else if (pathing_crash_cooldown.load(std::memory_order_acquire) > 0) {
@@ -540,11 +717,28 @@ void ResonanceServer::_run_phonon_simulation_locked(const IPLCoordinateSpace3& c
 
     {
         const auto t0 = std::chrono::steady_clock::now();
-        _worker_sync_fetch_caches();
+        const bool refresh_refl_cache = ran_reflections_this_pass;
+        _worker_sync_fetch_caches(run_direct, refresh_refl_cache);
         const auto t1 = std::chrono::steady_clock::now();
         us_sync = (uint64_t)std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
     }
     instrumentation_worker_us_sync_fetch.store(us_sync, std::memory_order_relaxed);
+    instrumentation_worker_last_wake_was_heavy.store(any_heavy, std::memory_order_relaxed);
+}
+
+bool ResonanceServer::_any_source_needs_reflection_sim_assume_locked() {
+    std::vector<int32_t> handles;
+    source_manager.get_all_handles(handles);
+    if (handles.empty())
+        return false;
+    for (int32_t h : handles) {
+        auto it = source_outputs_reflections_.find(h);
+        if (it == source_outputs_reflections_.end())
+            return true;
+        if (it->second)
+            return true;
+    }
+    return false;
 }
 
 IPLCoordinateSpace3 ResonanceServer::_snapshot_listener_for_simulation() {
@@ -653,12 +847,19 @@ void ResonanceServer::_shutdown_steam_audio() {
     if (!_ctx())
         return; // Idempotent; safe to call multiple times
 
+    ipl_teardown_active_.store(true, std::memory_order_release);
+
     // Reset atomic flags first to prevent late accesses during/after shutdown
     new_listener_written_.store(false);
     pending_listener_valid.store(false);
     simulation_requested.store(false);
-    reflections_pathing_requested.store(false);
+    reflection_sim_heavy_requested.store(false);
+    pathing_sim_heavy_requested.store(false);
     scene_dirty.store(false);
+    {
+        std::lock_guard<std::mutex> q(dynamic_instanced_transform_queue_mutex_);
+        dynamic_instanced_transform_queue_.clear();
+    }
     spatial_audio_warmup_passes_remaining_.store(0, std::memory_order_release);
     pathing_ran_this_tick.store(false);
     reflections_have_run_once_.store(false);
@@ -708,6 +909,18 @@ void ResonanceServer::_shutdown_steam_audio() {
         occlusion_cache_write_.clear();
         occlusion_cache_dirty_.store(false);
     }
+    _clear_reverb_params_likely_available_hints();
+
+    // Drain ResonanceAudioEffect / InternalPlayback IPL users under AudioServer::lock before destroying IPLSource handles.
+    {
+        AudioServer* audio = AudioServer::get_singleton();
+        if (audio)
+            audio->lock();
+        _drain_ipl_context_clients_assume_audio_locked();
+        if (audio)
+            audio->unlock();
+    }
+
     // Clean probe batches (remove from simulator before releasing). Registry lock order: do this before simulation_mutex.
     std::vector<IPLProbeBatch> batches_to_release;
     probe_batch_registry_.get_all_batches_for_shutdown(batches_to_release);
@@ -779,7 +992,6 @@ void ResonanceServer::_shutdown_steam_audio() {
             iplSceneRelease(&scene);
     }
     if (steam_audio_context_) {
-        _drain_ipl_context_clients_before_context_destroy();
         steam_audio_context_->shutdown();
         steam_audio_context_.reset();
     }

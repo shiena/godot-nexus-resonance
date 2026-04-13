@@ -98,8 +98,9 @@ void ResonanceServer::update_listener(Vector3 pos, Vector3 dir, Vector3 up) {
     listener_coords_[1] = listener;
     new_listener_written_.store(true, std::memory_order_release);
 
-    // FMOD Bridge: Update reverb source position to match listener.
+    // FMOD Bridge: keep reverb IPLSource in sync with listener. Use try_update_source so the main thread
+    // never blocks on simulation_mutex while the worker holds it during RunReflections/RunPathing.
     if (fmod_reverb_source_handle_ >= 0) {
-        update_source(fmod_reverb_source_handle_, pos, 1.0f);
+        try_update_source(fmod_reverb_source_handle_, pos, 1.0f);
     }
 }

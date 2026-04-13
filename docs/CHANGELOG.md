@@ -5,16 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),  
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.12] - 2026-04-13
+
+### Added
+
+- **Export: text or binary** — In **Project Settings → Nexus → Resonance → Export** you can save exported geometry and probe bake data as usual text (`.tres`) or as smaller binary (`.res`) files. After changing the option, export or bake again. New probe files use a `*_batch` name pattern; old `*_baked_probes*` files are still found when cleaning up.
+- **Custom physics + many reflection rays** — If reflections use Godot's physics, you can choose how many rays are handled in one batch (default 16) for smoother CPU use; set to **1** for the old behavior. Does not affect the other scene types.
+- **More runtime knobs** — Reflections and pathing can use separate update rates if you need that. Realtime reflections can ignore sources beyond a set distance from the listener (off by default).
+- **Profiling** — Optional timing for the convolution audio path and matching entries under **Debugger → Monitors**.
+
+### Changed
+
+- **AmbisonicsPlayer** — Per-channel stream slots were replaced by a clear **order** in the inspector (1st / 2nd / 3rd) and a matching channel list. The player groups decode options and warns if the stream type does not fit.
+- **Realtime rays** — The zero-rays option is labeled **Off**; quick presets include 8 / 16 / 32 rays.
+- **Steam Audio debug** — Validation and CPU-related engine checks moved from the shared config resource to the **ResonanceRuntime** node (**Runtime Debug**). Set them there again if they lived on a saved `.tres`.
+- **Baked-only reverb** — Less unnecessary work when only baked probe data drives the reverb.
+- **Performance monitors** — **Off** / **Core** / **Standard** (default, fewer graphs) / **Full** (everything as before).
+
+### Fixed
+
+- **Reflections + convolution** — Fixed a slowdown that made hybrid/convolution setups much heavier than intended.
+- **Closing the game** — Rare crash when quitting a built game should be gone.
+
 ## [0.9.11] - 2026-04-04
 
 ### Fixed
 
-- **Custom scene (Godot Physics)** – If 3D physics runs on its **own thread** (for example with Jolt), live occlusion and reflection rays no longer trigger endless *space not accessible* errors. Audio simulation now lines up with the physics step; debug ray lines follow the same timing. The performance overlay can show how long that physics-aligned tick takes.
+- **Custom scene (Godot Physics)** - If 3D physics runs on its **own thread** (for example with Jolt), live occlusion and reflection rays no longer trigger endless *space not accessible* errors. Audio simulation now lines up with the physics step; debug ray lines follow the same timing. The performance overlay can show how long that physics-aligned tick takes.
 
 ### Changed
 
-- **Editor & addon scripts** – Baking, export/cleanup paths, and runtime wiring were split into smaller internal modules; **how you use the inspector and menus is unchanged**. Probe cleanup is a bit smarter about which baked files are still referenced.
-- **HRTF SOFA asset** – Normalization in the inspector uses clearer enum names (**None** / **RMS**).
+- **Editor & addon scripts** - Baking, export/cleanup paths, and runtime wiring were split into smaller internal modules; **how you use the inspector and menus is unchanged**. Probe cleanup is a bit smarter about which baked files are still referenced.
+- **HRTF SOFA asset** - Normalization in the inspector uses clearer enum names (**None** / **RMS**).
 
 ## [0.9.10] - 2026-04-02
 
@@ -25,24 +47,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Debug overlay (ResonancePlayer)** - **Signal P** now shows **path wet output RMS** (per block, clamped 0..1), aligned with **Signal D/R** as pipeline-derived levels.
-- **ResonancePlayer** - Sources that started before **ResonanceServer** was ready (common when the player is a **child** of **ResonanceRuntime**) now **register correctly**; reverb/occlusion should no longer stay permanently “dry” from that alone. `**play()`** and `**play_stream()**` both hook up the same way.
-- **ResonancePlayer polyphony** - With `**max_polyphony` > 1** and `**player_config`**, every voice gets the same Steam parameters (one shared sim source per node); **reverb split** mixes convolution/parametric wet from all voices. `**get_audio_instrumentation`** aggregates counters and adds `**polyphony_voice_count**`.
-- **ResonancePlayer / AudioStreamPlayer3D** - `**stream`** / `**get_stream**` keep the user’s resource while the engine uses an internal wrapper; runtime stream changes update the wrapper. `**max_db**` is honored with volume in native `**_mix**`. Docs: inspector matrix and `**godot_***` keys in `**get_audio_instrumentation**`.
+- **ResonancePlayer** - Sources that started before **ResonanceServer** was ready (common when the player is a **child** of **ResonanceRuntime**) now **register correctly**; reverb/occlusion should no longer stay permanently “dry” from that alone. `**play()`** and `**play_stream()`** both hook up the same way.
+- **ResonancePlayer polyphony** - With `**max_polyphony` > 1** and `**player_config`**, every voice gets the same Steam parameters (one shared sim source per node); reverb split mixes convolution/parametric wet from all voices. `**get_audio_instrumentation`** aggregates counters and adds `**polyphony_voice_count**`.
+- **ResonancePlayer / AudioStreamPlayer3D** - `**stream`** / `**get_stream`** keep the user’s resource while the engine uses an internal wrapper; runtime stream changes update the wrapper. `**max_db`** is honored with volume in native `**_mix`**. Docs: inspector matrix and `**godot_*`** keys in `**get_audio_instrumentation**`.
 - **Occlusion** - If the engine briefly has no fresh occlusion data, direct sound defaults to **not** treated as fully blocked (avoids accidental silence).
 
 ## [0.9.9] - 2026-03-28
 
 ### Added
 
-- **Richer reflection bakes** - Choose **ambisonics order** (1–3) on each probe volume’s **ResonanceBakeConfig**; change it and you’ll be prompted to re-bake when hashes no longer match.
+- **Richer reflection bakes** - Choose **ambisonics order** (1-3) on each probe volume’s **ResonanceBakeConfig**; change it and you’ll be prompted to re-bake when hashes no longer match.
 - **Surround speakers for direct sound** - Pick a **speaker layout** (mono through 7.1) in **ResonanceRuntimeConfig**. Without HRTF, surround can use ambisonics-based panning; with HRTF, binaural output is folded to stereo for the main player path. Changing layout needs **reinit audio engine** like other native audio settings.
 - **Probe volume maintenance** - Inspector section **Probe batch (advanced)**: remove a single probe by index, or drop baked **pathing** / **reflections (reverb)** layers when you want to trim data without a full probe re-bake (you may still need to bake again afterward).
 
 ### Fixed
 
-- **Serialized Phonon scene I/O** - `**save_scene_data`** / `**load_scene_data**` resolve `**res://**` and `**user://**` through `**ProjectSettings.globalize_path**` before `**FileAccess**` open/exists checks, matching other export paths and avoiding platform-dependent relative-path surprises.
+- **Serialized Phonon scene I/O** - `**save_scene_data`** / `**load_scene_data`** resolve `**res://`** and `**user://`** through `**ProjectSettings.globalize_path`** before `**FileAccess`** open/exists checks, matching other export paths and avoiding platform-dependent relative-path surprises.
 - **Debug OBJ export staging** - Failed or incomplete atomic OBJ writes now remove `**_nexus_obj_staging`** contents (and the folder when empty) instead of leaving stale `.obj`/`.mtl` fragments; successful exports drop the empty staging directory as well.
-- **ResonanceLogger console** - Each log line is mirrored with `**print()`** in addition to `**print_rich()`** so messages show under standard Output filters; `**_ready()`** reloads logger project settings (and file output flags now load even if `categories_enabled` was missing). New Project Setting `**nexus/resonance/logger/output_to_debug**` (default on) toggles console mirroring.
+- **ResonanceLogger console** - Each log line is mirrored with `**print()`** in addition to `**print_rich()`** so messages show under standard Output filters; `**_ready()`** reloads logger project settings (and file output flags now load even if `categories_enabled` was missing). New Project Setting `**nexus/resonance/logger/output_to_debug`** (default on) toggles console mirroring.
 - **Steam Audio verbose** - Project setting is read with proper bool coercion; IPL INFO/DEBUG forwarding unchanged but **one summary line** is printed at context init when enabled so the option is visibly active. **Editor:** `steam_audio_verbose` is always re-registered in Project Settings (not only on first creation).
 - **Short sounds** - Parametric/hybrid reverb and pathing tails decay naturally after the dry signal ends, so one-shots can sound like they’re in the room instead of cutting off abruptly.
 - **ResonanceRuntime** (**breaking**) - The runtime node is a plain **Node** again (fixes a regression). Update scenes if you depended on the previous setup.
@@ -66,7 +88,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Editor – ResonanceRuntime Doc-Button was opening the Documentation of "Node"**. This is sadly a breaking change. Use **Change Type** or recreate the node.
+- **Editor - ResonanceRuntime Doc-Button was opening the Documentation of "Node"**. This is sadly a breaking change. Use **Change Type** or recreate the node.
 - **Debug OBJ export** - No more duplicate reimport tasks / broken progress; files are written atomically.
 - **Geometry vs. export** - Runtime static/dynamic acoustic meshes use the same world rules as export (`geometry_override` vs parent `MeshInstance3D`), fixing wrong placement or scale (with assets imported with Nexus Importer).
 - **ResonancePlayer** - Volume db is now functional. Multiplies signals from Steam Audio.
@@ -250,7 +272,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Atomic probe data saves** - ResonanceProbeDataSaver writes to `.tmp` then renames atomically to avoid corrupted files on crash or power loss.
 - **DirAccess.make_dir failure handling** - Export and bake now check mkdir result and show error when audio_data cannot be created.
 - **Defensive vector normalization** - `update_listener` and `_update_source_internal` use `safe_unit_vector` for dir/up/right orthonormalization; prevents degenerated coordinate spaces when inputs have near-zero length.
-- **Shutdown atomic flags reset** - `_shutdown_steam_audio` resets pending_listener_valid, simulation_requested, reflections_pathing_requested, scene_dirty, pathing_ran_this_tick at start to avoid late accesses during/after shutdown.
+- **Shutdown atomic flags reset** - `_shutdown_steam_audio` resets pending_listener_valid, simulation_requested, reflection/pathing heavy request flags, scene_dirty, pathing_ran_this_tick at start to avoid late accesses during/after shutdown.
 
 ### Changed
 
